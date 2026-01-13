@@ -372,8 +372,8 @@ impl RenewalScheduler {
 
                     Self::emit_event_static(
                         config,
-                        RenewalEvent::RenewalSuccess {
-                            new_cert: new_cert.clone(),
+                        RenewalEvent::RenewalSucceeded {
+                            certificate: Box::new(new_cert.clone()),
                         },
                     )
                     .await;
@@ -424,13 +424,13 @@ impl RenewalScheduler {
     /// Generates a new key pair and CSR based on the existing certificate's subject,
     /// then requests a new certificate from the EST server using simple re-enrollment.
     async fn perform_reenrollment(client: &EstClient, cert: &Certificate) -> Result<Certificate> {
+        use crate::bootstrap::BootstrapClient;
         use crate::csr::CsrBuilder;
-        use crate::validation::get_subject_cn;
 
         debug!("Starting certificate re-enrollment");
 
         // Extract subject information from existing certificate
-        let subject_cn = get_subject_cn(cert).ok_or_else(|| {
+        let subject_cn = BootstrapClient::get_subject_cn(cert).ok_or_else(|| {
             EstError::operational("Cannot extract Common Name from existing certificate")
         })?;
 
@@ -453,12 +453,13 @@ impl RenewalScheduler {
 
         // Parse the new certificate
         let new_cert = response
-            .certificate
-            .ok_or_else(|| EstError::protocol("No certificate in re-enrollment response"))?;
+            .certificate()
+            .ok_or_else(|| EstError::protocol("No certificate in re-enrollment response"))?
+            .clone();
 
         info!(
             "Successfully renewed certificate for CN: {}",
-            get_subject_cn(&new_cert).unwrap_or_else(|| "<unknown>".to_string())
+            BootstrapClient::get_subject_cn(&new_cert).unwrap_or_else(|| "<unknown>".to_string())
         );
 
         Ok(new_cert)
