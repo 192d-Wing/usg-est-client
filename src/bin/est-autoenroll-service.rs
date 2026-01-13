@@ -279,12 +279,39 @@ fn print_usage(program: &str) {
 
 #[cfg(all(windows, feature = "windows-service"))]
 fn run_service_mode() -> ExitCode {
-    // Initialize tracing to Windows Event Log
-    // In production, this would use the Windows Event Log tracing subscriber
-    tracing_subscriber::fmt()
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::Layer;
+    use usg_est_client::windows::EventLogLayer;
+
+    // Initialize tracing with Windows Event Log integration
+    // This provides dual output: stderr for service control and Event Log for enterprise monitoring
+    let event_log_layer = match EventLogLayer::new() {
+        Ok(layer) => Some(layer),
+        Err(e) => {
+            eprintln!("Warning: Failed to initialize Windows Event Log: {}", e);
+            None
+        }
+    };
+
+    let stderr_layer = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .with_writer(std::io::stderr)
-        .init();
+        .finish();
+
+    match event_log_layer {
+        Some(event_log) => {
+            let subscriber = tracing_subscriber::registry()
+                .with(stderr_layer)
+                .with(event_log);
+            tracing::subscriber::set_global_default(subscriber)
+                .expect("Failed to set tracing subscriber");
+        }
+        None => {
+            // Fall back to stderr only
+            tracing::subscriber::set_global_default(stderr_layer)
+                .expect("Failed to set tracing subscriber");
+        }
+    }
 
     tracing::info!("Starting EST Auto-Enrollment service");
 

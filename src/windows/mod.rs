@@ -85,6 +85,9 @@ pub mod tpm;
 pub mod eventlog;
 
 #[cfg(feature = "windows-service")]
+pub mod eventlog_layer;
+
+#[cfg(feature = "windows-service")]
 pub mod perfcounter;
 
 #[cfg(feature = "windows-service")]
@@ -106,6 +109,9 @@ pub use tpm::{TpmAvailability, TpmKeyProvider};
 
 #[cfg(feature = "windows-service")]
 pub use eventlog::{EventLog, EventType};
+
+#[cfg(feature = "windows-service")]
+pub use eventlog_layer::EventLogLayer;
 
 #[cfg(feature = "windows-service")]
 pub use perfcounter::{CounterType, PerformanceCounters, ServiceStateCounter};

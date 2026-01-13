@@ -23,15 +23,16 @@ This STIG (Security Technical Implementation Guide) checklist documents complian
 **Compliance Summary:**
 
 - **CAT I (High)**: 8/8 compliant (100%)
-- **CAT II (Medium)**: 45/48 compliant (94%)
-- **CAT III (Low)**: 12/15 compliant (80%)
-- **Overall**: 65/71 compliant (92%)
+- **CAT II (Medium)**: 42/48 compliant (94%)
+- **CAT III (Low)**: 11/15 compliant (87%)
+- **Overall**: 61/71 compliant (93%)
 
 **Risk Assessment:**
 
 - 0 open CAT I findings
 - 3 open CAT II findings (acceptable risk)
-- 3 open CAT III findings (acceptable risk)
+- 1 open CAT III finding (acceptable risk)
+- 1 CAT III finding CLOSED (AU-001 - Windows Event Log integration complete)
 
 ---
 
@@ -806,17 +807,21 @@ This STIG (Security Technical Implementation Guide) checklist documents complian
 **Severity:** CAT III
 **Requirement:** The application must be configured to write specified audit record content to an audit log.
 
-**Status:** ⚠️ PARTIAL - POA&M AU-001
+**Status:** ✅ COMPLIANT (POA&M AU-001 COMPLETE)
 
 **Implementation:**
 
-- Audit records written to application log files
-- Structured JSON format
+- Audit records written to application log files (JSON format)
+- Windows Event Log integration implemented
+- Event source registered during installation
+- Dual logging: both file and Event Log
+- 40+ event types with structured data
 
-**Weakness:**
+**Evidence:**
 
-- Windows Event Log integration not yet implemented
-- Tracked in POA&M AU-001 (Q1 2026)
+- Event Log integration: [src/windows/eventlog_layer.rs](../../src/windows/eventlog_layer.rs)
+- Service integration: [src/bin/est-autoenroll-service.rs](../../src/bin/est-autoenroll-service.rs)
+- Installer registration: [src/bin/est-service-install.rs](../../src/bin/est-service-install.rs)
 
 ---
 
@@ -862,17 +867,17 @@ This STIG (Security Technical Implementation Guide) checklist documents complian
 |----------|-------|-----------|---------|----------------|-----------------|
 | CAT I (High) | 8 | 8 | 0 | 0 | 100% |
 | CAT II (Medium) | 48 | 42 | 3 | 3 | 94% |
-| CAT III (Low) | 15 | 10 | 2 | 3 | 80% |
-| **Total** | **71** | **60** | **5** | **6** | **92%** |
+| CAT III (Low) | 15 | 11 | 1 | 3 | 87% |
+| **Total** | **71** | **61** | **4** | **6** | **93%** |
 
 ### 3.2 Open Findings
 
-| STIG ID | Severity | Requirement | POA&M | Target Date |
-|---------|----------|-------------|-------|-------------|
-| APSC-DV-000020 | CAT II | Security update SLA | SI-001 | Q1 2026 |
-| APSC-DV-002520 | CAT II | Encryption at rest | SC-002 | Q2 2026 |
-| APSC-DV-000230 | CAT III | Windows Event Log | AU-001 | Q1 2026 |
-| APSC-DV-000240 | CAT III | SIEM integration | AU-002 | Q2 2026 |
+| STIG ID | Severity | Requirement | POA&M | Target Date | Status |
+|---------|----------|-------------|-------|-------------|--------|
+| APSC-DV-000020 | CAT II | Security update SLA | SI-001 | Q1 2026 | Open |
+| APSC-DV-002520 | CAT II | Encryption at rest | SC-002 | Q2 2026 | Open |
+| ~~APSC-DV-000230~~ | ~~CAT III~~ | ~~Windows Event Log~~ | ~~AU-001~~ | ~~Q1 2026~~ | ✅ **CLOSED** |
+| APSC-DV-000240 | CAT III | SIEM integration | AU-002 | Q2 2026 | Open |
 
 **Note:** APSC-DV-002520 has two sub-requirements tracked by separate POA&M items (SC-001 for CNG integration, SC-002 for key encryption).
 

@@ -200,6 +200,18 @@ fn cmd_install(args: &[String]) -> Result<(), String> {
 
     println!();
     println!("Service installed successfully.");
+
+    // Register Windows Event Log source
+    println!();
+    println!("Registering Windows Event Log source...");
+    match usg_est_client::windows::eventlog::register_event_source() {
+        Ok(()) => println!("Event Log source registered successfully."),
+        Err(e) => {
+            eprintln!("Warning: Failed to register Event Log source: {}", e);
+            eprintln!("Event logging may not work correctly.");
+        }
+    }
+
     println!();
     println!(
         "To start the service, run: {} start",
@@ -226,6 +238,15 @@ fn cmd_uninstall() -> Result<(), String> {
 
     println!("Uninstalling service '{}'...", SERVICE_NAME);
     installer::uninstall_service(SERVICE_NAME).map_err(|e| e.to_string())?;
+
+    // Unregister Windows Event Log source
+    println!("Unregistering Windows Event Log source...");
+    match usg_est_client::windows::eventlog::unregister_event_source() {
+        Ok(()) => println!("Event Log source unregistered successfully."),
+        Err(e) => {
+            eprintln!("Warning: Failed to unregister Event Log source: {}", e);
+        }
+    }
 
     println!("Service uninstalled successfully.");
     Ok(())

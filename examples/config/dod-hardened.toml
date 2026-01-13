@@ -315,10 +315,15 @@ cache_path = "C:\\ProgramData\\Department of War\\EST\\crl-cache"
 # Recommendation: INFO for production, DEBUG for troubleshooting
 level = "INFO"
 
-# Log destination: "file", "windows_event_log", "both"
-# STIG APSC-DV-000230: Write audit records to log
-# Recommendation: "both" when Windows Event Log integration available
-destination = "file"
+# Enable Windows Event Log integration
+# STIG APSC-DV-000230: Write audit records to centralized log
+# POA&M AU-001: Windows Event Log integration (COMPLETE)
+# Events written to Application Log under "EST Auto-Enrollment" source
+windows_event_log = true
+
+# Enable JSON-formatted file logging (for SIEM integration)
+# STIG APSC-DV-000240: Off-load audit records to centralized server
+json_format = true
 
 # Log file configuration (when destination = "file" or "both")
 [logging.file]
