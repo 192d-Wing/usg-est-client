@@ -31,26 +31,40 @@ Comprehensive list of all TODO, FIXME, and action items found in the codebase.
 
 **Impact:** CRITICAL security issue resolved - CRLs are now cryptographically verified
 
-### 2. OCSP Implementation Stubs
+### 2. OCSP Implementation 🔄 PARTIALLY COMPLETED
 
 **Locations:**
-- [src/revocation.rs:657](src/revocation.rs#L657) - Request creation
-- [src/revocation.rs:714](src/revocation.rs#L714) - Response parsing
+- [src/revocation.rs:907-973](src/revocation.rs#L907-L973) - Request creation ✅
+- [src/revocation.rs:1038-1047](src/revocation.rs#L1038-L1047) - Response parsing ⚠️
 
-```rust
-// TODO: Implement actual OCSP request creation
-// TODO: Implement actual OCSP response parsing
-```
+**Partially Completed:** 2026-01-12
+**Commit:** 5999c58 (request builder only)
 
-**Issue:** OCSP functionality is stubbed out
-**Impact:** Functionality - Online revocation checking not working
-**Effort:** High
-**Dependencies:** OCSP protocol (RFC 6960), ASN.1 parsing
-**Status:** ⚠️ Noted in docs/docs/security.md
+**What's Done:**
+
+- ✅ OCSP request builder (RFC 6960 compliant)
+- ✅ CertID construction with SHA-256 hashes
+- ✅ HTTP POST request sending to OCSP responders
+- ✅ OCSP URL extraction from Authority Information Access
+
+**What's Remaining:**
+
+- ⚠️ OCSP response parsing (complex ASN.1 structures)
+- ⚠️ Response signature verification
+- ⚠️ Integration testing with live OCSP responders
+
+**Status:** Partial - Requests work, responses return Unknown status
+
+**Effort Remaining:** Medium-High (2-3 days)
+
+**Dependencies:**
+- Complex der crate API for nested ASN.1 parsing
+- Multiple context-specific tag handling
+- 5+ levels of nested structures
 
 **Action Items:**
-- [ ] Implement OCSP request builder (RFC 6960 format)
-- [ ] Implement OCSP response parser
+- [x] Implement OCSP request builder (RFC 6960 format)
+- [ ] Complete OCSP response parser (in progress)
 - [ ] Add OCSP signature verification
 - [ ] Test with live OCSP responders
 - [ ] Update security.md documentation
