@@ -160,13 +160,43 @@ fn build_root_store(trust_anchors: &TrustAnchors) -> Result<rustls::RootCertStor
 }
 
 /// Parse PEM-encoded certificates.
+///
+/// # Security
+///
+/// This function logs warnings for any invalid certificates found in the PEM data
+/// to help detect potential issues with certificate chains.
 pub fn parse_pem_certificates(pem_data: &[u8]) -> Result<Vec<CertificateDer<'static>>> {
-    let certs = CertificateDer::pem_slice_iter(pem_data)
-        .filter_map(|result| result.ok())
-        .collect::<Vec<_>>();
+    use tracing::warn;
+
+    let mut certs = Vec::new();
+    let mut cert_count = 0;
+    let mut error_count = 0;
+
+    for result in CertificateDer::pem_slice_iter(pem_data) {
+        cert_count += 1;
+        match result {
+            Ok(cert) => certs.push(cert),
+            Err(e) => {
+                error_count += 1;
+                warn!(
+                    certificate_index = cert_count,
+                    error = %e,
+                    "Failed to parse certificate from PEM data"
+                );
+            }
+        }
+    }
+
+    if error_count > 0 {
+        warn!(
+            valid_certificates = certs.len(),
+            invalid_certificates = error_count,
+            "Some certificates in PEM data could not be parsed"
+        );
+    }
 
     if certs.is_empty() {
-        return Err(EstError::invalid_pem("No certificates found in PEM data"));
+        return Err(EstError::invalid_pem("No valid certificates found in PEM data"));
     }
 
     Ok(certs)

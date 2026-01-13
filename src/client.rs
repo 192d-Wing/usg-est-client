@@ -24,6 +24,7 @@ use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 
 use crate::config::EstClientConfig;
 use crate::error::{EstError, Result};
+use crate::operations::enroll::encode_csr;
 use crate::tls::build_http_client;
 use crate::types::{
     CaCertificates, CmcRequest, CmcResponse, CsrAttributes, EnrollmentResponse,
@@ -204,7 +205,8 @@ impl EstClient {
         let url = self.config.build_url(operations::SERVER_KEYGEN);
         tracing::debug!("POST {}", url);
 
-        let body = BASE64_STANDARD.encode(csr_der);
+        // Base64 encode the CSR with size validation
+        let body = encode_csr(csr_der)?;
 
         let mut request = self
             .http
@@ -275,8 +277,8 @@ impl EstClient {
         let url = self.config.build_url(operation);
         tracing::debug!("POST {}", url);
 
-        // Base64 encode the CSR
-        let body = BASE64_STANDARD.encode(csr_der);
+        // Base64 encode the CSR with size validation
+        let body = encode_csr(csr_der)?;
 
         let mut request = self
             .http
@@ -355,12 +357,67 @@ impl EstClient {
         }
 
         // Handle other errors
+        // For security, limit error message length to prevent information disclosure
         let message = response
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
 
-        Err(EstError::server_error(status.as_u16(), message))
+        // Sanitize error message: truncate to 256 chars and strip sensitive patterns
+        let sanitized_message = Self::sanitize_error_message(&message);
+
+        Err(EstError::server_error(status.as_u16(), sanitized_message))
+    }
+
+    /// Sanitize error messages to prevent information disclosure.
+    ///
+    /// # Security
+    ///
+    /// Server error messages may contain sensitive information such as:
+    /// - Internal paths and file names
+    /// - Software versions and stack traces
+    /// - Database connection strings
+    /// - Implementation details
+    ///
+    /// This function truncates long messages and removes common sensitive substrings.
+    fn sanitize_error_message(message: &str) -> String {
+        const MAX_ERROR_LENGTH: usize = 256;
+
+        // Truncate to prevent excessively long error messages
+        let mut sanitized = if message.len() > MAX_ERROR_LENGTH {
+            let truncated = message.chars().take(MAX_ERROR_LENGTH).collect::<String>();
+            format!("{}... (truncated)", truncated)
+        } else {
+            message.to_string()
+        };
+
+        // Redact common sensitive keywords (simple substring matching)
+        // This is a defense-in-depth measure; not all patterns can be caught
+        let sensitive_keywords = [
+            ("password=", "[credential redacted]"),
+            ("Password=", "[credential redacted]"),
+            ("token=", "[credential redacted]"),
+            ("Token=", "[credential redacted]"),
+            ("secret=", "[credential redacted]"),
+            ("Secret=", "[credential redacted]"),
+            ("key=", "[credential redacted]"),
+            ("Key=", "[credential redacted]"),
+        ];
+
+        for (keyword, replacement) in sensitive_keywords {
+            if let Some(pos) = sanitized.find(keyword) {
+                // Redact from keyword to next whitespace or end of string
+                let redact_start = pos;
+                let redact_end = sanitized[pos..]
+                    .find(|c: char| c.is_whitespace())
+                    .map(|i| pos + i)
+                    .unwrap_or(sanitized.len());
+
+                sanitized.replace_range(redact_start..redact_end, replacement);
+            }
+        }
+
+        sanitized
     }
 
     /// Extract Retry-After header value.

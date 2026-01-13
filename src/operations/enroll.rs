@@ -43,11 +43,33 @@ pub fn validate_csr(csr_der: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// Maximum CSR size in bytes (256 KB).
+///
+/// This limit prevents potential DoS attacks via extremely large CSRs.
+/// A typical RSA-4096 CSR is ~1-2 KB, so 256 KB provides ample headroom.
+const MAX_CSR_SIZE: usize = 256 * 1024;
+
 /// Encode a CSR for transmission to the EST server.
 ///
 /// This base64-encodes the DER data as required by RFC 7030.
-pub fn encode_csr(csr_der: &[u8]) -> String {
-    BASE64_STANDARD.encode(csr_der)
+///
+/// # Security
+///
+/// Enforces a maximum CSR size to prevent resource exhaustion attacks.
+///
+/// # Errors
+///
+/// Returns an error if the CSR exceeds the maximum allowed size.
+pub fn encode_csr(csr_der: &[u8]) -> Result<String> {
+    if csr_der.len() > MAX_CSR_SIZE {
+        return Err(EstError::csr(format!(
+            "CSR too large: {} bytes (max: {} bytes)",
+            csr_der.len(),
+            MAX_CSR_SIZE
+        )));
+    }
+
+    Ok(BASE64_STANDARD.encode(csr_der))
 }
 
 /// Add channel binding to a CSR.
@@ -117,8 +139,17 @@ mod tests {
     #[test]
     fn test_encode_csr() {
         let csr = vec![0x30, 0x00]; // Minimal valid SEQUENCE
-        let encoded = encode_csr(&csr);
+        let encoded = encode_csr(&csr).unwrap();
         assert_eq!(encoded, "MAA=");
+    }
+
+    #[test]
+    fn test_encode_csr_too_large() {
+        // Create a CSR larger than MAX_CSR_SIZE
+        let large_csr = vec![0u8; MAX_CSR_SIZE + 1];
+        let result = encode_csr(&large_csr);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("CSR too large"));
     }
 
     #[test]
