@@ -384,29 +384,51 @@ if now > not_after {
 **Known Limitations:**
 
 - Private keys not yet associated with certificates (requires TODO #5: CNG integration)
-- Credential Manager integration pending (TODO #10)
 
-### 10. Windows Credential Manager Integration
+### 10. Windows Credential Manager Integration ✅ COMPLETED
 
-**Location:** [src/auto_enroll/config.rs:327](src/auto_enroll/config.rs#L327)
+**Location:** [src/auto_enroll/config.rs:350-419](src/auto_enroll/config.rs#L350-L419)
 
-```rust
-// TODO: Implement Windows Credential Manager lookup
+**Completed:** 2026-01-13
+
+**What Was Done:**
+
+- ✅ Implemented read_credential_manager() using Windows CredReadW API
+- ✅ Added support for `credential_manager` password source
+- ✅ Added support for `credential_manager:target` with explicit target name
+- ✅ Proper error handling for missing credentials
+- ✅ Memory safety with CredFree call
+- ✅ UTF-8 password decoding
+- ✅ Non-Windows stub for cross-platform compilation
+- ✅ All library tests passing (49 tests)
+
+**Implementation Details:**
+
+- Uses Windows CredReadW API with CRED_TYPE_GENERIC credentials
+- Defaults to using EST server URL as the credential target name
+- Supports explicit target names via `credential_manager:target` syntax
+- Properly frees credential memory with CredFree
+- Validates UTF-8 encoding of stored passwords
+- Returns descriptive errors when credentials are not found
+- Debug logging for credential retrieval operations
+
+**Usage Examples:**
+
+```toml
+# Use credential manager with server URL as target
+[authentication]
+password_source = "credential_manager"
+
+# Use credential manager with explicit target name
+[authentication]
+password_source = "credential_manager:EST-MyServer"
+
+# Fallback to environment variable
+[authentication]
+password_source = "env:EST_PASSWORD"
 ```
 
-**Issue:** Password lookup from Windows Credential Manager not implemented
-**Impact:** Functionality - Can't retrieve stored credentials
-**Effort:** Medium
-**Dependencies:** Windows credential API
-**Status:** 🪟 Windows-specific enhancement
-
-**Action Items:**
-- [ ] Add windows-sys or credentials crate dependency
-- [ ] Implement CredRead API call
-- [ ] Add proper error handling
-- [ ] Add fallback to environment variables
-- [ ] Test on Windows with stored credentials
-- [ ] Document credential manager usage
+**Impact:** MEDIUM - Enables secure password storage using Windows Credential Manager
 
 ### 11. Renewal Module - Actual Re-enrollment ✅ COMPLETED
 

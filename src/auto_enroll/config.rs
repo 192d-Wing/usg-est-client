@@ -313,6 +313,12 @@ impl AutoEnrollConfig {
     }
 
     /// Resolve the password from the configured source.
+    ///
+    /// Supported password sources:
+    /// - `env:VAR_NAME` - Read from environment variable
+    /// - `credential_manager` - Read from Windows Credential Manager (Windows only)
+    /// - `credential_manager:target` - Read from Windows Credential Manager with specific target name
+    /// - `file:/path/to/file` - Read from file (trimmed)
     fn resolve_password(&self) -> Result<String, EstError> {
         let source = self
             .authentication
@@ -324,10 +330,12 @@ impl AutoEnrollConfig {
             std::env::var(var_name)
                 .map_err(|_| EstError::config(format!("Environment variable {var_name} not set")))
         } else if source == "credential_manager" {
-            // TODO: Implement Windows Credential Manager lookup
-            Err(EstError::config(
-                "credential_manager not yet implemented; use env:VAR_NAME",
-            ))
+            // Use EST server URL as the credential target name
+            let target_name = &self.server.url;
+            self.read_credential_manager(target_name)
+        } else if let Some(target) = source.strip_prefix("credential_manager:") {
+            // Use explicit target name
+            self.read_credential_manager(target)
         } else if let Some(path) = source.strip_prefix("file:") {
             std::fs::read_to_string(path)
                 .map(|s| s.trim().to_string())
@@ -337,6 +345,77 @@ impl AutoEnrollConfig {
                 "Unknown password_source: {source}"
             )))
         }
+    }
+
+    /// Read password from Windows Credential Manager.
+    ///
+    /// This uses the Windows CredRead API to retrieve a stored credential.
+    /// The credential is identified by the target name (typically the server URL).
+    #[cfg(windows)]
+    fn read_credential_manager(&self, target_name: &str) -> Result<String, EstError> {
+        use windows::core::PCWSTR;
+        use windows::Win32::Foundation::ERROR_NOT_FOUND;
+        use windows::Win32::Security::Credentials::{
+            CredFree, CredReadW, CREDENTIALW, CRED_TYPE_GENERIC,
+        };
+
+        tracing::debug!(
+            "Reading credential from Windows Credential Manager: {}",
+            target_name
+        );
+
+        // Convert target name to wide string
+        let target_wide: Vec<u16> = target_name.encode_utf16().chain(std::iter::once(0)).collect();
+
+        unsafe {
+            let mut pcredential: *mut CREDENTIALW = std::ptr::null_mut();
+
+            // Call CredReadW to retrieve the credential
+            let result = CredReadW(
+                PCWSTR::from_raw(target_wide.as_ptr()),
+                CRED_TYPE_GENERIC,
+                0, // flags (reserved, must be 0)
+                &mut pcredential,
+            );
+
+            if result.is_err() {
+                let error = result.unwrap_err();
+                if error.code() == ERROR_NOT_FOUND.to_hresult() {
+                    return Err(EstError::config(format!(
+                        "Credential not found in Windows Credential Manager: {}",
+                        target_name
+                    )));
+                }
+                return Err(EstError::config(format!(
+                    "Failed to read from Windows Credential Manager: {}",
+                    error
+                )));
+            }
+
+            // Extract password from credential
+            let credential = &*pcredential;
+            let password_bytes =
+                std::slice::from_raw_parts(credential.CredentialBlob, credential.CredentialBlobSize as usize);
+
+            // Password is stored as UTF-8 bytes
+            let password = String::from_utf8(password_bytes.to_vec()).map_err(|_| {
+                EstError::config("Invalid UTF-8 in credential password")
+            })?;
+
+            // Free the credential memory
+            CredFree(pcredential as *const _);
+
+            tracing::debug!("Successfully read credential from Windows Credential Manager");
+            Ok(password)
+        }
+    }
+
+    /// Non-Windows stub for credential manager.
+    #[cfg(not(windows))]
+    fn read_credential_manager(&self, target_name: &str) -> Result<String, EstError> {
+        Err(EstError::config(
+            "Windows Credential Manager is only available on Windows",
+        ))
     }
 }
 
