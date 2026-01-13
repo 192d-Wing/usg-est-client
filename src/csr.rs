@@ -18,6 +18,10 @@
 //! This module provides a builder for creating PKCS#10 Certificate Signing
 //! Requests. It is feature-gated behind the `csr-gen` feature.
 
+// Manual PKCS#10 construction for HSM integration
+#[cfg(all(feature = "csr-gen", feature = "hsm"))]
+mod pkcs10;
+
 #[cfg(feature = "csr-gen")]
 mod builder {
     use std::net::IpAddr;
