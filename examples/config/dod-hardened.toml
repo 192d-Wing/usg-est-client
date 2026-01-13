@@ -1,0 +1,502 @@
+# DoD Hardened Configuration for EST Client
+#
+# This configuration file implements STIG-compliant settings for Department of
+# Defense deployments. All security controls are set to maximum security posture.
+#
+# STIG Compliance: Application Security and Development STIG V5R3
+# Classification: UNCLASSIFIED
+# Last Updated: 2026-01-13
+#
+# IMPORTANT: This configuration requires:
+# - FIPS 140-2 validated crypto module (OpenSSL FIPS)
+# - DoD PKI Root CA certificates
+# - Proper file system permissions (see installation guide)
+# - Windows Time Service synchronization
+
+# ==============================================================================
+# SERVER CONFIGURATION
+# ==============================================================================
+
+[server]
+# EST server URL (HTTPS required per STIG APSC-DV-002440)
+# Must be DoD-approved EST server
+url = "https://est.example.mil/.well-known/est"
+
+# Connection timeout (seconds)
+# STIG APSC-DV-002400: Network connections timeout after inactivity
+timeout_seconds = 60
+
+# CA label (optional, for multi-CA EST servers)
+# ca_label = "DoD-PKI-CA"
+
+# ==============================================================================
+# TRUST CONFIGURATION
+# ==============================================================================
+
+[trust]
+# Trust mode: "explicit" requires DoD Root CA bundle
+# STIG APSC-DV-003235: Validate certificates to accepted trust anchor
+mode = "explicit"
+
+# Path to DoD Root CA bundle (PEM format)
+# Must contain DoD Root CA 2-6 certificates
+ca_bundle_path = "C:\\ProgramData\\Department of War\\EST\\ca-bundle.pem"
+
+# Alternative: Use embedded DoD Root CAs (when available)
+# use_embedded_dod_roots = true
+
+# Certificate validation options
+[trust.validation]
+# Require revocation checking (OCSP/CRL)
+# STIG APSC-DV-003235: Certificate revocation checking required
+require_revocation_check = true
+
+# Maximum certificate chain depth
+max_chain_depth = 5
+
+# Check certificate validity periods
+# STIG requirement: Validate not_before and not_after
+check_validity = true
+
+# ==============================================================================
+# AUTHENTICATION CONFIGURATION
+# ==============================================================================
+
+[authentication]
+# Authentication method: "http_basic" or "tls_client_cert"
+# STIG APSC-DV-000160: Use approved authentication mechanisms
+method = "http_basic"
+
+# HTTP Basic Authentication
+# Username: Machine account (COMPUTERNAME$ for Active Directory)
+username = "${COMPUTERNAME}$"
+
+# Password source (NEVER hardcode passwords)
+# STIG APSC-DV-001750: Protect authentication credentials
+# Options:
+#   - "env:VARIABLE_NAME" - Read from environment variable
+#   - "credential_manager" - Windows Credential Manager (default target)
+#   - "credential_manager:target" - Windows Credential Manager (specific target)
+#   - "file:C:\\path\\to\\secure\\file" - Read from file (must have proper ACLs)
+password_source = "env:EST_PASSWORD"
+
+# Alternative: TLS Client Certificate Authentication
+# [authentication]
+# method = "tls_client_cert"
+# cert_path = "C:\\ProgramData\\Department of War\\EST\\client-cert.pem"
+# key_path = "C:\\ProgramData\\Department of War\\EST\\client-key.pem"
+
+# ==============================================================================
+# CERTIFICATE CONFIGURATION
+# ==============================================================================
+
+[certificate]
+# Subject Distinguished Name
+# Common Name: FQDN of the machine
+# STIG requirement: Accurate system identification
+common_name = "${COMPUTERNAME}.${USERDNSDOMAIN}"
+organization = "Department of War"
+organizational_unit = "Information Technology"
+country = "US"
+state = "District of Columbia"
+locality = "Washington"
+
+# Subject Alternative Names (SANs)
+# STIG requirement: Include all valid identifiers
+[[certificate.san_dns]]
+value = "${COMPUTERNAME}.${USERDNSDOMAIN}"
+
+[[certificate.san_dns]]
+value = "${COMPUTERNAME}"
+
+# Include IP address if static
+# [[certificate.san_ip]]
+# value = "10.0.1.100"
+
+# Key Usage Extensions
+# STIG APSC-DV-000170: Proper key usage constraints
+[certificate.key_usage]
+digital_signature = true
+key_encipherment = true
+key_agreement = false
+certificate_signing = false
+crl_signing = false
+
+# Extended Key Usage
+# STIG requirement: Limit certificate purpose
+[certificate.extended_key_usage]
+client_auth = true
+server_auth = true
+code_signing = false
+email_protection = false
+
+# ==============================================================================
+# KEY GENERATION CONFIGURATION
+# ==============================================================================
+
+[key]
+# Key algorithm: "RSA" or "ECDSA"
+# STIG APSC-DV-002570: Use FIPS 140-2 approved algorithms
+algorithm = "RSA"
+
+# RSA key size (minimum 2048 per DoD requirements)
+# Recommended: 3072 or 4096 for high-value assets
+# STIG requirement: Adequate key strength
+rsa_bits = 3072
+
+# Alternative: ECDSA (more efficient, same security as RSA 3072)
+# [key]
+# algorithm = "ECDSA"
+# ecdsa_curve = "P-384"  # Options: P-256, P-384, P-521
+
+# ==============================================================================
+# STORAGE CONFIGURATION
+# ==============================================================================
+
+[storage]
+# Windows Certificate Store location
+# STIG APSC-DV-001750: Proper access control for certificates
+# Options: "CurrentUser\\My" or "LocalMachine\\My"
+# Recommendation: LocalMachine for service accounts
+store = "LocalMachine\\My"
+
+# Certificate friendly name (for easy identification)
+friendly_name = "EST Auto-Enrolled Machine Certificate"
+
+# Private key storage (TEMPORARY - until CNG integration complete)
+# STIG APSC-DV-002520: Protect keys at rest
+# IMPORTANT: Set file permissions to SYSTEM only
+# Recommendation: Use full path in secure location
+key_path = "C:\\ProgramData\\Department of War\\EST\\keys\\machine.key"
+
+# Archive old certificates on renewal
+# STIG requirement: Audit trail of certificate history
+archive_old = true
+
+# ==============================================================================
+# RENEWAL CONFIGURATION
+# ==============================================================================
+
+[renewal]
+# Enable automatic renewal
+# STIG APSC-DV-000020: Timely security updates
+enabled = true
+
+# Renew when certificate expires within this many days
+# DoD Recommendation: 30 days minimum
+# STIG requirement: Timely certificate renewal
+threshold_days = 30
+
+# Check interval (seconds)
+# Default: 3600 (1 hour)
+# For high-security: 900 (15 minutes)
+check_interval_secs = 3600
+
+# Maximum retry attempts on failure
+max_retries = 3
+
+# Retry delay (seconds)
+retry_delay_secs = 300
+
+# ==============================================================================
+# FIPS 140-2 CONFIGURATION
+# ==============================================================================
+
+[fips]
+# Enable FIPS mode (REQUIRED for DoD deployment)
+# STIG APSC-DV-002570: Use FIPS 140-2 validated cryptography
+enabled = true
+
+# Enforce FIPS mode (fail if FIPS module unavailable)
+# STIG requirement: Mandatory cryptographic compliance
+enforce = true
+
+# FIPS module path (optional, auto-detected if not specified)
+# module_path = "C:\\Program Files\\OpenSSL\\bin\\fips.dll"
+
+# Algorithm restrictions (enforced when FIPS enabled)
+[fips.algorithms]
+# Minimum RSA key size (bits)
+min_rsa_bits = 2048
+
+# Minimum ECDSA curve
+# Options: "P-256", "P-384", "P-521"
+min_ecdsa_curve = "P-256"
+
+# Allowed symmetric algorithms
+# STIG requirement: Strong encryption algorithms only
+allowed_symmetric = ["AES-128-GCM", "AES-256-GCM", "AES-128-CBC", "AES-256-CBC"]
+
+# Allowed hash algorithms
+# STIG requirement: Secure hash functions only
+allowed_hash = ["SHA-256", "SHA-384", "SHA-512"]
+
+# Block weak algorithms (enforced)
+block_md5 = true
+block_sha1_signatures = true  # SHA-1 only allowed in legacy cert serial numbers
+block_3des = true
+block_rc4 = true
+
+# ==============================================================================
+# SECURITY CONFIGURATION
+# ==============================================================================
+
+[security]
+# Minimum TLS version (1.2 or 1.3)
+# STIG APSC-DV-002510: Use approved encryption for transmission
+# DoD requirement: TLS 1.2 minimum, prefer 1.3
+min_tls_version = "1.2"
+
+# Prefer TLS 1.3 when available
+prefer_tls_1_3 = true
+
+# Allowed cipher suites (FIPS-approved only)
+# STIG APSC-DV-002540: DoD-approved encryption
+cipher_suites = [
+    "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+    "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+    "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+    "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+]
+
+# Perfect Forward Secrecy required
+require_pfs = true
+
+# Certificate hostname verification
+# STIG APSC-DV-003300: Validate endpoint address
+verify_hostname = true
+
+# ==============================================================================
+# REVOCATION CHECKING CONFIGURATION
+# ==============================================================================
+
+[revocation]
+# Enable revocation checking (REQUIRED for DoD)
+# STIG APSC-DV-003235: Check certificate revocation status
+enabled = true
+
+# Require valid revocation response (fail if unavailable)
+# Recommendation: true for high-security environments
+require_valid = true
+
+# OCSP configuration
+[revocation.ocsp]
+# Enable OCSP (Online Certificate Status Protocol)
+enabled = true
+
+# OCSP timeout (seconds)
+timeout_secs = 10
+
+# Use OCSP stapling if available
+use_stapling = true
+
+# CRL configuration
+[revocation.crl]
+# Enable CRL (Certificate Revocation List) as fallback
+enabled = true
+
+# CRL download timeout (seconds)
+timeout_secs = 30
+
+# CRL cache duration (seconds)
+# Default: 3600 (1 hour)
+cache_duration_secs = 3600
+
+# CRL cache location
+cache_path = "C:\\ProgramData\\Department of War\\EST\\crl-cache"
+
+# ==============================================================================
+# LOGGING CONFIGURATION
+# ==============================================================================
+
+[logging]
+# Log level: "ERROR", "WARN", "INFO", "DEBUG", "TRACE"
+# STIG APSC-DV-000050: Generate audit records
+# Recommendation: INFO for production, DEBUG for troubleshooting
+level = "INFO"
+
+# Log destination: "file", "windows_event_log", "both"
+# STIG APSC-DV-000230: Write audit records to log
+# Recommendation: "both" when Windows Event Log integration available
+destination = "file"
+
+# Log file configuration (when destination = "file" or "both")
+[logging.file]
+# Log file path
+# STIG APSC-DV-000200: Protect audit information
+# IMPORTANT: Set ACLs to SYSTEM (Full), Administrators (Read), Users (No Access)
+path = "C:\\ProgramData\\Department of War\\EST\\logs\\est-client.log"
+
+# Log format: "json" or "text"
+# Recommendation: "json" for SIEM integration
+format = "json"
+
+# Log rotation
+[logging.rotation]
+# Rotation policy: "size", "daily", "weekly"
+policy = "daily"
+
+# Maximum log file size (MB) when policy = "size"
+max_size_mb = 100
+
+# Number of rotated files to keep
+# STIG APSC-DV-000220: Backup audit records
+keep_files = 90
+
+# Compress rotated logs
+compress = true
+
+# Audit logging (security events only)
+[logging.audit]
+# Enable audit logging (separate from general logs)
+# STIG APSC-DV-000050: Generate audit records for security events
+enabled = true
+
+# Include in audit logs:
+# - Certificate enrollment/renewal (success/failure)
+# - Authentication events (success/failure)
+# - Certificate validation results
+# - Configuration changes
+# - Revocation check results
+# - FIPS mode violations
+
+# SIEM integration (when available)
+# [logging.siem]
+# enabled = false
+# server = "siem.example.mil"
+# port = 514
+# protocol = "TCP"  # Options: TCP, UDP, TLS
+# format = "CEF"  # Options: CEF, LEEF, JSON
+
+# ==============================================================================
+# DoD-SPECIFIC CONFIGURATION
+# ==============================================================================
+
+[dod]
+# Enable DoD PKI mode (requires dod-pki feature)
+# STIG APSC-DV-002560: Use DoD PKI certificates
+enabled = true
+
+# DoD certificate policy validation
+[dod.policy]
+# Require DoD certificate policies
+require_dod_policy = true
+
+# Allowed DoD certificate policies (OIDs)
+# These are the approved DoD PKI certificate policies
+allowed_policies = [
+    "2.16.840.1.101.2.1.11.36",  # DoD Medium Assurance
+    "2.16.840.1.101.2.1.11.18",  # DoD Medium Hardware
+    "2.16.840.1.101.2.1.11.42",  # DoD High Assurance
+]
+
+# Minimum assurance level (1-3)
+# 1 = Basic, 2 = Medium, 3 = High
+min_assurance_level = 2
+
+# CAC/PIV smart card support (optional)
+# [dod.cac]
+# enabled = false
+# reader = "auto"  # or specific reader name
+# pin_prompt = true
+
+# ==============================================================================
+# MACHINE IDENTITY
+# ==============================================================================
+
+[identity]
+# Machine identity source
+# Options: "windows", "custom"
+# STIG requirement: Accurate system identification
+source = "windows"
+
+# Custom identity (if source = "custom")
+# [identity.custom]
+# computer_name = "WORKSTATION01"
+# dns_domain = "example.mil"
+# netbios_domain = "EXAMPLE"
+
+# ==============================================================================
+# MONITORING AND ALERTING
+# ==============================================================================
+
+[monitoring]
+# Enable health monitoring
+enabled = true
+
+# Health check interval (seconds)
+check_interval_secs = 300
+
+# Alert on critical events
+alert_on_enrollment_failure = true
+alert_on_renewal_failure = true
+alert_on_certificate_expiry = true
+
+# Certificate expiry warning threshold (days)
+expiry_warning_days = 7
+
+# Alert destinations (when implemented)
+# [monitoring.alerts]
+# email = ["admin@example.mil"]
+# syslog_server = "syslog.example.mil:514"
+
+# ==============================================================================
+# NOTES AND RECOMMENDATIONS
+# ==============================================================================
+
+# DEPLOYMENT CHECKLIST:
+#
+# 1. FIPS Mode
+#    □ Install OpenSSL FIPS module
+#    □ Verify FIPS mode activation
+#    □ Test cryptographic operations
+#
+# 2. Certificates
+#    □ Install DoD Root CA bundle
+#    □ Verify CA bundle path
+#    □ Test certificate chain validation
+#
+# 3. Authentication
+#    □ Configure password source (env var or Credential Manager)
+#    □ Set proper password via Group Policy or deployment script
+#    □ Test EST server authentication
+#
+# 4. File System Permissions
+#    □ Set configuration file ACLs (SYSTEM, Administrators read-only)
+#    □ Set private key directory ACLs (SYSTEM only)
+#    □ Set log directory ACLs (SYSTEM full, Administrators read)
+#
+# 5. Windows Service
+#    □ Install service as NETWORK SERVICE or dedicated account
+#    □ Configure service recovery options
+#    □ Set startup type to Automatic (Delayed Start)
+#
+# 6. Networking
+#    □ Verify HTTPS connectivity to EST server
+#    □ Configure firewall rules (outbound HTTPS)
+#    □ Verify OCSP/CRL access (if behind proxy)
+#
+# 7. Monitoring
+#    □ Configure log aggregation/SIEM
+#    □ Set up certificate expiry alerts
+#    □ Test health monitoring
+#
+# 8. Validation
+#    □ Run STIG validation script
+#    □ Verify all CAT I findings compliant
+#    □ Document any accepted risks
+
+# SECURITY CONTACTS:
+#
+# - System Owner: [Contact Information]
+# - ISSO: [Contact Information]
+# - Security Team: [Contact Information]
+# - EST Server Support: [Contact Information]
+
+# CHANGE LOG:
+#
+# 2026-01-13: Initial hardened configuration (v1.0)
+#             - STIG-compliant settings
+#             - FIPS 140-2 enforcement
+#             - DoD PKI integration
+#             - Comprehensive audit logging
