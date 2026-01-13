@@ -533,6 +533,386 @@ When `logging.windows_event_log = true`, events are written to Windows Event Log
 
 **Implementation Status:** Phase 11.4 (planned)
 
+## Auto-Enrollment Service Implementation
+
+The EST Auto-Enrollment Windows Service (`est-autoenroll-service`) provides automated certificate lifecycle management with full enrollment and renewal workflows. This section documents the implementation details completed in Phase 12.
+
+### Service Architecture
+
+The service runs as a Windows background service (or console application for debugging) and performs the following operations:
+
+1. **Startup**: Loads configuration from TOML file
+2. **Initial Check**: Verifies if a valid certificate exists
+3. **Enrollment**: If no certificate or expired, performs initial enrollment
+4. **Monitoring Loop**: Periodically checks certificate expiration
+5. **Renewal**: Automatically renews certificates before expiration
+6. **Graceful Shutdown**: Stops cleanly on service stop command
+
+### Enrollment Workflow Implementation
+
+The [`perform_enrollment()`](../../src/bin/est-autoenroll-service.rs#L266) function implements the complete EST enrollment workflow:
+
+#### Step 1: Machine Identity Retrieval
+
+```rust
+let identity = MachineIdentity::current()?;
+```
+
+- Retrieves Windows computer name using `GetComputerNameExW` API
+- Extracts DNS domain information from Windows domain membership
+- Generates suggested CN format: `COMPUTERNAME.domain.local`
+
+#### Step 2: CSR Construction
+
+Builds a PKCS#10 Certificate Signing Request with full configuration support:
+
+```rust
+let mut csr_builder = usg_est_client::csr::CsrBuilder::new()
+    .common_name(cn)
+    .organization(org)
+    .organizational_unit(ou)
+    .country(country)
+    .state(state)
+    .locality(locality);
+```
+
+**Supported Fields:**
+- **Subject DN**: CN, O, OU, C, ST, L (all optional except CN)
+- **Subject Alternative Names**: DNS names, IP addresses, email addresses, URIs
+- **Key Usage**: Digital Signature, Key Encipherment, Key Agreement
+- **Extended Key Usage**: Client Auth, Server Auth, Code Signing, Email Protection
+
+#### Step 3: Key Pair Generation
+
+```rust
+let (csr_der, key_pair) = csr_builder.build()?;
+```
+
+- Generates RSA key pair (default: 2048-bit) using FIPS-compliant `ring` library
+- Private key kept in memory during enrollment process
+- Returns both CSR (DER-encoded) and key pair for later storage
+
+#### Step 4: EST Client Creation and Enrollment
+
+```rust
+let est_config = config.to_est_client_config()?;
+let client = usg_est_client::EstClient::new(est_config).await?;
+let response = client.simple_enroll(&csr_der).await?;
+```
+
+- Creates EST client with configured server URL and credentials
+- Supports HTTP Basic Auth or TLS client certificate authentication
+- Sends CSR via HTTPS POST to `/simpleenroll` endpoint (RFC 7030 §4.2.1)
+- Handles both immediate issuance and pending responses
+
+#### Step 5: Response Handling
+
+```rust
+let cert_der = match response {
+    EnrollmentResponse::Issued { certificate, .. } => certificate,
+    EnrollmentResponse::Pending { retry_after } => {
+        tracing::warn!("Enrollment is pending, retry after: {:?}", retry_after);
+        return Err(EstError::operational("Enrollment pending, manual approval required"));
+    }
+};
+```
+
+- **Issued**: Certificate is ready, proceed to import
+- **Pending**: Server defers decision, requires manual approval or retry
+
+#### Step 6: Certificate Import
+
+```rust
+let store = CertStore::open_path(store_path)?;
+let thumbprint = store.import_certificate(&cert_der, friendly_name)?;
+```
+
+- Imports certificate to Windows Certificate Store (default: `LocalMachine\My`)
+- Sets friendly name for easy identification in Certificate Manager
+- Returns SHA-1 thumbprint for reference
+- Certificate is now available to Windows applications (IIS, RDP, etc.)
+
+#### Step 7: Private Key Storage (Temporary Workaround)
+
+```rust
+if let Some(key_path) = config.storage.as_ref().and_then(|s| s.key_path.as_ref()) {
+    let key_pem = key_pair.serialize_pem();
+    std::fs::write(key_path, key_pem)?;
+    tracing::warn!("Private key saved to disk (CNG integration not yet implemented)");
+}
+```
+
+**Current Limitation**: Windows CNG integration not yet implemented (blocked on TODO #5)
+
+**Temporary Solution**: Saves PEM-encoded private key to disk if `storage.key_path` is configured
+
+**Future Enhancement**: Will use Windows CNG to create key container and associate private key with certificate
+
+### Renewal Workflow Implementation
+
+The [`perform_renewal()`](../../src/bin/est-autoenroll-service.rs#L479) function implements the complete EST renewal workflow:
+
+#### Step 1: Certificate Retrieval
+
+```rust
+let store = CertStore::open_path(store_path)?;
+let existing_cert = match store.find_by_subject(cn)? {
+    Some(cert) => cert,
+    None => return Err(EstError::operational("No existing certificate found")),
+};
+```
+
+- Searches Windows Certificate Store by subject Common Name
+- Verifies certificate is present and accessible
+- Returns error if certificate not found (may need re-enrollment)
+
+#### Step 2: Identity Extraction
+
+```rust
+let existing_cert_parsed = x509_cert::Certificate::from_der(&existing_cert.certificate)?;
+let subject_cn = BootstrapClient::get_subject_cn(&existing_cert_parsed)
+    .ok_or_else(|| EstError::operational("Could not extract CN from existing certificate"))?;
+```
+
+- Parses existing certificate DER encoding
+- Extracts Common Name from subject DN
+- Maintains identity continuity (same CN in renewed certificate)
+
+#### Step 3: New CSR Generation
+
+```rust
+let mut csr_builder = usg_est_client::csr::CsrBuilder::new()
+    .common_name(&subject_cn);
+// Add all configured SANs, key usage, EKU...
+let (csr_der, key_pair) = csr_builder.build()?;
+```
+
+**Security Best Practice**: Always generate a NEW key pair for renewal
+
+- Uses same subject DN as existing certificate
+- Applies current configuration for SANs and extensions (may differ from original)
+- Generates fresh RSA key pair (forward secrecy)
+
+#### Step 4: EST Re-enrollment
+
+```rust
+let client = usg_est_client::EstClient::new(est_config).await?;
+let response = client.simple_reenroll(&csr_der).await?;
+```
+
+- Uses `/simplereenroll` endpoint instead of `/simpleenroll` (RFC 7030 §4.2.2)
+- Authenticates with existing certificate (proves ownership)
+- EST server validates existing certificate before issuing new one
+- Server may apply different validation rules for re-enrollment vs initial enrollment
+
+#### Step 5: Response Processing
+
+```rust
+let new_cert_der = match response {
+    EnrollmentResponse::Issued { certificate, .. } => certificate,
+    EnrollmentResponse::Pending { retry_after } => {
+        tracing::warn!("Renewal is pending, retry after: {:?}", retry_after);
+        return Err(EstError::operational("Renewal pending, manual approval required"));
+    }
+};
+```
+
+Same response handling as enrollment (Issued or Pending)
+
+#### Step 6: Certificate Archival (Optional)
+
+```rust
+if config.storage.as_ref().map(|s| s.archive_old).unwrap_or(false) {
+    tracing::info!("Archiving old certificate: {}", existing_cert.thumbprint);
+    // Future: Mark certificate as archived in Windows store metadata
+}
+```
+
+- Configurable via `storage.archive_old` setting
+- Preserves audit trail of certificate history
+- **Current Status**: Logs intent, actual archival not yet implemented
+
+#### Step 7: New Certificate Import
+
+```rust
+let thumbprint = store.import_certificate(&new_cert_der, friendly_name)?;
+tracing::info!("Renewed certificate imported: {}", thumbprint);
+```
+
+- Imports renewed certificate to same store location
+- Maintains same friendly name for consistency
+- New certificate replaces old certificate as current identity
+
+#### Step 8: New Key Storage
+
+```rust
+if let Some(key_path) = config.storage.as_ref().and_then(|s| s.key_path.as_ref()) {
+    let key_pem = key_pair.serialize_pem();
+    std::fs::write(key_path, key_pem)?;
+}
+```
+
+- Overwrites old private key file with new key
+- Same limitation as enrollment: CNG integration needed
+
+### Renewal Triggers
+
+The service uses threshold-based renewal:
+
+```rust
+let threshold_days = config.renewal
+    .as_ref()
+    .and_then(|r| r.threshold_days)
+    .unwrap_or(30);
+
+if days_until_expiration <= threshold_days {
+    perform_renewal(config).await?;
+}
+```
+
+**Configurable Settings:**
+- `renewal.threshold_days`: Days before expiration to trigger renewal (default: 30)
+- `renewal.check_interval_secs`: How often to check expiration (default: 3600 seconds = 1 hour)
+
+**Example**: With `threshold_days = 30`, a certificate expiring on Feb 15 will be renewed starting on Jan 16.
+
+### Error Handling and Retry Logic
+
+The service implements comprehensive error handling:
+
+**Network Errors:**
+```rust
+EstError::network("Failed to connect to EST server")
+```
+- TLS handshake failures
+- DNS resolution failures
+- Connection timeouts
+
+**Authentication Errors:**
+```rust
+EstError::authentication("401 Unauthorized")
+```
+- Invalid HTTP Basic credentials
+- Expired or invalid client certificate
+- EST server authorization policy rejection
+
+**Operational Errors:**
+```rust
+EstError::operational("Certificate store access denied")
+```
+- Windows Certificate Store access denied
+- Disk write failures for key storage
+- Certificate parsing errors
+
+**Pending Enrollment:**
+```rust
+EstError::operational("Enrollment pending, manual approval required")
+```
+- EST server deferred enrollment decision
+- Service will retry based on `Retry-After` header
+- Manual approval may be required on server side
+
+### Example Service Configuration
+
+Complete example for auto-enrollment service:
+
+```toml
+[est]
+server = "https://est.example.mil/.well-known/est"
+username = "${COMPUTERNAME}$"
+password = "env:EST_PASSWORD"
+
+[certificate]
+common_name = "${COMPUTERNAME}.${USERDNSDOMAIN}"
+organization = "Department of War"
+organizational_unit = "IT Services"
+country = "US"
+
+[[certificate.san_dns]]
+value = "${COMPUTERNAME}.${USERDNSDOMAIN}"
+
+[[certificate.san_dns]]
+value = "${COMPUTERNAME}"
+
+[certificate.key_usage]
+digital_signature = true
+key_encipherment = true
+
+[certificate.extended_key_usage]
+client_auth = true
+server_auth = true
+
+[key]
+algorithm = "RSA"
+rsa_bits = 2048
+
+[storage]
+store = "LocalMachine\\My"
+friendly_name = "EST Auto-Enrolled Certificate"
+key_path = "C:\\ProgramData\\Department of War\\EST\\keys\\machine.pem"
+archive_old = true
+
+[renewal]
+threshold_days = 30
+check_interval_secs = 3600
+```
+
+### Running the Service
+
+**Console Mode (for debugging):**
+```powershell
+est-autoenroll-service --console --config C:\ProgramData\Department of War\EST\config.toml
+```
+
+**Service Mode (production):**
+```powershell
+# Install service
+sc.exe create EST-AutoEnroll binPath= "C:\Program Files\EST\est-autoenroll-service.exe"
+
+# Start service
+sc.exe start EST-AutoEnroll
+```
+
+**Logging:**
+- Console mode: Logs to stdout with colored output
+- Service mode: Logs to Windows Event Log (when implemented)
+- All modes: Optional file logging via configuration
+
+### Current Limitations
+
+1. **Private Key Association**: CNG integration not yet implemented (TODO #5)
+   - **Impact**: Private keys saved to disk instead of Windows key containers
+   - **Workaround**: Use `storage.key_path` to specify secure file location
+   - **Future**: Will use Windows CNG to associate key with certificate
+
+2. **Certificate Archival**: Archival marking not yet implemented
+   - **Impact**: `storage.archive_old` logs intent but doesn't mark old cert
+   - **Workaround**: Old certificate is replaced by new one (standard behavior)
+   - **Future**: Will set certificate store metadata for archived certs
+
+3. **Windows Event Log**: Integration not yet implemented (TODO #11.4)
+   - **Impact**: Service events not visible in Windows Event Viewer
+   - **Workaround**: Use file logging or console mode
+   - **Future**: Will write structured events to Windows Event Log
+
+### Implementation Status
+
+✅ **Completed (Phase 12.0):**
+- Full enrollment workflow with machine identity integration
+- Full renewal workflow with re-enrollment support
+- CSR building with all configuration options
+- Certificate import to Windows Certificate Store
+- Private key disk storage (temporary workaround)
+- Error handling and retry logic
+- Configuration file support
+
+⏳ **Planned (Future Phases):**
+- Windows CNG key container integration (Phase 11.2 / TODO #5)
+- Certificate archival implementation (Phase 11.2)
+- Windows Event Log integration (Phase 11.4)
+- Windows Service installation/management (Phase 11.3)
+- Retry with exponential backoff (Phase 11.3)
+
 ## Security Considerations
 
 ### Protecting Credentials

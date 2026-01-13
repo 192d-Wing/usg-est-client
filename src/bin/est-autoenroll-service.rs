@@ -25,6 +25,152 @@
 //! 3. **Renewal Loop**: Periodically checks certificates and renews as needed
 //! 4. **Shutdown**: Gracefully stops and saves state
 //!
+//! # Certificate Enrollment Workflow
+//!
+//! The [`perform_enrollment()`] function implements the complete EST enrollment workflow:
+//!
+//! ## Enrollment Steps
+//!
+//! 1. **Machine Identity**: Retrieves Windows computer name and domain using [`MachineIdentity::current()`]
+//!    - Computer name from Windows API (`GetComputerNameExW`)
+//!    - Domain information for enterprise environments
+//!    - Suggested CN format: `COMPUTER.domain.local`
+//!
+//! 2. **CSR Building**: Constructs a PKCS#10 Certificate Signing Request with:
+//!    - **Subject DN**: Common Name, Organization, Organizational Unit, Country, State, Locality
+//!    - **Subject Alternative Names (SANs)**: DNS names, IP addresses, email addresses, URIs
+//!    - **Key Usage Extensions**: Digital Signature, Key Encipherment, Key Agreement
+//!    - **Extended Key Usage (EKU)**: Client Auth, Server Auth, etc.
+//!
+//! 3. **Key Pair Generation**: Creates a new RSA key pair (default: 2048-bit)
+//!    - Uses `ring` cryptography library with FIPS compliance
+//!    - Private key kept in memory during enrollment process
+//!
+//! 4. **EST Client Creation**: Initializes EST client with:
+//!    - Server URL and credentials (HTTP Basic Auth or TLS client cert)
+//!    - TLS configuration (CA verification, optional client cert)
+//!    - FIPS-compliant cryptographic operations
+//!
+//! 5. **Enrollment Submission**: Calls `client.simple_enroll(csr_der)` to submit CSR
+//!    - Sends CSR via HTTPS POST to `/simpleenroll` endpoint
+//!    - Handles enrollment response (Issued or Pending)
+//!
+//! 6. **Certificate Import**: Imports issued certificate to Windows Certificate Store
+//!    - Default location: `LocalMachine\My` (Personal store)
+//!    - Sets friendly name for easy identification
+//!    - Returns certificate thumbprint (SHA-1 hash)
+//!
+//! 7. **Key Storage**: Saves private key to disk (temporary workaround)
+//!    - **Limitation**: CNG integration not yet implemented (see TODO #5)
+//!    - Writes PEM-encoded private key to configured path
+//!    - Future: Will use Windows CNG to associate key with certificate
+//!
+//! ## Error Handling
+//!
+//! - **Network Errors**: EST server unreachable or TLS handshake failures
+//! - **Authentication Errors**: Invalid credentials or unauthorized access
+//! - **Pending Enrollment**: EST server defers enrollment decision (retry required)
+//! - **Storage Errors**: Certificate store access denied or disk write failures
+//!
+//! ## Example Configuration
+//!
+//! ```toml
+//! [est]
+//! server = "https://est.example.mil/.well-known/est"
+//! username = "enrollment-user"
+//! password = "secret"
+//!
+//! [certificate]
+//! common_name = "SERVER01.example.mil"
+//! organization = "Department of War"
+//! organizational_unit = "IT Services"
+//! country = "US"
+//!
+//! [[certificate.san_dns]]
+//! value = "server01.example.mil"
+//!
+//! [[certificate.san_dns]]
+//! value = "server01.local"
+//!
+//! [key]
+//! algorithm = "RSA"
+//! rsa_bits = 2048
+//!
+//! [storage]
+//! store = "LocalMachine\\My"
+//! friendly_name = "EST Auto-Enrolled Certificate"
+//! key_path = "C:\\ProgramData\\Department of War\\EST\\keys\\server.pem"
+//! ```
+//!
+//! # Certificate Renewal Workflow
+//!
+//! The [`perform_renewal()`] function implements the complete EST renewal workflow:
+//!
+//! ## Renewal Steps
+//!
+//! 1. **Certificate Retrieval**: Finds existing certificate in Windows Certificate Store
+//!    - Searches by subject Common Name
+//!    - Verifies certificate is still present and accessible
+//!
+//! 2. **Identity Extraction**: Parses existing certificate to extract subject information
+//!    - Maintains same Common Name for certificate continuity
+//!    - Preserves organizational identity (O, OU, etc.)
+//!
+//! 3. **New CSR Generation**: Creates fresh CSR with same identity but NEW key pair
+//!    - **Security Best Practice**: Always generate new key pair for renewal
+//!    - Uses same subject DN, SANs, and extensions as original
+//!    - Configurable from current configuration settings
+//!
+//! 4. **EST Re-enrollment**: Submits CSR using `client.simple_reenroll(csr_der)`
+//!    - Authenticates with existing certificate (proves ownership)
+//!    - EST server validates existing cert before issuing new one
+//!    - Sends to `/simplereenroll` endpoint (RFC 7030 §4.2.2)
+//!
+//! 5. **Response Handling**: Processes renewal response
+//!    - **Issued**: New certificate ready immediately
+//!    - **Pending**: Manual approval required, retry after delay
+//!
+//! 6. **Certificate Archival** (optional): Archives old certificate before replacement
+//!    - Marks old certificate as archived in store metadata
+//!    - Preserves audit trail of certificate history
+//!    - Configurable via `storage.archive_old` setting
+//!
+//! 7. **New Certificate Import**: Imports renewed certificate to Windows store
+//!    - Replaces old certificate with new one
+//!    - Maintains same friendly name and store location
+//!    - Returns new certificate thumbprint
+//!
+//! 8. **New Key Storage**: Saves new private key to disk
+//!    - **Limitation**: CNG integration not yet implemented (see TODO #5)
+//!    - Overwrites old key file with new key
+//!    - Future: Will use Windows CNG key containers
+//!
+//! ## Renewal Triggers
+//!
+//! The service checks for renewal based on certificate expiration:
+//!
+//! - **Threshold-Based**: Renews when certificate has N days or fewer remaining
+//! - **Configurable**: Set `renewal.threshold_days` (default: 30 days)
+//! - **Automatic**: Service periodically checks expiration status
+//!
+//! ## Error Handling
+//!
+//! - **Certificate Not Found**: No existing certificate in store
+//! - **Expired Certificate**: Existing cert already expired (may require re-enrollment)
+//! - **Authentication Failure**: EST server rejects existing certificate
+//! - **Pending Renewal**: Manual approval required, service will retry
+//!
+//! ## Example Renewal Configuration
+//!
+//! ```toml
+//! [renewal]
+//! threshold_days = 30  # Renew when 30 or fewer days remaining
+//! check_interval_secs = 3600  # Check every hour
+//!
+//! [storage]
+//! archive_old = true  # Archive old certificate before replacement
+//! ```
+//!
 //! # Certificate Expiration Checking
 //!
 //! The service implements comprehensive certificate expiration monitoring:

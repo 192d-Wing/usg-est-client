@@ -1,0 +1,287 @@
+# EST Auto-Enrollment Service Configuration
+#
+# This example demonstrates a complete configuration for the EST auto-enrollment
+# Windows service. The service automatically enrolls and renews X.509 certificates
+# from an EST server (RFC 7030).
+#
+# File Location: C:\ProgramData\Department of War\EST\config.toml
+# Service Name: est-autoenroll-service
+
+# ============================================================================
+# EST Server Configuration
+# ============================================================================
+
+[est]
+# EST server URL (must include .well-known/est path)
+# Supports both HTTP Basic Auth and TLS client certificate authentication
+server = "https://est.example.mil/.well-known/est"
+
+# HTTP Basic Authentication (Option 1)
+# Use for initial enrollment when no client certificate exists
+username = "enrollment-user"
+password = "secure-password-here"
+
+# TLS Client Certificate Authentication (Option 2)
+# Used automatically during renewal to authenticate with existing certificate
+# The service will use the enrolled certificate from the Windows store
+
+# Enrollment Label (optional)
+# Some EST servers support multiple enrollment profiles
+# label = "device-certs"
+
+# Connection Timeout (optional)
+# Default: 30 seconds
+# timeout_secs = 30
+
+# ============================================================================
+# Certificate Configuration
+# ============================================================================
+
+[certificate]
+# Subject Distinguished Name (DN) fields
+
+# Common Name (CN) - typically the fully qualified domain name
+# If omitted, uses machine's computer name and domain
+common_name = "SERVER01.example.mil"
+
+# Organization (O) - typically your department or agency
+organization = "Department of War"
+
+# Organizational Unit (OU) - typically your division or team
+organizational_unit = "IT Services"
+
+# Country (C) - two-letter country code
+country = "US"
+
+# State or Province (ST) - full name, not abbreviation
+state = "Virginia"
+
+# Locality (L) - city or locality name
+locality = "Arlington"
+
+# Subject Alternative Names (SANs)
+# Add multiple DNS names, IP addresses, emails, or URIs
+
+[[certificate.san_dns]]
+value = "server01.example.mil"
+
+[[certificate.san_dns]]
+value = "server01.local"
+
+[[certificate.san_dns]]
+value = "web.example.mil"
+
+[[certificate.san_ip]]
+value = "192.168.1.100"
+
+[[certificate.san_email]]
+value = "admin@example.mil"
+
+# [[certificate.san_uri]]
+# value = "https://example.mil/device/server01"
+
+# Key Usage Extensions
+# Controls how the certificate can be used
+
+[certificate.key_usage]
+digital_signature = true
+key_encipherment = true
+key_agreement = false
+# data_encipherment = false
+# key_cert_sign = false
+# crl_sign = false
+
+# Extended Key Usage (EKU)
+# Specifies the purposes for which the certificate can be used
+
+[certificate.extended_key_usage]
+client_auth = true
+server_auth = true
+# code_signing = false
+# email_protection = false
+# time_stamping = false
+
+# ============================================================================
+# Key Generation Configuration
+# ============================================================================
+
+[key]
+# Algorithm: "RSA" or "ECDSA"
+# For FIPS 140-2 compliance, RSA is recommended
+algorithm = "RSA"
+
+# RSA Key Size (bits)
+# Options: 2048, 3072, 4096
+# DoD PKI requires minimum 2048-bit keys
+rsa_bits = 2048
+
+# ECDSA Curve (if algorithm = "ECDSA")
+# Options: "P256", "P384", "P521"
+# ecdsa_curve = "P256"
+
+# ============================================================================
+# Certificate Storage Configuration
+# ============================================================================
+
+[storage]
+# Windows Certificate Store Path
+# Format: "Location\\Store"
+# Common locations:
+#   - CurrentUser\My (user's personal store)
+#   - LocalMachine\My (machine's personal store)
+#   - CurrentUser\Root (user's trusted root CAs)
+#   - LocalMachine\Root (machine's trusted root CAs)
+store = "LocalMachine\\My"
+
+# Friendly Name for the certificate
+# Makes it easy to identify in Windows Certificate Manager (certmgr.msc)
+friendly_name = "EST Auto-Enrolled Certificate"
+
+# Private Key Storage Path (temporary workaround)
+# LIMITATION: CNG integration not yet implemented
+# The service will save the private key to this file in PEM format
+# TODO: Replace with Windows CNG key container when implemented
+key_path = "C:\\ProgramData\\Department of War\\EST\\keys\\server.pem"
+
+# Archive Old Certificate on Renewal
+# If true, marks the old certificate as archived before importing the new one
+# Helps maintain audit trail of certificate history
+archive_old = true
+
+# ============================================================================
+# Certificate Renewal Configuration
+# ============================================================================
+
+[renewal]
+# Renewal Threshold (days)
+# The service will renew the certificate when it has this many days or fewer remaining
+# DoD PKI best practice: 30-60 days before expiration
+threshold_days = 30
+
+# Check Interval (seconds)
+# How often the service checks certificate expiration status
+# Default: 3600 seconds (1 hour)
+check_interval_secs = 3600
+
+# Retry on Failure (optional)
+# If renewal fails, retry after this many seconds
+# retry_interval_secs = 600  # 10 minutes
+
+# Maximum Retries (optional)
+# Maximum number of retry attempts before giving up
+# max_retries = 5
+
+# ============================================================================
+# TLS Configuration (Advanced)
+# ============================================================================
+
+[tls]
+# CA Certificate Verification
+# Path to CA certificate bundle for verifying EST server certificate
+# If omitted, uses system trust store
+# ca_cert_path = "C:\\ProgramData\\Department of War\\EST\\ca-bundle.pem"
+
+# Disable Certificate Verification (NOT RECOMMENDED)
+# Only use for testing/development environments
+# danger_insecure_skip_verify = false
+
+# Minimum TLS Version
+# Options: "1.2", "1.3"
+# DoD PKI requires TLS 1.2 minimum
+min_tls_version = "1.2"
+
+# FIPS 140-2 Mode
+# Enables FIPS-compliant cryptographic operations
+# Required for DoD PKI compliance
+fips_mode = true
+
+# ============================================================================
+# Logging Configuration
+# ============================================================================
+
+[logging]
+# Log Level
+# Options: "trace", "debug", "info", "warn", "error"
+# Production: "info" or "warn"
+# Development/Debugging: "debug" or "trace"
+level = "info"
+
+# Log File Path (optional)
+# If specified, logs will be written to this file
+# If omitted, logs go to Windows Event Log
+# file_path = "C:\\ProgramData\\Department of War\\EST\\logs\\autoenroll.log"
+
+# Log Format (optional)
+# Options: "json", "text"
+# format = "text"
+
+# ============================================================================
+# Service Configuration (Windows-specific)
+# ============================================================================
+
+[service]
+# Service Display Name
+# Shown in Windows Services Manager
+display_name = "EST Auto-Enrollment Service"
+
+# Service Description
+description = "Automatically enrolls and renews X.509 certificates using EST (RFC 7030)"
+
+# Start Type (optional)
+# Options: "automatic", "manual", "disabled"
+# start_type = "automatic"
+
+# Run as User (optional)
+# If omitted, runs as Local System account
+# user = "NT AUTHORITY\\SYSTEM"
+
+# ============================================================================
+# Example Scenarios
+# ============================================================================
+
+# Scenario 1: Web Server Certificate
+# - Server authentication (TLS)
+# - Multiple DNS names (primary + aliases)
+# - Client authentication for mutual TLS
+# [certificate]
+# common_name = "web.example.mil"
+# [[certificate.san_dns]]
+# value = "web.example.mil"
+# [[certificate.san_dns]]
+# value = "www.example.mil"
+# [certificate.extended_key_usage]
+# server_auth = true
+# client_auth = true
+
+# Scenario 2: VPN Gateway Certificate
+# - Machine authentication for VPN
+# - IP address in SAN
+# - ECDSA for performance
+# [certificate]
+# common_name = "vpn-gateway.example.mil"
+# [[certificate.san_ip]]
+# value = "203.0.113.10"
+# [key]
+# algorithm = "ECDSA"
+# ecdsa_curve = "P256"
+
+# Scenario 3: Email Certificate
+# - Email protection
+# - Email address in SAN
+# [certificate]
+# common_name = "John Doe"
+# [[certificate.san_email]]
+# value = "john.doe@example.mil"
+# [certificate.extended_key_usage]
+# email_protection = true
+
+# ============================================================================
+# Notes
+# ============================================================================
+
+# 1. File Permissions: Ensure this file has restricted permissions (read-only for service account)
+# 2. Password Security: Consider using Windows Credential Manager or DPAPI for password storage
+# 3. Private Key Security: The key_path should be in a secure location with restricted ACLs
+# 4. Testing: Test configuration with `est-autoenroll-service --console` before installing service
+# 5. Monitoring: Monitor Windows Event Log for enrollment/renewal status
+# 6. Backup: Keep backups of this configuration file and private keys
