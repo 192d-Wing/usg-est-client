@@ -172,10 +172,45 @@ The `security:scheduled` job will run automatically at the specified time.
 - Displayed in merge request diff view
 - Download from: Pipeline > Jobs > coverage:tarpaulin > Browse
 
-### Documentation
+### Documentation (GitLab Pages)
 
-- Path: `public/` (deployed to GitLab Pages)
-- Access at: `https://<namespace>.gitlab.io/<project>/`
+The documentation site is automatically built and deployed to GitLab Pages.
+
+**Configuration:**
+- Job: `pages` in docs stage
+- Image: `python:3.14-slim`
+- Build tool: Zensical (via uv)
+- Source: `docs/` directory
+- Output: `public/` directory (required by GitLab Pages)
+
+**Access:**
+- URL: `https://<namespace>.gitlab.io/<project>/`
+- Example: `https://yourusername.gitlab.io/usg-est-client/`
+
+**Triggers:**
+- Automatic: Pushes to `main` branch with changes in `docs/**/*`
+- Manual: Can be triggered manually from GitLab UI on `main` branch
+
+**Artifacts:**
+- Path: `public/`
+- Retention: 1 week (enough for debugging before next deployment)
+
+**Enabling GitLab Pages:**
+1. Go to **Settings > Pages** in your GitLab project
+2. Verify Pages is enabled (usually enabled by default)
+3. After first successful `pages` job, site URL will appear
+4. Site updates automatically on subsequent `pages` job runs
+
+**Custom Domain (Optional):**
+1. **Settings > Pages > New Domain**
+2. Enter your custom domain (e.g., `docs.example.com`)
+3. Add DNS records as shown in GitLab UI
+4. Add SSL certificate or use Let's Encrypt
+
+**Troubleshooting:**
+- If site doesn't appear: Check that `public/` directory contains `index.html`
+- If build fails: Review `pages` job logs for Zensical errors
+- Test locally: `cd docs && uv run zensical build --clean`
 
 ## Differences from GitHub Actions
 

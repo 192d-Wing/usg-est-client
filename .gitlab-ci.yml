@@ -374,25 +374,39 @@ coverage:tarpaulin:
 # Documentation Build (GitLab Pages)
 # ============================================================================
 
+# GitLab Pages deployment - builds and deploys documentation site
+# Equivalent to GitHub Actions docs.yml workflow
+# Site will be available at: https://<namespace>.gitlab.io/<project>/
 pages:
   stage: docs
-  image: python:3.14
+  image: python:3.14-slim
   before_script:
-    - pip install uv
+    # Install uv package manager (fast Python installer)
+    - pip install --no-cache-dir uv
   script:
+    # Build documentation site with Zensical
     - cd docs
     - uv sync
     - uv run zensical build --clean
+    # GitLab Pages requires artifacts in 'public' directory at project root
     - mv site ../public
   artifacts:
     paths:
       - public
+    expire_in: 1 week
   only:
     - main
   rules:
-    - changes:
+    # Only run when docs change or on main branch pushes
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
         - docs/**/*
         - .gitlab-ci.yml
+      when: always
+    # Allow manual trigger for main branch
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+      allow_failure: true
 
 # ============================================================================
 # Scheduled Jobs
