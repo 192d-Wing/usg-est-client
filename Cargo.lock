@@ -2847,6 +2847,7 @@ dependencies = [
  "windows-service",
  "wiremock",
  "x509-cert",
+ "zeroize",
 ]
 
 [[package]]

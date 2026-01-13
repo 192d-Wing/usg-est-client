@@ -41,6 +41,7 @@ rsa = { version = "0.9", features = ["sha2"] }
 p256 = { version = "0.13", features = ["ecdsa"] }
 p384 = { version = "0.13", features = ["ecdsa"] }
 signature = "2.2"
+zeroize = { version = "1.8", features = ["alloc", "derive"] }
 
 # CSR generation (optional feature)
 rcgen = { version = "0.14", optional = true }

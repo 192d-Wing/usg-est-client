@@ -313,14 +313,17 @@ impl EstClientConfigBuilder {
 }
 
 /// Client identity for TLS client certificate authentication.
-#[derive(Clone)]
+///
+/// Private key data is automatically zeroed when dropped for security.
+#[derive(Clone, zeroize::ZeroizeOnDrop)]
 pub struct ClientIdentity {
     /// PEM-encoded certificate chain.
     ///
     /// The client certificate should be first, followed by any intermediate certificates.
+    #[zeroize(skip)]
     pub cert_pem: Vec<u8>,
 
-    /// PEM-encoded private key.
+    /// PEM-encoded private key - automatically zeroed on drop.
     pub key_pem: Vec<u8>,
 }
 
@@ -334,6 +337,11 @@ impl ClientIdentity {
     }
 
     /// Create a client identity from file paths.
+    ///
+    /// # Security
+    ///
+    /// This function does not validate file permissions. For security-sensitive
+    /// deployments, use `from_files_with_validation()` to ensure proper permissions.
     pub fn from_files(
         cert_path: impl AsRef<std::path::Path>,
         key_path: impl AsRef<std::path::Path>,
@@ -342,15 +350,74 @@ impl ClientIdentity {
         let key_pem = std::fs::read(key_path)?;
         Ok(Self { cert_pem, key_pem })
     }
+
+    /// Create a client identity from file paths with permission validation.
+    ///
+    /// # Security
+    ///
+    /// This function validates that the private key file has restrictive permissions
+    /// (Unix: mode 0600 or more restrictive). This helps prevent accidental exposure
+    /// of private keys.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Files cannot be read
+    /// - Private key file permissions are too permissive (Unix only)
+    #[cfg(unix)]
+    pub fn from_files_with_validation(
+        cert_path: impl AsRef<std::path::Path>,
+        key_path: impl AsRef<std::path::Path>,
+    ) -> std::io::Result<Self> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let key_path = key_path.as_ref();
+
+        // Check key file permissions
+        let metadata = std::fs::metadata(key_path)?;
+        let permissions = metadata.permissions();
+        let mode = permissions.mode();
+
+        // Check if file is readable by group or others (octal 077 = binary 000111111)
+        if mode & 0o077 != 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!(
+                    "Private key file has insecure permissions: {:o}. Should be 0600 or more restrictive.",
+                    mode & 0o777
+                ),
+            ));
+        }
+
+        // Read the files
+        let cert_pem = std::fs::read(cert_path)?;
+        let key_pem = std::fs::read(key_path)?;
+        Ok(Self { cert_pem, key_pem })
+    }
+
+    /// Create a client identity from file paths with permission validation.
+    ///
+    /// On non-Unix systems, this is equivalent to `from_files()` as permission
+    /// validation is not implemented.
+    #[cfg(not(unix))]
+    pub fn from_files_with_validation(
+        cert_path: impl AsRef<std::path::Path>,
+        key_path: impl AsRef<std::path::Path>,
+    ) -> std::io::Result<Self> {
+        Self::from_files(cert_path, key_path)
+    }
 }
 
 /// HTTP Basic authentication credentials.
-#[derive(Clone)]
+///
+/// Uses `zeroize` to securely erase sensitive data from memory when dropped.
+#[derive(Clone, zeroize::ZeroizeOnDrop)]
 pub struct HttpAuth {
     /// Username (may be empty for password-only auth).
     pub username: String,
 
-    /// Password.
+    /// Password - automatically zeroed on drop.
+    #[zeroize(skip)]  // We'll manually zeroize via ZeroizeOnDrop
     pub password: String,
 }
 
@@ -361,6 +428,14 @@ impl HttpAuth {
             username: username.into(),
             password: password.into(),
         }
+    }
+}
+
+impl zeroize::Zeroize for HttpAuth {
+    fn zeroize(&mut self) {
+        self.password.zeroize();
+        // Username is not typically sensitive, but zeroize it anyway
+        self.username.zeroize();
     }
 }
 
