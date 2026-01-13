@@ -248,14 +248,62 @@ impl KeyProvider for SoftwareKeyProvider {
     }
 
     async fn sign(&self, handle: &KeyHandle, data: &[u8]) -> Result<Vec<u8>> {
-        // For software keys, direct signing is not exposed by rcgen.
-        // Users should use the KeyPair directly with CertificateParams for CSR generation.
-        // This method is provided for compatibility with the KeyProvider trait but is not
-        // the recommended way to use software keys.
-        let _ = (handle, data);
-        Err(EstError::not_supported(
-            "Direct signing not supported for software keys. Use rcgen's KeyPair with CertificateParams for CSR generation.",
-        ))
+        let (key_pair, _) = self.get_key_pair(handle)?;
+
+        // Get the private key in PKCS#8 DER format
+        let pkcs8_der = key_pair.serialize_der();
+
+        // Sign based on algorithm
+        match handle.algorithm() {
+            KeyAlgorithm::EcdsaP256 => {
+                use p256::ecdsa::{signature::Signer, Signature, SigningKey};
+                use p256::pkcs8::DecodePrivateKey;
+
+                // Parse PKCS#8 DER into P-256 signing key
+                let signing_key = SigningKey::from_pkcs8_der(&pkcs8_der)
+                    .map_err(|e| EstError::csr(format!("Failed to parse P-256 private key: {}", e)))?;
+
+                // Sign the digest (data is already hashed by encode_and_hash)
+                let signature: Signature = signing_key.sign(data);
+
+                // Return DER-encoded signature
+                Ok(signature.to_der().as_bytes().to_vec())
+            }
+            KeyAlgorithm::EcdsaP384 => {
+                use p384::ecdsa::{signature::Signer, Signature, SigningKey};
+                use p384::pkcs8::DecodePrivateKey;
+
+                // Parse PKCS#8 DER into P-384 signing key
+                let signing_key = SigningKey::from_pkcs8_der(&pkcs8_der)
+                    .map_err(|e| EstError::csr(format!("Failed to parse P-384 private key: {}", e)))?;
+
+                // Sign the digest
+                let signature: Signature = signing_key.sign(data);
+
+                // Return DER-encoded signature
+                Ok(signature.to_der().as_bytes().to_vec())
+            }
+            KeyAlgorithm::Rsa { .. } => {
+                use rsa::pkcs1v15::SigningKey;
+                use rsa::pkcs8::DecodePrivateKey;
+                use rsa::signature::{Signer, SignatureEncoding};
+                use rsa::RsaPrivateKey;
+                use sha2::Sha256;
+
+                // Parse PKCS#8 DER into RSA private key
+                let private_key = RsaPrivateKey::from_pkcs8_der(&pkcs8_der)
+                    .map_err(|e| EstError::csr(format!("Failed to parse RSA private key: {}", e)))?;
+
+                // Create signing key with SHA-256
+                let signing_key = SigningKey::<Sha256>::new(private_key);
+
+                // Sign the digest
+                let signature = signing_key.sign(data);
+
+                // Return signature bytes
+                Ok(signature.to_vec())
+            }
+        }
     }
 
     async fn algorithm_identifier(&self, handle: &KeyHandle) -> Result<AlgorithmIdentifierOwned> {
@@ -492,20 +540,85 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_sign_not_supported() {
+    async fn test_sign_p256() {
+        use sha2::{Digest, Sha256};
+
         let provider = SoftwareKeyProvider::new();
 
         let handle = provider
-            .generate_key_pair(KeyAlgorithm::EcdsaP256, Some("test-sign"))
+            .generate_key_pair(KeyAlgorithm::EcdsaP256, Some("test-sign-p256"))
             .await
             .unwrap();
 
+        // Hash some test data (sign() expects pre-hashed data)
         let data = b"test data to sign";
-        let result = provider.sign(&handle, data).await;
+        let mut hasher = Sha256::new();
+        hasher.update(data);
+        let digest = hasher.finalize();
 
-        // Direct signing is not supported for software keys
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("not supported"));
+        // Sign the digest
+        let signature = provider.sign(&handle, &digest).await.unwrap();
+
+        // Verify we got a signature
+        assert!(!signature.is_empty());
+
+        // P-256 signatures should be around 70-72 bytes in DER format
+        assert!(signature.len() >= 64 && signature.len() <= 72);
+    }
+
+    #[tokio::test]
+    async fn test_sign_p384() {
+        use sha2::{Digest, Sha384};
+
+        let provider = SoftwareKeyProvider::new();
+
+        let handle = provider
+            .generate_key_pair(KeyAlgorithm::EcdsaP384, Some("test-sign-p384"))
+            .await
+            .unwrap();
+
+        // Hash some test data
+        let data = b"test data to sign";
+        let mut hasher = Sha384::new();
+        hasher.update(data);
+        let digest = hasher.finalize();
+
+        // Sign the digest
+        let signature = provider.sign(&handle, &digest).await.unwrap();
+
+        // Verify we got a signature
+        assert!(!signature.is_empty());
+
+        // P-384 signatures should be around 102-104 bytes in DER format
+        assert!(signature.len() >= 96 && signature.len() <= 104);
+    }
+
+    #[tokio::test]
+    #[ignore] // rcgen doesn't support RSA key generation without additional features
+    async fn test_sign_rsa() {
+        use sha2::{Digest, Sha256};
+
+        let provider = SoftwareKeyProvider::new();
+
+        let handle = provider
+            .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some("test-sign-rsa"))
+            .await
+            .unwrap();
+
+        // Hash some test data
+        let data = b"test data to sign";
+        let mut hasher = Sha256::new();
+        hasher.update(data);
+        let digest = hasher.finalize();
+
+        // Sign the digest
+        let signature = provider.sign(&handle, &digest).await.unwrap();
+
+        // Verify we got a signature
+        assert!(!signature.is_empty());
+
+        // RSA-2048 signatures should be 256 bytes
+        assert_eq!(signature.len(), 256);
     }
 
     #[tokio::test]

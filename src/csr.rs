@@ -861,4 +861,113 @@ mod hsm_tests {
 
         assert!(!csr_der.is_empty());
     }
+
+    #[tokio::test]
+    async fn test_build_with_provider_p256() {
+        use der::Decode;
+        use x509_cert::request::CertReq;
+
+        let provider = SoftwareKeyProvider::new();
+
+        // Generate P-256 key
+        let key_handle = provider
+            .generate_key_pair(KeyAlgorithm::EcdsaP256, Some("provider-p256-key"))
+            .await
+            .expect("Failed to generate key");
+
+        // Build CSR using build_with_provider (generic method)
+        let csr_der = HsmCsrBuilder::new()
+            .common_name("provider-test.example.com")
+            .organization("Provider Test Org")
+            .san_dns("provider-test.example.com")
+            .key_usage_digital_signature()
+            .key_usage_key_agreement()
+            .extended_key_usage_client_auth()
+            .build_with_provider(&provider, &key_handle)
+            .await
+            .expect("Failed to build CSR with provider");
+
+        // Verify CSR is not empty
+        assert!(!csr_der.is_empty());
+
+        // Verify CSR can be parsed
+        let cert_req = CertReq::from_der(&csr_der)
+            .expect("Failed to parse CSR");
+
+        // Verify subject
+        assert!(cert_req.info.subject.to_string().contains("provider-test.example.com"));
+
+        // Verify signature is present
+        assert!(!cert_req.signature.as_bytes().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_build_with_provider_p384() {
+        use der::Decode;
+        use x509_cert::request::CertReq;
+
+        let provider = SoftwareKeyProvider::new();
+
+        // Generate P-384 key
+        let key_handle = provider
+            .generate_key_pair(KeyAlgorithm::EcdsaP384, Some("provider-p384-key"))
+            .await
+            .expect("Failed to generate key");
+
+        // Build CSR using build_with_provider
+        let csr_der = HsmCsrBuilder::new()
+            .common_name("p384-test.example.com")
+            .organization("P384 Test Org")
+            .san_dns("p384-test.example.com")
+            .san_ip(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 1)))
+            .key_usage_digital_signature()
+            .extended_key_usage_server_auth()
+            .build_with_provider(&provider, &key_handle)
+            .await
+            .expect("Failed to build CSR with P-384 key");
+
+        // Verify CSR is valid
+        assert!(!csr_der.is_empty());
+
+        // Parse and verify
+        let cert_req = CertReq::from_der(&csr_der)
+            .expect("Failed to parse P-384 CSR");
+
+        assert!(cert_req.info.subject.to_string().contains("p384-test.example.com"));
+    }
+
+    #[tokio::test]
+    async fn test_build_with_provider_multiple_sans() {
+        use der::Decode;
+        use x509_cert::request::CertReq;
+
+        let provider = SoftwareKeyProvider::new();
+
+        let key_handle = provider
+            .generate_key_pair(KeyAlgorithm::EcdsaP256, Some("multi-san-key"))
+            .await
+            .expect("Failed to generate key");
+
+        // Build CSR with multiple SANs of different types
+        let csr_der = HsmCsrBuilder::new()
+            .common_name("multi-san.example.com")
+            .san_dns("multi-san.example.com")
+            .san_dns("alt1.example.com")
+            .san_dns("alt2.example.com")
+            .san_ip(std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, 100)))
+            .san_uri("https://api.example.com")
+            .key_usage_digital_signature()
+            .build_with_provider(&provider, &key_handle)
+            .await
+            .expect("Failed to build CSR with multiple SANs");
+
+        assert!(!csr_der.is_empty());
+
+        // Verify it parses correctly
+        let cert_req = CertReq::from_der(&csr_der)
+            .expect("Failed to parse multi-SAN CSR");
+
+        // Verify attributes are present (SANs are in extension request attribute)
+        assert!(!cert_req.info.attributes.is_empty());
+    }
 }
