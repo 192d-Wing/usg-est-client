@@ -231,7 +231,7 @@ pub(super) fn create_key_usage_extension(
 mod tests {
     use super::*;
     use der::Decode;
-    use spki::SubjectPublicKeyInfoRef;
+    use std::str::FromStr;
 
     #[test]
     fn test_build_cert_req_info() {
@@ -240,23 +240,21 @@ mod tests {
 
         // Create a dummy public key (this would come from the HSM in practice)
         let public_key_der = include_bytes!("../../tests/fixtures/p256-pub.der");
-        let spki = SubjectPublicKeyInfoRef::from_der(public_key_der).unwrap();
-        let public_key = spki.to_owned();
+        let public_key = SubjectPublicKeyInfoOwned::from_der(public_key_der).unwrap();
 
         // Build CertReqInfo with no attributes
         let info = build_cert_req_info(subject, public_key, vec![]).unwrap();
 
         // Verify structure
         assert_eq!(info.version, Version::V1);
-        assert!(info.attributes.value.is_empty());
+        assert!(info.attributes.is_empty());
     }
 
     #[test]
     fn test_encode_and_hash_p256() {
         let subject = Name::from_str("CN=test").unwrap();
         let public_key_der = include_bytes!("../../tests/fixtures/p256-pub.der");
-        let spki = SubjectPublicKeyInfoRef::from_der(public_key_der).unwrap();
-        let public_key = spki.to_owned();
+        let public_key = SubjectPublicKeyInfoOwned::from_der(public_key_der).unwrap();
 
         let info = build_cert_req_info(subject, public_key, vec![]).unwrap();
 
@@ -273,8 +271,7 @@ mod tests {
     fn test_encode_and_hash_p384() {
         let subject = Name::from_str("CN=test").unwrap();
         let public_key_der = include_bytes!("../../tests/fixtures/p256-pub.der");
-        let spki = SubjectPublicKeyInfoRef::from_der(public_key_der).unwrap();
-        let public_key = spki.to_owned();
+        let public_key = SubjectPublicKeyInfoOwned::from_der(public_key_der).unwrap();
 
         let info = build_cert_req_info(subject, public_key, vec![]).unwrap();
 

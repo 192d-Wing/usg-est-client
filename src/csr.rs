@@ -290,8 +290,11 @@ mod builder {
 mod hsm_csr {
     use crate::error::{EstError, Result};
     use crate::hsm::{KeyHandle, KeyProvider, SoftwareKeyProvider};
-    use rcgen::{CertificateParams, DnType, ExtendedKeyUsagePurpose, KeyUsagePurpose, SanType};
+    use rcgen::{CertificateParams, DnType, DnValue, ExtendedKeyUsagePurpose, KeyUsagePurpose, SanType};
     use std::net::IpAddr;
+    use std::str::FromStr;
+    use x509_cert::ext::Extension;
+    use x509_cert::name::Name;
 
     /// Builder for creating CSRs with HSM-backed keys.
     ///
@@ -489,8 +492,8 @@ mod hsm_csr {
         /// Build the CSR using any KeyProvider.
         ///
         /// This method works with any key provider implementation, including
-        /// hardware HSMs. For software providers, prefer `build_with_software_provider`
-        /// for better performance.
+        /// hardware HSMs. It uses manual PKCS#10 construction to generate CSRs
+        /// without requiring direct access to private key material.
         ///
         /// # Arguments
         ///
@@ -500,41 +503,183 @@ mod hsm_csr {
         /// # Returns
         ///
         /// The DER-encoded CSR bytes.
-        ///
-        /// # Note
-        ///
-        /// This method currently only supports SoftwareKeyProvider. For PKCS#11
-        /// and other HSM providers, use the provider's native CSR generation
-        /// capabilities or implement a custom signing callback.
         pub async fn build_with_provider<P: KeyProvider>(
             self,
             provider: &P,
             key_handle: &KeyHandle,
         ) -> Result<Vec<u8>> {
+            use der::Encode;
+
             // Get the public key from the provider
-            let _public_key = provider.public_key(key_handle).await?;
+            let public_key = provider.public_key(key_handle).await?;
 
-            // For now, we need to use a workaround since rcgen doesn't support
-            // external signing. This implementation works for SoftwareKeyProvider
-            // and serves as a framework for future HSM integration.
-            //
-            // For true HSM support, we would need to:
-            // 1. Build the TBSCertificationRequest structure manually
-            // 2. Hash the TBS data
-            // 3. Sign using provider.sign(handle, hash)
-            // 4. Assemble the final CertificationRequest with signature
+            // Get the key algorithm for hash selection
+            let key_algorithm = key_handle.algorithm();
 
-            // Check if this is actually a SoftwareKeyProvider by trying to use
-            // the public key to verify it's a valid SPKI structure
-            let _alg_id = provider.algorithm_identifier(key_handle).await?;
+            // Convert rcgen DistinguishedName to x509_cert Name
+            let subject = self.build_subject_name()?;
 
-            // Currently, direct HSM signing for CSRs requires manual ASN.1 construction
-            // which is not yet implemented. Return an informative error.
-            Err(EstError::not_supported(
-                "Generic HSM CSR generation requires manual ASN.1 construction. \
-                 For SoftwareKeyProvider, use build_with_software_provider(). \
-                 For PKCS#11, use the provider's native signing capabilities.",
-            ))
+            // Build extensions and attributes
+            let mut extensions = Vec::new();
+
+            // Add Subject Alternative Names if present
+            if !self.params.subject_alt_names.is_empty() {
+                let san_ext = self.build_san_extension()?;
+                extensions.push(san_ext);
+            }
+
+            // Add KeyUsage extension if present
+            if !self.params.key_usages.is_empty() {
+                let key_usage_ext = self.build_key_usage_extension()?;
+                extensions.push(key_usage_ext);
+            }
+
+            // Create attributes list
+            let mut attributes = Vec::new();
+            if !extensions.is_empty() {
+                let ext_req_attr = super::pkcs10::create_extension_request_attribute(extensions)?;
+                attributes.push(ext_req_attr);
+            }
+
+            // Build CertReqInfo
+            let info = super::pkcs10::build_cert_req_info(subject, public_key, attributes)?;
+
+            // Encode and hash
+            let (_tbs_der, digest) = super::pkcs10::encode_and_hash(&info, key_algorithm)?;
+
+            // Sign the digest using the provider
+            let signature_bytes = provider.sign(key_handle, &digest).await?;
+
+            // Get algorithm identifier
+            let algorithm = provider.algorithm_identifier(key_handle).await?;
+
+            // Assemble final CSR
+            let cert_req = super::pkcs10::assemble_cert_req(info, algorithm, signature_bytes)?;
+
+            // Encode to DER
+            let csr_der = cert_req
+                .to_der()
+                .map_err(|e| EstError::csr(format!("Failed to encode CSR: {}", e)))?;
+
+            Ok(csr_der)
+        }
+
+        /// Convert rcgen DistinguishedName to x509_cert Name.
+        fn build_subject_name(&self) -> Result<Name> {
+            let dn_str = self.build_dn_string();
+
+            // Parse the DN string into a Name
+            Name::from_str(&dn_str)
+                .map_err(|e| EstError::operational(format!("Failed to parse DN: {}", e)))
+        }
+
+        /// Build a DN string from rcgen DistinguishedName.
+        fn build_dn_string(&self) -> String {
+            let mut parts = Vec::new();
+
+            for (dn_type, value) in self.params.distinguished_name.iter() {
+                let attr_name = match dn_type {
+                    DnType::CommonName => "CN",
+                    DnType::OrganizationName => "O",
+                    DnType::OrganizationalUnitName => "OU",
+                    DnType::CountryName => "C",
+                    DnType::StateOrProvinceName => "ST",
+                    DnType::LocalityName => "L",
+                    _ => continue, // Skip unsupported DN types
+                };
+
+                // Extract string value from DnValue enum
+                // For most use cases, we only expect Utf8String and PrintableString
+                let value_str = match value {
+                    DnValue::Utf8String(s) => s.as_str(),
+                    DnValue::PrintableString(s) => s.as_ref(),
+                    DnValue::Ia5String(s) => s.as_ref(),
+                    DnValue::TeletexString(s) => s.as_ref(),
+                    // BmpString and UniversalString are rare, just skip them for now
+                    _ => continue,
+                };
+
+                parts.push(format!("{}={}", attr_name, value_str));
+            }
+
+            parts.join(",")
+        }
+
+        /// Build Subject Alternative Name extension.
+        fn build_san_extension(&self) -> Result<Extension> {
+            use der::asn1::OctetString;
+            use x509_cert::ext::pkix::SubjectAltName;
+            use x509_cert::ext::pkix::name::GeneralName;
+            use der::Encode;
+
+            let mut general_names = Vec::new();
+
+            for san in &self.params.subject_alt_names {
+                let general_name = match san {
+                    SanType::DnsName(name) => {
+                        let ia5_str = der::asn1::Ia5String::new(name.as_ref())
+                            .map_err(|e| EstError::operational(format!("Invalid DNS name: {}", e)))?;
+                        GeneralName::DnsName(ia5_str)
+                    }
+                    SanType::IpAddress(ip) => {
+                        let octets = match ip {
+                            IpAddr::V4(v4) => v4.octets().to_vec(),
+                            IpAddr::V6(v6) => v6.octets().to_vec(),
+                        };
+                        GeneralName::IpAddress(OctetString::new(octets)
+                            .map_err(|e| EstError::operational(format!("Invalid IP address: {}", e)))?)
+                    }
+                    SanType::URI(uri) => {
+                        let ia5_str = der::asn1::Ia5String::new(uri.as_ref())
+                            .map_err(|e| EstError::operational(format!("Invalid URI: {}", e)))?;
+                        GeneralName::UniformResourceIdentifier(ia5_str)
+                    }
+                    _ => {
+                        return Err(EstError::operational(
+                            "Unsupported SAN type",
+                        ));
+                    }
+                };
+                general_names.push(general_name);
+            }
+
+            // Create SubjectAltName
+            let san = SubjectAltName(general_names);
+
+            // Encode to DER
+            let san_der = san
+                .to_der()
+                .map_err(|e| EstError::operational(format!("Failed to encode SAN: {}", e)))?;
+
+            // Create Extension
+            Ok(Extension {
+                extn_id: const_oid::db::rfc5280::ID_CE_SUBJECT_ALT_NAME,
+                critical: false,
+                extn_value: OctetString::new(san_der)
+                    .map_err(|e| EstError::operational(format!("Failed to create OctetString: {}", e)))?,
+            })
+        }
+
+        /// Build KeyUsage extension.
+        fn build_key_usage_extension(&self) -> Result<Extension> {
+            let mut digital_signature = false;
+            let mut key_encipherment = false;
+            let mut key_agreement = false;
+
+            for usage in &self.params.key_usages {
+                match usage {
+                    KeyUsagePurpose::DigitalSignature => digital_signature = true,
+                    KeyUsagePurpose::KeyEncipherment => key_encipherment = true,
+                    KeyUsagePurpose::KeyAgreement => key_agreement = true,
+                    _ => {} // Ignore other key usages for now
+                }
+            }
+
+            super::pkcs10::create_key_usage_extension(
+                digital_signature,
+                key_encipherment,
+                key_agreement,
+            )
         }
     }
 
