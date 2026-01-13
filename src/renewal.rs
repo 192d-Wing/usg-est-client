@@ -349,38 +349,57 @@ impl RenewalScheduler {
 
     /// Attempt certificate renewal with retry logic.
     async fn attempt_renewal_with_retries(
-        _client: &Arc<EstClient>,
+        client: &Arc<EstClient>,
         config: &RenewalConfig,
-        _cert: &Certificate,
-        _current_cert: &Arc<RwLock<Option<Certificate>>>,
+        cert: &Certificate,
+        current_cert: &Arc<RwLock<Option<Certificate>>>,
     ) {
         for attempt in 1..=config.max_retries {
             info!("Renewal attempt {}/{}", attempt, config.max_retries);
 
             Self::emit_event_static(config, RenewalEvent::RenewalStarted { attempt }).await;
 
-            // TODO: Implement actual re-enrollment logic
-            // For now, this is a placeholder that would call client.simple_reenroll()
-            // with the appropriate CSR and existing certificate
+            // Perform re-enrollment
+            match Self::perform_reenrollment(client, cert).await {
+                Ok(new_cert) => {
+                    info!("Certificate renewal successful");
 
-            warn!("Renewal logic not yet implemented (placeholder)");
+                    // Update the current certificate
+                    {
+                        let mut current = current_cert.write().await;
+                        *current = Some(new_cert.clone());
+                    }
 
-            // Simulate failure for now
-            let error_msg = "Renewal not yet implemented".to_string();
-            Self::emit_event_static(
-                config,
-                RenewalEvent::RenewalFailed {
-                    attempt,
-                    error: error_msg.clone(),
-                },
-            )
-            .await;
+                    Self::emit_event_static(
+                        config,
+                        RenewalEvent::RenewalSuccess {
+                            new_cert: new_cert.clone(),
+                        },
+                    )
+                    .await;
 
-            if attempt < config.max_retries {
-                // Exponential backoff
-                let delay = config.retry_delay * 2_u32.pow(attempt as u32 - 1);
-                info!("Retrying in {} seconds", delay.as_secs());
-                sleep(delay).await;
+                    // Success - exit retry loop
+                    return;
+                }
+                Err(e) => {
+                    warn!("Renewal attempt {} failed: {}", attempt, e);
+
+                    Self::emit_event_static(
+                        config,
+                        RenewalEvent::RenewalFailed {
+                            attempt,
+                            error: e.to_string(),
+                        },
+                    )
+                    .await;
+
+                    if attempt < config.max_retries {
+                        // Exponential backoff
+                        let delay = config.retry_delay * 2_u32.pow(attempt as u32 - 1);
+                        info!("Retrying in {} seconds", delay.as_secs());
+                        sleep(delay).await;
+                    }
+                }
             }
         }
 
@@ -398,7 +417,51 @@ impl RenewalScheduler {
 
         // Note: In production, you might want to take additional action here,
         // such as sending alerts, shutting down services, etc.
-        let _ = _current_cert; // Avoid unused warning
+    }
+
+    /// Perform certificate re-enrollment.
+    ///
+    /// Generates a new key pair and CSR based on the existing certificate's subject,
+    /// then requests a new certificate from the EST server using simple re-enrollment.
+    async fn perform_reenrollment(client: &EstClient, cert: &Certificate) -> Result<Certificate> {
+        use crate::csr::CsrBuilder;
+        use crate::validation::get_subject_cn;
+
+        debug!("Starting certificate re-enrollment");
+
+        // Extract subject information from existing certificate
+        let subject_cn = get_subject_cn(cert).ok_or_else(|| {
+            EstError::operational("Cannot extract Common Name from existing certificate")
+        })?;
+
+        debug!("Re-enrolling certificate for CN: {}", subject_cn);
+
+        // Build a new CSR with the same subject as the existing certificate
+        // Generate a new key pair for the renewed certificate
+        let (csr_der, _new_key_pair) = CsrBuilder::new()
+            .common_name(&subject_cn)
+            .san_dns(&subject_cn)
+            .key_usage_digital_signature()
+            .key_usage_key_encipherment()
+            .extended_key_usage_client_auth()
+            .build()?;
+
+        debug!("Generated new CSR for re-enrollment");
+
+        // Submit re-enrollment request
+        let response = client.simple_reenroll(&csr_der).await?;
+
+        // Parse the new certificate
+        let new_cert = response
+            .certificate
+            .ok_or_else(|| EstError::protocol("No certificate in re-enrollment response"))?;
+
+        info!(
+            "Successfully renewed certificate for CN: {}",
+            get_subject_cn(&new_cert).unwrap_or_else(|| "<unknown>".to_string())
+        );
+
+        Ok(new_cert)
     }
 
     /// Calculate time until certificate expiration.

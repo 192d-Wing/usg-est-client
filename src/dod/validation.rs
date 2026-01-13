@@ -496,19 +496,64 @@ impl DodChainValidator {
 
     /// Check validity periods for all certificates in chain
     fn check_validity_periods(&self, chain: &[Certificate]) -> Result<()> {
+        use std::time::SystemTime;
+        use x509_cert::time::Time;
+
+        let now = SystemTime::now();
+
         for cert in chain {
             let validity = &cert.tbs_certificate.validity;
             let subject = format_dn(&cert.tbs_certificate.subject);
 
-            // Note: This is a simplified check. In production, would compare
-            // against current time with proper time parsing.
-            let _ = validity;
-            let _ = subject;
+            // Parse not_before time
+            let not_before = Self::parse_x509_time(&validity.not_before)?;
 
-            // TODO: Implement actual time comparison when time feature is available
+            // Parse not_after time
+            let not_after = Self::parse_x509_time(&validity.not_after)?;
+
+            // Check if current time is before certificate validity period
+            if now < not_before {
+                return Err(EstError::CertificateValidation(format!(
+                    "Certificate '{}' is not yet valid (not_before: {:?})",
+                    subject,
+                    validity.not_before
+                )));
+            }
+
+            // Check if certificate has expired
+            if now > not_after {
+                return Err(EstError::CertificateValidation(format!(
+                    "Certificate '{}' has expired (not_after: {:?})",
+                    subject,
+                    validity.not_after
+                )));
+            }
+
+            tracing::debug!(
+                "Certificate '{}' is valid (not_before: {:?}, not_after: {:?})",
+                subject,
+                validity.not_before,
+                validity.not_after
+            );
         }
 
         Ok(())
+    }
+
+    /// Parse X.509 Time to SystemTime.
+    ///
+    /// Supports both UtcTime and GeneralizedTime formats.
+    fn parse_x509_time(x509_time: &x509_cert::time::Time) -> Result<SystemTime> {
+        use std::time::SystemTime;
+        use x509_cert::time::Time;
+
+        // Both UtcTime and GeneralizedTime have to_unix_duration() method
+        let duration = match x509_time {
+            Time::UtcTime(utc) => utc.to_unix_duration(),
+            Time::GeneralTime(general) => general.to_unix_duration(),
+        };
+
+        Ok(SystemTime::UNIX_EPOCH + duration)
     }
 
     /// Check revocation status for certificates in chain (sync version - limited)
