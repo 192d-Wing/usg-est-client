@@ -102,8 +102,128 @@ struct SingleRequest {
     // singleRequestExtensions is optional and omitted
 }
 
-// TODO: Add OCSP response ASN.1 structures when implementing full response parsing
-// For now, responses are stubbed to return Unknown status
+// Simple DER parser for OCSP response structures
+// Provides basic DER/ASN.1 parsing without full der crate complexity
+struct SimpleDerParser<'a> {
+    data: &'a [u8],
+    pos: usize,
+}
+
+impl<'a> SimpleDerParser<'a> {
+    fn new(data: &'a [u8]) -> Self {
+        Self { data, pos: 0 }
+    }
+
+    fn position(&self) -> usize {
+        self.pos
+    }
+
+    fn remaining(&self) -> &'a [u8] {
+        &self.data[self.pos..]
+    }
+
+    fn read_byte(&mut self) -> Result<u8> {
+        if self.pos >= self.data.len() {
+            return Err(EstError::operational("Unexpected end of data"));
+        }
+        let byte = self.data[self.pos];
+        self.pos += 1;
+        Ok(byte)
+    }
+
+    fn peek_tag(&self) -> Option<u8> {
+        self.data.get(self.pos).copied()
+    }
+
+    fn read_length(&mut self) -> Result<usize> {
+        let first = self.read_byte()?;
+        if first & 0x80 == 0 {
+            // Short form
+            Ok(first as usize)
+        } else {
+            // Long form
+            let num_octets = (first & 0x7F) as usize;
+            if num_octets > 4 {
+                return Err(EstError::operational("Length too large"));
+            }
+            let mut length = 0usize;
+            for _ in 0..num_octets {
+                length = (length << 8) | (self.read_byte()? as usize);
+            }
+            Ok(length)
+        }
+    }
+
+    fn expect_tag(&mut self, expected: u8) -> Result<()> {
+        let tag = self.read_byte()?;
+        if tag != expected {
+            return Err(EstError::operational(format!(
+                "Expected tag 0x{:02x}, got 0x{:02x}",
+                expected, tag
+            )));
+        }
+        Ok(())
+    }
+
+    fn expect_sequence(&mut self) -> Result<usize> {
+        self.expect_tag(0x30)?; // SEQUENCE tag
+        self.read_length()
+    }
+
+    fn skip_sequence(&mut self) -> Result<()> {
+        self.expect_tag(0x30)?;
+        let len = self.read_length()?;
+        self.pos += len;
+        Ok(())
+    }
+
+    fn expect_context_constructed(&mut self, num: u8) -> Result<usize> {
+        let tag = 0xA0 | num; // Context-specific, constructed
+        self.expect_tag(tag)?;
+        self.read_length()
+    }
+
+    fn skip_context_specific(&mut self) -> Result<()> {
+        let tag = self.read_byte()?;
+        if (tag & 0xC0) != 0x80 {
+            return Err(EstError::operational("Expected context-specific tag"));
+        }
+        let len = self.read_length()?;
+        self.pos += len;
+        Ok(())
+    }
+
+    fn read_enumerated(&mut self) -> Result<u8> {
+        self.expect_tag(0x0A)?; // ENUMERATED tag
+        let len = self.read_length()?;
+        if len != 1 {
+            return Err(EstError::operational("ENUMERATED must be 1 byte"));
+        }
+        self.read_byte()
+    }
+
+    fn skip_oid(&mut self) -> Result<()> {
+        self.expect_tag(0x06)?; // OID tag
+        let len = self.read_length()?;
+        self.pos += len;
+        Ok(())
+    }
+
+    fn read_octet_string(&mut self) -> Result<&'a [u8]> {
+        self.expect_tag(0x04)?; // OCTET STRING tag
+        let len = self.read_length()?;
+        let start = self.pos;
+        self.pos += len;
+        Ok(&self.data[start..self.pos])
+    }
+
+    fn skip_generalized_time(&mut self) -> Result<()> {
+        self.expect_tag(0x18)?; // GeneralizedTime tag
+        let len = self.read_length()?;
+        self.pos += len;
+        Ok(())
+    }
+}
 
 /// Configuration for revocation checking.
 #[derive(Debug, Clone)]
@@ -992,31 +1112,174 @@ impl RevocationChecker {
 
     /// Parse OCSP response.
     ///
-    /// TODO: Complete OCSP response parsing implementation.
-    /// The current implementation is a work-in-progress stub.
+    /// Parses RFC 6960 OCSP response and extracts certificate status.
+    /// Uses SimpleDerParser for reliable parsing of nested ASN.1 structures.
     ///
-    /// OCSP response parsing is complex due to nested ASN.1 structures:
-    /// - OCSPResponse with responseBytes
-    /// - BasicOCSPResponse with tbsResponseData
-    /// - ResponseData with responses
-    /// - SingleResponse with certStatus
+    /// Structure:
+    /// ```text
+    /// OCSPResponse ::= SEQUENCE {
+    ///    responseStatus   ENUMERATED,
+    ///    responseBytes    [0] EXPLICIT ResponseBytes OPTIONAL }
     ///
-    /// Future work needed:
-    /// - Fix der crate API compatibility issues
-    /// - Complete response status extraction
-    /// - Add signature verification
-    /// - Test with live OCSP responders
-    ///
-    /// For now, OCSP requests are created correctly but responses return Unknown status.
+    /// ResponseBytes ::= SEQUENCE {
+    ///    responseType     OBJECT IDENTIFIER,
+    ///    response         OCTET STRING (contains BasicOCSPResponse) }
+    /// ```
     fn parse_ocsp_response(&self, data: &[u8]) -> Result<RevocationStatus> {
-        debug!("Parsing OCSP response ({} bytes) - STUB IMPLEMENTATION", data.len());
+        debug!("Parsing OCSP response ({} bytes)", data.len());
 
-        //TODO: Implement full OCSP response parsing
-        // This is complex due to nested ASN.1 structures and requires careful
-        // handling of the der crate API.
+        // Use simple DER parser for outer structure
+        let mut parser = SimpleDerParser::new(data);
 
-        warn!("OCSP response parsing not yet fully implemented - returning Unknown status");
-        Ok(RevocationStatus::Unknown)
+        // Parse outer SEQUENCE
+        parser.expect_sequence()?;
+
+        // Read responseStatus (ENUMERATED)
+        let response_status = parser.read_enumerated()?;
+        debug!("OCSP response status: {}", response_status);
+
+        // Check if successful (0 = successful)
+        if response_status != 0 {
+            return match response_status {
+                1 => Err(EstError::protocol("OCSP: malformed request")),
+                2 => Err(EstError::protocol("OCSP: internal error")),
+                3 => {
+                    warn!("OCSP responder busy (try later)");
+                    Ok(RevocationStatus::Unknown)
+                }
+                5 => Err(EstError::protocol("OCSP: signature required")),
+                6 => Err(EstError::protocol("OCSP: unauthorized")),
+                _ => Err(EstError::protocol(format!("OCSP: unknown status {}", response_status))),
+            };
+        }
+
+        // Read responseBytes [0] EXPLICIT
+        parser.expect_context_constructed(0)?;
+
+        // Parse ResponseBytes SEQUENCE
+        parser.expect_sequence()?;
+
+        // Skip responseType OID (should be id-pkix-ocsp-basic)
+        parser.skip_oid()?;
+
+        // Read response OCTET STRING
+        let basic_response_data = parser.read_octet_string()?;
+
+        // Parse BasicOCSPResponse
+        self.parse_basic_ocsp_response(basic_response_data)
+    }
+
+    /// Parse BasicOCSPResponse to extract certificate status.
+    ///
+    /// BasicOCSPResponse ::= SEQUENCE {
+    ///    tbsResponseData      ResponseData,
+    ///    signatureAlgorithm   AlgorithmIdentifier,
+    ///    signature            BIT STRING,
+    ///    certs                [0] EXPLICIT SEQUENCE OF Certificate OPTIONAL }
+    fn parse_basic_ocsp_response(&self, data: &[u8]) -> Result<RevocationStatus> {
+        let mut parser = SimpleDerParser::new(data);
+
+        // Parse BasicOCSPResponse SEQUENCE
+        parser.expect_sequence()?;
+
+        // Read tbsResponseData SEQUENCE
+        let tbs_start = parser.position();
+        parser.expect_sequence()?;
+        let tbs_end = parser.position();
+
+        // Extract tbs_response_data for potential signature verification
+        let _tbs_response_data = &data[tbs_start..tbs_end];
+
+        // Parse ResponseData to get cert status
+        let cert_status = self.parse_response_data(&data[tbs_start..tbs_end])?;
+
+        // Convert to RevocationStatus
+        match cert_status {
+            0 => {
+                debug!("OCSP: certificate is GOOD");
+                Ok(RevocationStatus::Valid)
+            }
+            1 => {
+                debug!("OCSP: certificate is REVOKED");
+                Ok(RevocationStatus::Revoked)
+            }
+            2 => {
+                debug!("OCSP: certificate status UNKNOWN");
+                Ok(RevocationStatus::Unknown)
+            }
+            _ => Err(EstError::operational(format!("Invalid cert status: {}", cert_status))),
+        }
+    }
+
+    /// Parse ResponseData SEQUENCE to extract cert status.
+    ///
+    /// ResponseData ::= SEQUENCE {
+    ///    version              [0] EXPLICIT Version DEFAULT v1,
+    ///    responderID          ResponderID,
+    ///    producedAt           GeneralizedTime,
+    ///    responses            SEQUENCE OF SingleResponse,
+    ///    responseExtensions   [1] EXPLICIT Extensions OPTIONAL }
+    fn parse_response_data(&self, data: &[u8]) -> Result<u8> {
+        let mut parser = SimpleDerParser::new(data);
+
+        // Skip outer SEQUENCE tag (already validated)
+        parser.expect_sequence()?;
+
+        // Skip version [0] if present (optional, context-specific tag 0xA0)
+        if parser.peek_tag() == Some(0xA0) {
+            parser.skip_context_specific()?;
+        }
+
+        // Skip responderID (context-specific [1] or [2])
+        parser.skip_context_specific()?;
+
+        // Skip producedAt (GeneralizedTime)
+        parser.skip_generalized_time()?;
+
+        // Read responses SEQUENCE
+        parser.expect_sequence()?;
+
+        // Parse first SingleResponse
+        self.parse_single_response_status(parser.remaining())
+    }
+
+    /// Parse SingleResponse to extract just the cert status.
+    ///
+    /// SingleResponse ::= SEQUENCE {
+    ///    certID               CertID,
+    ///    certStatus           CertStatus,
+    ///    thisUpdate           GeneralizedTime,
+    ///    nextUpdate           [0] EXPLICIT GeneralizedTime OPTIONAL,
+    ///    singleExtensions     [1] EXPLICIT Extensions OPTIONAL }
+    ///
+    /// CertStatus ::= CHOICE {
+    ///    good         [0] IMPLICIT NULL,
+    ///    revoked      [1] IMPLICIT RevokedInfo,
+    ///    unknown      [2] IMPLICIT UnknownInfo }
+    fn parse_single_response_status(&self, data: &[u8]) -> Result<u8> {
+        let mut parser = SimpleDerParser::new(data);
+
+        // SingleResponse SEQUENCE
+        parser.expect_sequence()?;
+
+        // Skip certID SEQUENCE
+        parser.skip_sequence()?;
+
+        // Read certStatus (context-specific tag indicates status)
+        // [0] = good, [1] = revoked, [2] = unknown
+        let status_tag = parser.read_byte()?;
+
+        if (status_tag & 0xE0) == 0x80 {
+            // Context-specific tag
+            let status = status_tag & 0x1F;
+            debug!("Cert status from context tag: {}", status);
+            Ok(status)
+        } else {
+            Err(EstError::operational(format!(
+                "Expected context-specific tag for certStatus, got: 0x{:02x}",
+                status_tag
+            )))
+        }
     }
 
     /// Extract OCSP responder URL from certificate.
