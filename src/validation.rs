@@ -382,33 +382,90 @@ impl CertificateValidator {
 
     /// Check certificate validity period.
     fn check_validity_period(&self, cert: &Certificate) -> Result<()> {
-        use x509_cert::time::Time;
 
         let now = SystemTime::now();
         let validity = &cert.tbs_certificate.validity;
 
-        // Check not_before
-        let not_before = match &validity.not_before {
-            Time::UtcTime(_utc) => {
-                // Simplified: Assume certificate is valid
-                // Production code should properly parse UTCTime
-                SystemTime::UNIX_EPOCH
-            }
-            Time::GeneralTime(_gen) => {
-                // Simplified: Assume certificate is valid
-                SystemTime::UNIX_EPOCH
-            }
-        };
-
+        // Parse not_before time
+        let not_before = Self::parse_time(&validity.not_before)?;
         if now < not_before {
-            return Err(EstError::operational("Certificate not yet valid"));
+            return Err(EstError::operational(format!(
+                "Certificate not yet valid (not before: {:?})",
+                not_before
+            )));
         }
 
-        // Check not_after (use the renewal module's time_until_expiry logic)
-        // For now, simplified check
-        // TODO: Use proper time parsing
+        // Parse not_after time
+        let not_after = Self::parse_time(&validity.not_after)?;
+        if now > not_after {
+            return Err(EstError::operational(format!(
+                "Certificate has expired (not after: {:?})",
+                not_after
+            )));
+        }
 
+        debug!("Certificate validity period check passed");
         Ok(())
+    }
+
+    /// Parse X.509 Time to SystemTime.
+    fn parse_time(time: &x509_cert::time::Time) -> Result<SystemTime> {
+        use der::DateTime;
+        use std::time::Duration;
+        use x509_cert::time::Time;
+
+        let datetime: DateTime = match time {
+            Time::UtcTime(utc) => (*utc).into(),
+            Time::GeneralTime(general) => (*general).into(),
+        };
+
+        // Convert to SystemTime
+        // DateTime is in format: YYYYMMDDhhmmssZ
+        let year = datetime.year() as i64;
+        let month = datetime.month() as u64;
+        let day = datetime.day() as u64;
+        let hour = datetime.hour() as u64;
+        let minute = datetime.minutes() as u64;
+        let second = datetime.seconds() as u64;
+
+        // Calculate seconds since UNIX_EPOCH (1970-01-01)
+        // This is a simplified calculation that doesn't account for leap years/seconds
+        let mut days_since_epoch: i64 = 0;
+
+        // Count years (accounting for leap years)
+        for y in 1970..year {
+            days_since_epoch += if Self::is_leap_year(y) { 366 } else { 365 };
+        }
+
+        // Count months in current year
+        const DAYS_IN_MONTH: [u64; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        for m in 1..month {
+            days_since_epoch += DAYS_IN_MONTH[(m - 1) as usize] as i64;
+            // Add leap day if February and leap year
+            if m == 2 && Self::is_leap_year(year) {
+                days_since_epoch += 1;
+            }
+        }
+
+        // Add remaining days
+        days_since_epoch += (day - 1) as i64;
+
+        // Convert to seconds
+        let seconds_since_epoch = days_since_epoch * 86400 + (hour * 3600 + minute * 60 + second) as i64;
+
+        if seconds_since_epoch < 0 {
+            return Err(EstError::operational(format!(
+                "Invalid certificate time (before UNIX epoch): {}",
+                seconds_since_epoch
+            )));
+        }
+
+        Ok(SystemTime::UNIX_EPOCH + Duration::from_secs(seconds_since_epoch as u64))
+    }
+
+    /// Check if a year is a leap year.
+    fn is_leap_year(year: i64) -> bool {
+        (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
     }
 
     /// Check basic constraints extension.
@@ -474,28 +531,16 @@ impl CertificateValidator {
         const ECDSA_SHA384: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.3");
         const ECDSA_SHA512: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.4");
 
-        // For now, we verify the hash matches but full cryptographic verification
-        // requires importing additional crypto libraries (rsa, ecdsa crates)
+        // Perform cryptographic signature verification
         match *sig_alg_oid {
             RSA_SHA256 | RSA_SHA384 | RSA_SHA512 => {
-                // RSA signature verification would require the rsa crate
-                // For now, verify the structure is valid
-                debug!(
-                    "RSA signature verification: TBS={} bytes, sig={} bytes",
-                    tbs_bytes.len(),
-                    signature.len()
-                );
-                // Placeholder: actual RSA verification requires crypto library
+                self.verify_rsa_signature(&tbs_bytes, signature, *sig_alg_oid, issuer_spki)?;
+                debug!("RSA signature verified successfully");
                 Ok(())
             }
             ECDSA_SHA256 | ECDSA_SHA384 | ECDSA_SHA512 => {
-                // ECDSA signature verification would require the ecdsa crate
-                debug!(
-                    "ECDSA signature verification: TBS={} bytes, sig={} bytes",
-                    tbs_bytes.len(),
-                    signature.len()
-                );
-                // Placeholder: actual ECDSA verification requires crypto library
+                self.verify_ecdsa_signature(&tbs_bytes, signature, *sig_alg_oid, issuer_spki)?;
+                debug!("ECDSA signature verified successfully");
                 Ok(())
             }
             _ => {
@@ -506,6 +551,137 @@ impl CertificateValidator {
                 )))
             }
         }
+    }
+
+    /// Verify RSA signature.
+    fn verify_rsa_signature(
+        &self,
+        tbs_bytes: &[u8],
+        signature: &[u8],
+        alg_oid: ObjectIdentifier,
+        issuer_spki: &spki::SubjectPublicKeyInfoOwned,
+    ) -> Result<()> {
+        use rsa::pkcs1v15::{Signature as RsaSignature, VerifyingKey};
+        use rsa::signature::Verifier;
+        use sha2::{Sha256, Sha384, Sha512};
+
+        const RSA_SHA256: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.11");
+        const RSA_SHA384: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.12");
+        const RSA_SHA512: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.13");
+
+        // Parse the RSA public key from SPKI
+        // Extract the public key bytes
+        let public_key_bytes = issuer_spki.subject_public_key.as_bytes().ok_or_else(|| {
+            EstError::operational("Public key has unused bits")
+        })?;
+
+        // Decode the RSA public key (PKCS#1 format inside the SPKI)
+        use rsa::pkcs1::DecodeRsaPublicKey;
+        let public_key = rsa::RsaPublicKey::from_pkcs1_der(public_key_bytes)
+            .map_err(|e| EstError::operational(format!("Failed to parse RSA public key: {}", e)))?;
+
+        let sig = RsaSignature::try_from(signature)
+            .map_err(|e| EstError::operational(format!("Invalid RSA signature: {}", e)))?;
+
+        // Verify based on hash algorithm
+        match alg_oid {
+            RSA_SHA256 => {
+                let verifying_key = VerifyingKey::<Sha256>::new(public_key);
+                verifying_key
+                    .verify(tbs_bytes, &sig)
+                    .map_err(|e| EstError::operational(format!("RSA-SHA256 signature verification failed: {}", e)))?;
+            }
+            RSA_SHA384 => {
+                let verifying_key = VerifyingKey::<Sha384>::new(public_key);
+                verifying_key
+                    .verify(tbs_bytes, &sig)
+                    .map_err(|e| EstError::operational(format!("RSA-SHA384 signature verification failed: {}", e)))?;
+            }
+            RSA_SHA512 => {
+                let verifying_key = VerifyingKey::<Sha512>::new(public_key);
+                verifying_key
+                    .verify(tbs_bytes, &sig)
+                    .map_err(|e| EstError::operational(format!("RSA-SHA512 signature verification failed: {}", e)))?;
+            }
+            _ => {
+                return Err(EstError::operational(format!(
+                    "Unexpected RSA algorithm OID: {}",
+                    alg_oid
+                )));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Verify ECDSA signature.
+    fn verify_ecdsa_signature(
+        &self,
+        tbs_bytes: &[u8],
+        signature: &[u8],
+        alg_oid: ObjectIdentifier,
+        issuer_spki: &spki::SubjectPublicKeyInfoOwned,
+    ) -> Result<()> {
+        use p256::ecdsa::{Signature as P256Signature, VerifyingKey as P256VerifyingKey};
+        use p384::ecdsa::{Signature as P384Signature, VerifyingKey as P384VerifyingKey};
+        use sha2::{Digest, Sha256, Sha384};
+        use signature::Verifier;
+
+        const ECDSA_SHA256: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.2");
+        const ECDSA_SHA384: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.3");
+        const ECDSA_SHA512: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.4");
+
+        // Parse the EC public key
+        let public_key_bytes = issuer_spki.subject_public_key.as_bytes().ok_or_else(|| {
+            EstError::operational("Public key has unused bits")
+        })?;
+
+        match alg_oid {
+            ECDSA_SHA256 => {
+                // P-256 curve
+                let verifying_key = P256VerifyingKey::from_sec1_bytes(public_key_bytes)
+                    .map_err(|e| EstError::operational(format!("Failed to parse P-256 public key: {}", e)))?;
+
+                let sig = P256Signature::from_der(signature)
+                    .map_err(|e| EstError::operational(format!("Invalid ECDSA signature: {}", e)))?;
+
+                // Hash the TBS data
+                let hash = Sha256::digest(tbs_bytes);
+
+                verifying_key
+                    .verify(&hash, &sig)
+                    .map_err(|e| EstError::operational(format!("ECDSA-SHA256 signature verification failed: {}", e)))?;
+            }
+            ECDSA_SHA384 => {
+                // P-384 curve
+                let verifying_key = P384VerifyingKey::from_sec1_bytes(public_key_bytes)
+                    .map_err(|e| EstError::operational(format!("Failed to parse P-384 public key: {}", e)))?;
+
+                let sig = P384Signature::from_der(signature)
+                    .map_err(|e| EstError::operational(format!("Invalid ECDSA signature: {}", e)))?;
+
+                // Hash the TBS data
+                let hash = Sha384::digest(tbs_bytes);
+
+                verifying_key
+                    .verify(&hash, &sig)
+                    .map_err(|e| EstError::operational(format!("ECDSA-SHA384 signature verification failed: {}", e)))?;
+            }
+            ECDSA_SHA512 => {
+                // P-521 would require p521 crate, not yet supported
+                return Err(EstError::operational(
+                    "ECDSA with SHA-512 (P-521) not yet supported"
+                ));
+            }
+            _ => {
+                return Err(EstError::operational(format!(
+                    "Unexpected ECDSA algorithm OID: {}",
+                    alg_oid
+                )));
+            }
+        }
+
+        Ok(())
     }
 
     /// Accumulate name constraints from a CA certificate.
@@ -745,16 +921,30 @@ impl CertificateValidator {
     }
 
     /// Check if a DNS name matches a constraint (supports wildcards).
+    ///
+    /// Per RFC 5280 Section 4.2.1.10:
+    /// - A name matches if it is a subdomain (labels separated by dots)
+    /// - Constraint ".example.com" matches "www.example.com" but NOT "evilexample.com"
+    /// - Exact matches are also allowed
     fn dns_matches_constraint(&self, dns: &str, constraint: &str) -> bool {
         let dns_lower = dns.to_lowercase();
         let constraint_lower = constraint.to_lowercase();
 
-        // If constraint starts with '.', it's a domain suffix
+        // If constraint starts with '.', it's a domain suffix constraint
         if let Some(suffix) = constraint_lower.strip_prefix('.') {
-            dns_lower.ends_with(&constraint_lower) || dns_lower == suffix
+            // Must either be exact match to suffix, or end with the full constraint including the dot
+            // This ensures label boundary: "www.example.com" matches ".example.com"
+            // but "evilexample.com" does NOT match ".example.com"
+            dns_lower == suffix || dns_lower.ends_with(&format!(".{}", suffix))
         } else {
-            // Exact match or subdomain match
-            dns_lower == constraint_lower || dns_lower.ends_with(&format!(".{}", constraint_lower))
+            // No leading dot: constraint is for exact domain or its subdomains
+            // "example.com" matches itself and "www.example.com" but not "evilexample.com"
+            if dns_lower == constraint_lower {
+                return true;
+            }
+            // Check if it's a subdomain: must end with ".<constraint>"
+            // This ensures we have a label boundary (the dot)
+            dns_lower.ends_with(&format!(".{}", constraint_lower))
         }
     }
 
