@@ -2,8 +2,9 @@
 
 Comprehensive list of all TODO, FIXME, and action items found in the codebase.
 
-**Last Scanned:** 2026-01-12
-**Total Items:** 30 TODOs, 0 FIXMEs
+**Last Scanned:** 2026-01-13
+**Total Items:** 28 TODOs (2 completed in this session), 0 FIXMEs
+**Completed:** 10/30 items (33%)
 
 ---
 
