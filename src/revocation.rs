@@ -447,15 +447,206 @@ impl RevocationChecker {
     }
 
     /// Verify CRL signature using issuer's public key.
-    fn verify_crl_signature(&self, _crl: &CertificateList, _issuer: &Certificate) -> Result<()> {
-        // TODO: Implement actual signature verification
-        // This would require:
-        // 1. Extract public key from issuer certificate
-        // 2. Get signature algorithm from CRL
-        // 3. Verify signature using appropriate crypto library
-        //
-        // For now, we'll trust the CRL (not production-ready)
-        debug!("CRL signature verification (placeholder - not yet implemented)");
+    fn verify_crl_signature(&self, crl: &CertificateList, issuer: &Certificate) -> Result<()> {
+        use const_oid::ObjectIdentifier;
+        use der::Encode;
+
+        // Get the signature algorithm from the CRL
+        let sig_alg_oid = &crl.signature_algorithm.oid;
+
+        // Get the issuer's public key
+        let issuer_spki = &issuer.tbs_certificate.subject_public_key_info;
+        let pub_key_alg = &issuer_spki.algorithm.oid;
+
+        debug!(
+            "Verifying CRL signature with algorithm {:?} using key algorithm {:?}",
+            sig_alg_oid, pub_key_alg
+        );
+
+        // Encode the TBSCertList to get the data that was signed
+        let tbs_bytes = crl.tbs_cert_list.to_der().map_err(|e| {
+            EstError::operational(format!("Failed to encode TBS CertList: {}", e))
+        })?;
+
+        // Get the signature bytes
+        let signature = crl.signature.as_bytes().ok_or_else(|| {
+            EstError::operational("CRL signature has unused bits (not byte-aligned)")
+        })?;
+
+        // Verify the signature based on the algorithm
+        const RSA_SHA256: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.11");
+        const RSA_SHA384: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.12");
+        const RSA_SHA512: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.13");
+        const ECDSA_SHA256: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.2");
+        const ECDSA_SHA384: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.3");
+        const ECDSA_SHA512: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.4");
+
+        // Perform cryptographic signature verification
+        match *sig_alg_oid {
+            RSA_SHA256 | RSA_SHA384 | RSA_SHA512 => {
+                self.verify_rsa_crl_signature(&tbs_bytes, signature, *sig_alg_oid, issuer_spki)?;
+                debug!("CRL RSA signature verified successfully");
+                Ok(())
+            }
+            ECDSA_SHA256 | ECDSA_SHA384 | ECDSA_SHA512 => {
+                self.verify_ecdsa_crl_signature(&tbs_bytes, signature, *sig_alg_oid, issuer_spki)?;
+                debug!("CRL ECDSA signature verified successfully");
+                Ok(())
+            }
+            _ => {
+                warn!("Unsupported CRL signature algorithm: {:?}", sig_alg_oid);
+                Err(EstError::operational(format!(
+                    "Unsupported CRL signature algorithm: {}",
+                    sig_alg_oid
+                )))
+            }
+        }
+    }
+
+    /// Verify RSA signature on CRL.
+    fn verify_rsa_crl_signature(
+        &self,
+        tbs_bytes: &[u8],
+        signature: &[u8],
+        alg_oid: const_oid::ObjectIdentifier,
+        issuer_spki: &spki::SubjectPublicKeyInfoOwned,
+    ) -> Result<()> {
+        use const_oid::ObjectIdentifier;
+        use rsa::pkcs1v15::{Signature as RsaSignature, VerifyingKey};
+        use rsa::signature::Verifier;
+        use sha2::{Sha256, Sha384, Sha512};
+
+        const RSA_SHA256: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.11");
+        const RSA_SHA384: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.12");
+        const RSA_SHA512: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.13");
+
+        // Parse the RSA public key from SPKI
+        let public_key_bytes = issuer_spki.subject_public_key.as_bytes().ok_or_else(|| {
+            EstError::operational("Public key has unused bits")
+        })?;
+
+        // Decode the RSA public key (PKCS#1 format inside the SPKI)
+        use rsa::pkcs1::DecodeRsaPublicKey;
+        let public_key = rsa::RsaPublicKey::from_pkcs1_der(public_key_bytes)
+            .map_err(|e| EstError::operational(format!("Failed to parse RSA public key: {}", e)))?;
+
+        let sig = RsaSignature::try_from(signature)
+            .map_err(|e| EstError::operational(format!("Invalid RSA signature: {}", e)))?;
+
+        // Verify based on hash algorithm
+        match alg_oid {
+            RSA_SHA256 => {
+                let verifying_key = VerifyingKey::<Sha256>::new(public_key);
+                verifying_key
+                    .verify(tbs_bytes, &sig)
+                    .map_err(|e| EstError::operational(format!("RSA-SHA256 signature verification failed: {}", e)))?;
+            }
+            RSA_SHA384 => {
+                let verifying_key = VerifyingKey::<Sha384>::new(public_key);
+                verifying_key
+                    .verify(tbs_bytes, &sig)
+                    .map_err(|e| EstError::operational(format!("RSA-SHA384 signature verification failed: {}", e)))?;
+            }
+            RSA_SHA512 => {
+                let verifying_key = VerifyingKey::<Sha512>::new(public_key);
+                verifying_key
+                    .verify(tbs_bytes, &sig)
+                    .map_err(|e| EstError::operational(format!("RSA-SHA512 signature verification failed: {}", e)))?;
+            }
+            _ => {
+                return Err(EstError::operational(format!(
+                    "Unsupported RSA signature algorithm: {}",
+                    alg_oid
+                )));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Verify ECDSA signature on CRL.
+    fn verify_ecdsa_crl_signature(
+        &self,
+        tbs_bytes: &[u8],
+        signature: &[u8],
+        alg_oid: const_oid::ObjectIdentifier,
+        issuer_spki: &spki::SubjectPublicKeyInfoOwned,
+    ) -> Result<()> {
+        use const_oid::ObjectIdentifier;
+        use p256::ecdsa::{
+            signature::Verifier as P256Verifier, Signature as P256Signature,
+            VerifyingKey as P256VerifyingKey,
+        };
+        use p384::ecdsa::{
+            signature::Verifier as P384Verifier, Signature as P384Signature,
+            VerifyingKey as P384VerifyingKey,
+        };
+        use sha2::{Digest, Sha256, Sha384, Sha512};
+
+        const ECDSA_SHA256: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.2");
+        const ECDSA_SHA384: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.3");
+        const ECDSA_SHA512: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.4");
+
+        // Parse the ECDSA public key from SPKI
+        let public_key_bytes = issuer_spki.subject_public_key.as_bytes().ok_or_else(|| {
+            EstError::operational("Public key has unused bits")
+        })?;
+
+        // Verify based on curve and hash algorithm
+        match alg_oid {
+            ECDSA_SHA256 => {
+                // P-256 with SHA-256
+                let verifying_key = P256VerifyingKey::from_sec1_bytes(public_key_bytes)
+                    .map_err(|e| EstError::operational(format!("Failed to parse P-256 public key: {}", e)))?;
+
+                let sig = P256Signature::from_der(signature)
+                    .map_err(|e| EstError::operational(format!("Invalid ECDSA signature: {}", e)))?;
+
+                // Hash the message
+                let hash = Sha256::digest(tbs_bytes);
+
+                verifying_key
+                    .verify(&hash, &sig)
+                    .map_err(|e| EstError::operational(format!("ECDSA-SHA256 signature verification failed: {}", e)))?;
+            }
+            ECDSA_SHA384 => {
+                // P-384 with SHA-384
+                let verifying_key = P384VerifyingKey::from_sec1_bytes(public_key_bytes)
+                    .map_err(|e| EstError::operational(format!("Failed to parse P-384 public key: {}", e)))?;
+
+                let sig = P384Signature::from_der(signature)
+                    .map_err(|e| EstError::operational(format!("Invalid ECDSA signature: {}", e)))?;
+
+                // Hash the message
+                let hash = Sha384::digest(tbs_bytes);
+
+                verifying_key
+                    .verify(&hash, &sig)
+                    .map_err(|e| EstError::operational(format!("ECDSA-SHA384 signature verification failed: {}", e)))?;
+            }
+            ECDSA_SHA512 => {
+                // P-384 with SHA-512 (typically)
+                let verifying_key = P384VerifyingKey::from_sec1_bytes(public_key_bytes)
+                    .map_err(|e| EstError::operational(format!("Failed to parse P-384 public key: {}", e)))?;
+
+                let sig = P384Signature::from_der(signature)
+                    .map_err(|e| EstError::operational(format!("Invalid ECDSA signature: {}", e)))?;
+
+                // Hash the message
+                let hash = Sha512::digest(tbs_bytes);
+
+                verifying_key
+                    .verify(&hash, &sig)
+                    .map_err(|e| EstError::operational(format!("ECDSA-SHA512 signature verification failed: {}", e)))?;
+            }
+            _ => {
+                return Err(EstError::operational(format!(
+                    "Unsupported ECDSA signature algorithm: {}",
+                    alg_oid
+                )));
+            }
+        }
+
         Ok(())
     }
 
