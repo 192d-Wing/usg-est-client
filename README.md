@@ -4,6 +4,21 @@
 [![Crates.io](https://img.shields.io/crates/v/usg-est-client.svg)](https://crates.io/crates/usg-est-client)
 [![Documentation](https://docs.rs/usg-est-client/badge.svg)](https://docs.rs/usg-est-client)
 
+## CI/CD & Security
+
+[![GitLab Pipeline](https://img.shields.io/badge/gitlab-pipeline-orange.svg)](https://gitlab.com/<namespace>/<project>/-/pipelines)
+[![Security Audit](https://img.shields.io/badge/security-cargo--audit-success.svg)](https://gitlab.com/<namespace>/<project>/-/pipelines)
+[![License Check](https://img.shields.io/badge/licenses-cargo--deny-success.svg)](deny.toml)
+
+**Note:** Replace `<namespace>/<project>` in badges above with your actual GitLab namespace and project name.
+<!-- Example: gitlab.com/yourusername/usg-est-client -->
+
+- 🔒 **Security**: Daily automated security audits with cargo-audit and cargo-deny
+- ✅ **Testing**: Cross-platform CI/CD (Linux, macOS, Windows) with Rust stable, beta, and MSRV
+- 📊 **Coverage**: Automated code coverage reporting with tarpaulin
+- 🔍 **SAST**: Static Application Security Testing with GitLab Security Scanner
+- 📚 **Documentation**: [Security Tools Guide](SECURITY-TOOLS.md) | [GitLab CI/CD](GITLAB-CI.md)
+
 A Rust implementation of an **RFC 7030 compliant EST (Enrollment over Secure Transport) client** for automated X.509 certificate enrollment and management.
 
 ## Features

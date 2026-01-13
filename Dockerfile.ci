@@ -1,0 +1,65 @@
+# Custom Docker image for faster CI/CD builds
+# Pre-installs cargo-audit, cargo-deny, and cargo-tarpaulin
+#
+# Usage in .gitlab-ci.yml:
+#   image: registry.gitlab.com/<namespace>/<project>/rust-ci:latest
+#
+# Build and push:
+#   docker build -f Dockerfile.ci -t registry.gitlab.com/<namespace>/<project>/rust-ci:latest .
+#   docker push registry.gitlab.com/<namespace>/<project>/rust-ci:latest
+
+FROM rust:1.92.0-slim
+
+LABEL maintainer="USG EST Client Team"
+LABEL description="Rust CI/CD image with pre-installed security and testing tools"
+LABEL org.opencontainers.image.source="https://github.com/yourusername/usg-est-client"
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    build-essential \
+    curl \
+    wget \
+    git \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install security and testing tools
+# These are expensive to install, so pre-installing saves ~2-3 minutes per CI run
+RUN cargo install --locked \
+    cargo-audit@0.20.1 \
+    cargo-tarpaulin@0.31.2 \
+    && rm -rf /usr/local/cargo/registry
+
+# Download and install cargo-deny
+# Using binary release for faster installation
+RUN wget -q https://github.com/EmbarkStudios/cargo-deny/releases/download/0.14.24/cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz && \
+    tar -xzf cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz && \
+    mv cargo-deny /usr/local/bin/ && \
+    rm cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz && \
+    chmod +x /usr/local/bin/cargo-deny
+
+# Install rustfmt and clippy components
+RUN rustup component add rustfmt clippy
+
+# Verify installations
+RUN cargo --version && \
+    rustc --version && \
+    cargo audit --version && \
+    cargo tarpaulin --version && \
+    cargo deny --version && \
+    cargo fmt --version && \
+    cargo clippy --version
+
+# Set working directory
+WORKDIR /workspace
+
+# Set environment variables for CI optimization
+ENV CARGO_TERM_COLOR=always
+ENV RUST_BACKTRACE=1
+ENV CARGO_INCREMENTAL=0
+ENV CARGO_NET_RETRY=10
+
+# Add helpful message
+RUN echo "Rust CI image ready with cargo-audit, cargo-deny, and cargo-tarpaulin pre-installed"
