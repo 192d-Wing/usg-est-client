@@ -415,12 +415,38 @@ impl EnrollmentService {
     async fn check_certificates(&self) -> Result<()> {
         tracing::debug!("Checking certificates for enrollment/renewal");
 
-        // TODO: Load configuration
-        // TODO: Check existing certificates
-        // TODO: Perform enrollment if needed
-        // TODO: Schedule renewals
+        // Load configuration
+        let config = self.load_config()?;
+        tracing::info!("Loaded configuration from: {}",
+            config.server.url);
+
+        // Check if enrollment is needed
+        if crate::auto_enroll::needs_enrollment(&config).await? {
+            tracing::info!("Enrollment needed, starting enrollment process");
+            crate::auto_enroll::perform_enrollment(&config).await?;
+        } else if config.renewal.enabled {
+            // Check if renewal is needed
+            if crate::auto_enroll::check_renewal(&config).await? {
+                tracing::info!("Renewal needed, starting renewal process");
+                crate::auto_enroll::perform_renewal(&config).await?;
+            }
+        }
 
         Ok(())
+    }
+
+    /// Load the auto-enrollment configuration.
+    fn load_config(&self) -> Result<crate::auto_enroll::AutoEnrollConfig> {
+        use crate::auto_enroll::ConfigLoader;
+
+        let mut loader = ConfigLoader::new();
+
+        // If a config path was provided, use it
+        if let Some(ref path) = self.config.config_path {
+            loader = loader.with_path(path);
+        }
+
+        loader.load()
     }
 
     /// Perform graceful shutdown.

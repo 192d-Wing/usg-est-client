@@ -58,9 +58,11 @@
 //! ```
 
 mod config;
+mod enrollment;
 mod expand;
 mod loader;
 
 pub use config::*;
+pub use enrollment::{check_renewal, needs_enrollment, perform_enrollment, perform_renewal};
 pub use expand::expand_variables;
 pub use loader::{ConfigLoader, write_default_config};
