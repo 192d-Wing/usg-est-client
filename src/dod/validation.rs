@@ -24,6 +24,8 @@
 //!
 //! # Example
 //!
+//! ## Basic Validation (Sync)
+//!
 //! ```no_run
 //! use usg_est_client::dod::validation::{DodChainValidator, ValidationOptions};
 //! # use x509_cert::Certificate;
@@ -38,6 +40,36 @@
 //! # }
 //! ```
 //!
+//! ## Validation with Revocation Checking (Async)
+//!
+//! ```no_run
+//! # #[cfg(feature = "revocation")]
+//! use usg_est_client::dod::validation::{DodChainValidator, ValidationOptions};
+//! # #[cfg(feature = "revocation")]
+//! use usg_est_client::revocation::{RevocationChecker, RevocationConfig};
+//! # use x509_cert::Certificate;
+//!
+//! # #[cfg(feature = "revocation")]
+//! # async fn example(cert: &Certificate) -> Result<(), Box<dyn std::error::Error>> {
+//! // Create validator with revocation checking enabled
+//! let options = ValidationOptions::builder()
+//!     .check_revocation(true)
+//!     .build();
+//! let validator = DodChainValidator::with_options(options)?;
+//!
+//! // Create revocation checker
+//! let revocation_config = RevocationConfig::builder()
+//!     .enable_crl(true)
+//!     .build()?;
+//! let revocation_checker = RevocationChecker::new(revocation_config);
+//!
+//! // Validate with revocation checking (async)
+//! validator.validate_async(cert, &[], Some(&revocation_checker)).await?;
+//! println!("Certificate is valid and not revoked");
+//! # Ok(())
+//! # }
+//! ```
+//!
 //! # References
 //!
 //! - [RFC 5280](https://tools.ietf.org/html/rfc5280) - X.509 PKI Certificate Validation
@@ -46,7 +78,11 @@
 use crate::dod::policies::{extract_dod_policies, DodCertificatePolicy};
 use crate::dod::roots::{load_dod_root_cas, DodRootCa};
 use crate::error::{EstError, Result};
+use tracing::{debug, warn};
 use x509_cert::Certificate;
+
+#[cfg(feature = "revocation")]
+use crate::revocation::{RevocationChecker, RevocationStatus};
 
 /// Validation options for DoD certificate chain validation
 #[derive(Debug, Clone)]
@@ -282,6 +318,92 @@ impl DodChainValidator {
         Ok(result)
     }
 
+    /// Validate a certificate chains to a DoD Root CA (async version with revocation checking)
+    ///
+    /// # Arguments
+    ///
+    /// * `cert` - The end-entity certificate to validate
+    /// * `intermediates` - Intermediate certificates in the chain
+    /// * `revocation_checker` - Optional revocation checker for CRL/OCSP validation
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(ValidationResult)` if validation succeeds, or an error
+    /// describing why validation failed.
+    ///
+    /// # Note
+    ///
+    /// This is the async version that supports revocation checking when enabled.
+    /// Use this method when you have async context and need revocation validation.
+    #[cfg(feature = "revocation")]
+    pub async fn validate_async(
+        &self,
+        cert: &Certificate,
+        intermediates: &[Certificate],
+        revocation_checker: Option<&RevocationChecker>,
+    ) -> Result<ValidationResult> {
+        let mut result = ValidationResult {
+            valid: false,
+            chain: Vec::new(),
+            root_ca: None,
+            policies: Vec::new(),
+            warnings: Vec::new(),
+        };
+
+        // Step 1: Build certificate chain
+        let chain = self.build_chain(cert, intermediates)?;
+        result.chain = chain.clone();
+
+        // Step 2: Validate chain to root
+        let root_name = self.validate_to_root(&chain)?;
+        result.root_ca = Some(root_name);
+
+        // Step 3: Check validity periods
+        if !self.options.allow_expired {
+            self.check_validity_periods(&chain)?;
+        } else {
+            result
+                .warnings
+                .push("Certificate validity period not checked".to_string());
+        }
+
+        // Step 4: Extract and validate policies
+        let policies = extract_dod_policies(cert);
+        result.policies = policies.clone();
+
+        // Check minimum assurance level
+        let max_level = policies
+            .iter()
+            .map(|p| p.assurance_level())
+            .max()
+            .unwrap_or(0);
+
+        if max_level < self.options.min_assurance_level {
+            return Err(EstError::CertificateValidation(format!(
+                "Certificate assurance level {} is below minimum {}",
+                max_level, self.options.min_assurance_level
+            )));
+        }
+
+        // Check required policies
+        for required in &self.options.required_policies {
+            if !policies.contains(required) {
+                return Err(EstError::CertificateValidation(format!(
+                    "Certificate missing required policy: {}",
+                    required
+                )));
+            }
+        }
+
+        // Step 5: Check revocation (if enabled)
+        if self.options.check_revocation {
+            self.check_revocation_async(&chain, revocation_checker).await?;
+        }
+
+        result.valid = true;
+        Ok(result)
+    }
+
     /// Build certificate chain from leaf to root
     fn build_chain(
         &self,
@@ -389,17 +511,80 @@ impl DodChainValidator {
         Ok(())
     }
 
-    /// Check revocation status for certificates in chain
-    fn check_revocation(&self, chain: &[Certificate]) -> Result<()> {
-        // Note: This requires the revocation feature and network access
-        for cert in chain {
-            // Skip root CA (no CRL/OCSP for self-signed)
+    /// Check revocation status for certificates in chain (sync version - limited)
+    ///
+    /// Note: The sync version cannot perform actual CRL/OCSP checks (which are async).
+    /// Use `validate_async()` with a RevocationChecker for proper revocation validation.
+    /// This method returns an error if revocation checking is requested in sync context.
+    fn check_revocation(&self, _chain: &[Certificate]) -> Result<()> {
+        #[cfg(feature = "revocation")]
+        {
+            return Err(EstError::operational(
+                "Revocation checking requires async context. Use validate_async() instead of validate()"
+            ));
+        }
+
+        #[cfg(not(feature = "revocation"))]
+        {
+            return Err(EstError::operational(
+                "Revocation checking requires the 'revocation' feature to be enabled"
+            ));
+        }
+    }
+
+    /// Check revocation status for certificates in chain (async version)
+    ///
+    /// Validates each non-root certificate in the chain using CRL and/or OCSP.
+    /// Requires a RevocationChecker instance for performing the checks.
+    #[cfg(feature = "revocation")]
+    async fn check_revocation_async(
+        &self,
+        chain: &[Certificate],
+        revocation_checker: Option<&RevocationChecker>,
+    ) -> Result<()> {
+        let checker = revocation_checker.ok_or_else(|| {
+            EstError::operational(
+                "Revocation checking is enabled but no RevocationChecker provided"
+            )
+        })?;
+
+        // Check each certificate in chain (except root)
+        for i in 0..chain.len() - 1 {
+            let cert = &chain[i];
+            let issuer = &chain[i + 1];
+
+            // Skip self-signed certificates (roots)
             if is_self_signed(cert) {
                 continue;
             }
 
-            // TODO: Implement CRL/OCSP checking when revocation feature is available
-            let _ = cert;
+            debug!("Checking revocation for certificate in chain at position {}", i);
+
+            // Perform revocation check
+            let result = checker.check_revocation(cert, issuer).await?;
+
+            // Check the status
+            match result.status {
+                RevocationStatus::Revoked => {
+                    return Err(EstError::CertificateValidation(format!(
+                        "Certificate at position {} in chain is revoked", i
+                    )));
+                }
+                RevocationStatus::Valid => {
+                    debug!("Certificate at position {} passed revocation check", i);
+                }
+                RevocationStatus::Unknown => {
+                    // Log warnings but don't fail validation
+                    warn!("Could not determine revocation status for certificate at position {}", i);
+                    if !result.errors.is_empty() {
+                        warn!("Revocation check errors: {:?}", result.errors);
+                    }
+
+                    // For DoD PKI, we might want to be strict about this
+                    // For now, log but continue (soft-fail mode)
+                    // TODO: Make this configurable via ValidationOptions
+                }
+            }
         }
 
         Ok(())
