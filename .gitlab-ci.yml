@@ -1,0 +1,417 @@
+# GitLab CI/CD configuration for USG EST Client
+# Migrated from GitHub Actions workflows
+
+# Define stages
+stages:
+  - test
+  - lint
+  - security
+  - docs
+  - coverage
+
+# Global variables
+variables:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  CARGO_HOME: "${CI_PROJECT_DIR}/.cargo"
+
+# Cache configuration for Rust builds
+.cargo_cache: &cargo_cache
+  cache:
+    key:
+      files:
+        - Cargo.lock
+    paths:
+      - .cargo/registry
+      - .cargo/git
+      - target/
+
+# Rust installation template
+.rust_setup: &rust_setup
+  before_script:
+    - apt-get update && apt-get install -y curl build-essential pkg-config libssl-dev
+    - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+    - source $HOME/.cargo/env
+    - rustc --version
+    - cargo --version
+
+# ============================================================================
+# Test Jobs (CI)
+# ============================================================================
+
+test:stable:linux:
+  stage: test
+  image: rust:latest
+  <<: *cargo_cache
+  script:
+    - cargo test --verbose
+    - cargo test --all-features --verbose
+    - cargo test --no-default-features --verbose
+  only:
+    - main
+    - merge_requests
+
+test:stable:macos:
+  stage: test
+  tags:
+    - macos
+  <<: *cargo_cache
+  script:
+    - cargo test --verbose
+    - cargo test --all-features --verbose
+    - cargo test --no-default-features --verbose
+  only:
+    - main
+    - merge_requests
+  allow_failure: true  # Optional if macOS runners not available
+
+test:stable:windows:
+  stage: test
+  tags:
+    - windows
+  <<: *cargo_cache
+  script:
+    - cargo test --verbose
+    - cargo test --all-features --verbose
+    - cargo test --no-default-features --verbose
+  only:
+    - main
+    - merge_requests
+  allow_failure: true  # Optional if Windows runners not available
+
+test:beta:
+  stage: test
+  image: rust:latest
+  <<: *cargo_cache
+  before_script:
+    - rustup default beta
+  script:
+    - cargo test --verbose
+    - cargo test --all-features --verbose
+  only:
+    - main
+    - merge_requests
+  allow_failure: true
+
+test:msrv:
+  stage: test
+  image: rust:1.92.0
+  <<: *cargo_cache
+  script:
+    - cargo test --verbose
+    - cargo test --all-features --verbose
+  only:
+    - main
+    - merge_requests
+
+# Feature-specific tests
+test:features:csr-gen:
+  stage: test
+  image: rust:latest
+  <<: *cargo_cache
+  script:
+    - cargo test --features csr-gen --verbose
+  only:
+    - main
+    - merge_requests
+
+test:features:hsm:
+  stage: test
+  image: rust:latest
+  <<: *cargo_cache
+  script:
+    - cargo test --features hsm --verbose
+  only:
+    - main
+    - merge_requests
+
+test:features:renewal:
+  stage: test
+  image: rust:latest
+  <<: *cargo_cache
+  script:
+    - cargo test --features renewal --verbose
+  only:
+    - main
+    - merge_requests
+
+test:features:validation:
+  stage: test
+  image: rust:latest
+  <<: *cargo_cache
+  script:
+    - cargo test --features validation --verbose
+  only:
+    - main
+    - merge_requests
+
+test:features:metrics:
+  stage: test
+  image: rust:latest
+  <<: *cargo_cache
+  script:
+    - cargo test --features metrics --verbose
+  only:
+    - main
+    - merge_requests
+
+test:features:revocation:
+  stage: test
+  image: rust:latest
+  <<: *cargo_cache
+  script:
+    - cargo test --features revocation --verbose
+  only:
+    - main
+    - merge_requests
+
+test:features:enveloped:
+  stage: test
+  image: rust:latest
+  <<: *cargo_cache
+  script:
+    - cargo test --features enveloped --verbose
+  only:
+    - main
+    - merge_requests
+
+test:features:combined:
+  stage: test
+  image: rust:latest
+  <<: *cargo_cache
+  script:
+    - cargo test --features "hsm,csr-gen" --verbose
+  only:
+    - main
+    - merge_requests
+
+# ============================================================================
+# Lint Jobs
+# ============================================================================
+
+clippy:default:
+  stage: lint
+  image: rust:latest
+  <<: *cargo_cache
+  before_script:
+    - rustup component add clippy
+  script:
+    - cargo clippy -- -D warnings
+  only:
+    - main
+    - merge_requests
+
+clippy:all-features:
+  stage: lint
+  image: rust:latest
+  <<: *cargo_cache
+  before_script:
+    - rustup component add clippy
+  script:
+    - cargo clippy --all-features -- -D warnings
+  only:
+    - main
+    - merge_requests
+
+rustfmt:
+  stage: lint
+  image: rust:latest
+  before_script:
+    - rustup component add rustfmt
+  script:
+    - cargo fmt --all -- --check
+  only:
+    - main
+    - merge_requests
+
+docs:
+  stage: lint
+  image: rust:latest
+  <<: *cargo_cache
+  script:
+    - cargo doc --all-features --no-deps
+  variables:
+    RUSTDOCFLAGS: "-D warnings"
+  only:
+    - main
+    - merge_requests
+
+# ============================================================================
+# Security Jobs
+# ============================================================================
+
+security:cargo-audit:
+  stage: security
+  image: rust:latest
+  script:
+    - cargo install cargo-audit --locked
+    - cargo audit --json | tee audit-report.json
+  artifacts:
+    name: "security-audit-report-$CI_COMMIT_REF_NAME"
+    paths:
+      - audit-report.json
+    expire_in: 30 days
+    when: always
+  only:
+    - main
+    - merge_requests
+    - schedules
+
+security:cargo-deny:advisories:
+  stage: security
+  image: rust:latest
+  before_script:
+    - apt-get update && apt-get install -y wget
+    - wget https://github.com/EmbarkStudios/cargo-deny/releases/download/0.14.24/cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz
+    - tar -xzf cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz
+    - mv cargo-deny /usr/local/bin/
+  script:
+    - cargo deny check advisories
+  only:
+    - main
+    - merge_requests
+
+security:cargo-deny:licenses:
+  stage: security
+  image: rust:latest
+  before_script:
+    - apt-get update && apt-get install -y wget
+    - wget https://github.com/EmbarkStudios/cargo-deny/releases/download/0.14.24/cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz
+    - tar -xzf cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz
+    - mv cargo-deny /usr/local/bin/
+  script:
+    - cargo deny check licenses
+  only:
+    - main
+    - merge_requests
+
+security:cargo-deny:bans:
+  stage: security
+  image: rust:latest
+  before_script:
+    - apt-get update && apt-get install -y wget
+    - wget https://github.com/EmbarkStudios/cargo-deny/releases/download/0.14.24/cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz
+    - tar -xzf cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz
+    - mv cargo-deny /usr/local/bin/
+  script:
+    - cargo deny check bans
+  only:
+    - main
+    - merge_requests
+
+security:cargo-deny:sources:
+  stage: security
+  image: rust:latest
+  before_script:
+    - apt-get update && apt-get install -y wget
+    - wget https://github.com/EmbarkStudios/cargo-deny/releases/download/0.14.24/cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz
+    - tar -xzf cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz
+    - mv cargo-deny /usr/local/bin/
+  script:
+    - cargo deny check sources
+  only:
+    - main
+    - merge_requests
+
+security:clippy:
+  stage: security
+  image: rust:latest
+  <<: *cargo_cache
+  before_script:
+    - rustup component add clippy
+  script:
+    - |
+      cargo clippy --all-targets --all-features -- \
+        -D warnings \
+        -W clippy::unwrap_used \
+        -W clippy::expect_used \
+        -W clippy::panic \
+        -W clippy::todo \
+        -W clippy::unimplemented \
+        -W clippy::unreachable
+  only:
+    - main
+    - merge_requests
+
+security:test-features:
+  stage: security
+  image: rust:latest
+  <<: *cargo_cache
+  script:
+    - cargo test --all-features
+    - cargo test --features validation
+    - cargo check --features fips
+    - cargo check --features dod
+  only:
+    - main
+    - merge_requests
+
+# ============================================================================
+# Coverage Job
+# ============================================================================
+
+coverage:tarpaulin:
+  stage: coverage
+  image: rust:latest
+  <<: *cargo_cache
+  script:
+    - cargo install cargo-tarpaulin
+    - cargo tarpaulin --all-features --out Xml --output-dir coverage
+  artifacts:
+    name: "coverage-report-$CI_COMMIT_REF_NAME"
+    paths:
+      - coverage/
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cobertura.xml
+    expire_in: 30 days
+  only:
+    - main
+    - merge_requests
+
+# ============================================================================
+# Documentation Build (GitLab Pages)
+# ============================================================================
+
+pages:
+  stage: docs
+  image: python:3.14
+  before_script:
+    - pip install uv
+  script:
+    - cd docs
+    - uv sync
+    - uv run zensical build --clean
+    - mv site ../public
+  artifacts:
+    paths:
+      - public
+  only:
+    - main
+  rules:
+    - changes:
+        - docs/**/*
+        - .gitlab-ci.yml
+
+# ============================================================================
+# Scheduled Jobs
+# ============================================================================
+
+# Daily security audit (configure in GitLab: CI/CD > Schedules)
+# Set schedule to run at 00:00 UTC daily with variable: SCHEDULED_JOB=security
+security:scheduled:
+  stage: security
+  image: rust:latest
+  script:
+    - cargo install cargo-audit --locked
+    - cargo audit --json | tee audit-report-scheduled.json
+  artifacts:
+    name: "security-audit-scheduled-$CI_COMMIT_REF_NAME-$CI_PIPELINE_ID"
+    paths:
+      - audit-report-scheduled.json
+    expire_in: 90 days
+  only:
+    - schedules
+  rules:
+    - if: '$SCHEDULED_JOB == "security"'

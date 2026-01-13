@@ -150,33 +150,64 @@ cargo +nightly fuzz run fuzz_parse_pem_certificates -- \
   -jobs=8
 ```
 
-## GitHub Actions Security Workflow
+## CI/CD Security Automation
 
-Automated security checks run on every commit and PR.
+Automated security checks run on every commit and PR/MR.
 
-### Workflow Jobs
+### GitHub Actions
 
+Configuration: [.github/workflows/security-audit.yml](.github/workflows/security-audit.yml)
+
+**Workflow Jobs:**
 1. **cargo-audit** - Daily vulnerability scanning
 2. **cargo-deny** - Policy enforcement on all commits
 3. **clippy-security** - Security-focused linting
 4. **dependency-review** - PR dependency change review
 5. **test-security-features** - Test all security features
 
-### Viewing Results
-
+**Viewing Results:**
 - Go to **Actions** tab in GitHub
 - Select **Security Audit** workflow
 - View job results and logs
 - Download artifacts (audit reports)
 
-### Triggering Manual Scans
-
+**Triggering Manual Scans:**
 ```bash
 # Via GitHub CLI
 gh workflow run security-audit.yml
 
 # Or via GitHub UI: Actions → Security Audit → Run workflow
 ```
+
+### GitLab CI/CD
+
+Configuration: [.gitlab-ci.yml](.gitlab-ci.yml) | Documentation: [GITLAB-CI.md](GITLAB-CI.md)
+
+**Pipeline Jobs:**
+1. **security:cargo-audit** - Vulnerability scanning with RustSec
+2. **security:cargo-deny:advisories** - Security advisory policy
+3. **security:cargo-deny:licenses** - License compliance policy
+4. **security:cargo-deny:bans** - Banned dependency policy
+5. **security:cargo-deny:sources** - Source registry policy
+6. **security:clippy** - Security-focused linting
+7. **security:test-features** - Test all security features
+8. **security:scheduled** - Daily automated security audit
+
+**Viewing Results:**
+- Go to **CI/CD > Pipelines** in GitLab
+- Click pipeline ID
+- Click job name to view logs
+- Download artifacts from job page
+
+**Triggering Manual Scans:**
+- GitLab UI: **CI/CD > Pipelines > Run pipeline**
+- Or configure scheduled pipeline: **CI/CD > Schedules**
+
+**Setting Up Daily Security Audits:**
+1. Navigate to **CI/CD > Schedules**
+2. Create new schedule: `0 0 * * *` (daily at midnight UTC)
+3. Set variable: `SCHEDULED_JOB=security`
+4. Target branch: `main`
 
 ## Clippy Security Lints
 
