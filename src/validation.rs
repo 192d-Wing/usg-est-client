@@ -470,6 +470,9 @@ impl CertificateValidator {
 
     /// Check basic constraints extension.
     fn check_basic_constraints(&self, cert: &Certificate) -> Result<()> {
+        use der::Decode;
+        use x509_cert::ext::pkix::BasicConstraints;
+
         // Look for basic constraints extension
         if let Some(extensions) = &cert.tbs_certificate.extensions {
             for ext in extensions.iter() {
@@ -477,16 +480,46 @@ impl CertificateValidator {
                 let basic_constraints_oid = const_oid::db::rfc5280::ID_CE_BASIC_CONSTRAINTS;
 
                 if ext.extn_id == basic_constraints_oid {
-                    // Certificate has basic constraints
-                    // TODO: Parse and verify cA flag is true
-                    debug!("Found basic constraints extension");
-                    return Ok(());
+                    // Parse the Basic Constraints extension
+                    match BasicConstraints::from_der(ext.extn_value.as_bytes()) {
+                        Ok(bc) => {
+                            // Verify cA flag is true for CA certificates
+                            if !bc.ca {
+                                return Err(EstError::operational(
+                                    "CA certificate has cA flag set to FALSE in Basic Constraints"
+                                ));
+                            }
+
+                            // Check pathLenConstraint if present
+                            if let Some(path_len) = bc.path_len_constraint {
+                                debug!(
+                                    "CA certificate has path length constraint: {}",
+                                    path_len
+                                );
+                                // Note: Path length validation should be enforced during
+                                // chain building, not just at this check point
+                            }
+
+                            debug!("CA certificate has valid Basic Constraints (cA=TRUE)");
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            return Err(EstError::operational(format!(
+                                "Failed to parse Basic Constraints extension: {}",
+                                e
+                            )));
+                        }
+                    }
                 }
             }
         }
 
-        warn!("CA certificate missing basic constraints extension");
-        Ok(())
+        // RFC 5280 Section 4.2.1.9: Basic Constraints extension MUST appear
+        // in all CA certificates
+        warn!("CA certificate missing Basic Constraints extension");
+        Err(EstError::operational(
+            "CA certificate missing required Basic Constraints extension"
+        ))
     }
 
     /// Verify certificate signature.
@@ -1219,13 +1252,22 @@ pub fn get_subject_cn(cert: &Certificate) -> Option<String> {
 }
 
 /// Helper function to check if a certificate is a CA certificate.
+///
+/// Parses the Basic Constraints extension and checks if the cA flag is TRUE.
 pub fn is_ca_certificate(cert: &Certificate) -> bool {
+    use der::Decode;
+    use x509_cert::ext::pkix::BasicConstraints;
+
     if let Some(extensions) = &cert.tbs_certificate.extensions {
         for ext in extensions.iter() {
             let basic_constraints_oid = const_oid::db::rfc5280::ID_CE_BASIC_CONSTRAINTS;
             if ext.extn_id == basic_constraints_oid {
-                // TODO: Parse basic constraints and check cA flag
-                return true;
+                // Parse Basic Constraints and check cA flag
+                if let Ok(bc) = BasicConstraints::from_der(ext.extn_value.as_bytes()) {
+                    return bc.ca;
+                }
+                // If parsing fails, assume not a CA
+                return false;
             }
         }
     }
