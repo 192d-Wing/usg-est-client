@@ -86,11 +86,12 @@ Policy configuration is in `deny.toml`:
 
 ### Known Exceptions
 
-The following advisories are explicitly allowed in `deny.toml`:
+The following advisories are explicitly allowed in [deny.toml](deny.toml):
 
-- **RUSTSEC-2024-0436** (paste crate unmaintained)
-  - Justification: Low risk compile-time proc-macro, transitive via cryptoki
-  - Action: Monitoring for cryptoki updates
+- **RUSTSEC-2023-0071** (RSA crate timing sidechannel - Marvin Attack)
+  - Justification: Limited risk - used only for signature verification, not decryption operations
+  - Context: Requires network-observable timing measurements, mitigated by signature-only use case
+  - Action: Monitoring for constant-time implementation updates from RustCrypto
 
 ## Fuzzing
 
