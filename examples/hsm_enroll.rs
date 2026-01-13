@@ -43,7 +43,7 @@ use std::env;
 #[cfg(all(feature = "hsm", feature = "csr-gen"))]
 use usg_est_client::hsm::{KeyAlgorithm, KeyProvider, SoftwareKeyProvider};
 #[cfg(all(feature = "hsm", feature = "csr-gen"))]
-use usg_est_client::{EnrollmentResponse, EstClient, EstClientConfig, csr::CsrBuilder};
+use usg_est_client::{EnrollmentResponse, EstClient, EstClientConfig, csr::HsmCsrBuilder};
 
 #[tokio::main]
 async fn main() {
@@ -179,29 +179,33 @@ fn demonstrate_enrollment_pattern() {
     println!("      Some(\"device-key\")");
     println!("  ).await?;");
     println!();
-    println!("  // 3. Get public key for CSR");
-    println!("  let public_key_der = hsm.public_key(&key_handle).await?;");
-    println!();
-    println!("  // 4. Create CSR with HSM public key");
-    println!("  // Note: Current CsrBuilder generates its own keys");
-    println!("  // TODO: Add HSM-backed CSR generation");
-    println!("  let (csr_der, _) = CsrBuilder::new()");
+    println!("  // 3. Create CSR with HSM-backed key");
+    println!("  let csr_der = HsmCsrBuilder::new()");
     println!("      .common_name(\"device.example.com\")");
-    println!("      // .with_key_provider(&hsm, &key_handle) // Future API");
-    println!("      .build()?;");
+    println!("      .organization(\"Example Corp\")");
+    println!("      .san_dns(\"device.example.com\")");
+    println!("      .key_usage_digital_signature()");
+    println!("      .key_usage_key_agreement()");
+    println!("      .build_with_provider(&hsm, &key_handle)");
+    println!("      .await?;");
     println!();
-    println!("  // 5. Enroll with EST server");
+    println!("  // 4. Enroll with EST server");
     println!("  let response = client.simple_enroll(&csr_der).await?;");
     println!();
-    println!("  // 6. Store certificate (private key stays in HSM)");
+    println!("  // 5. Store certificate (private key stays in HSM)");
     println!("  match response {{");
     println!("      EnrollmentResponse::Issued {{ certificate }} => {{");
+    println!("          // Certificate is issued, associate with HSM key");
     println!("          save_certificate(&certificate)?;");
     println!("      }}");
     println!("      _ => {{ /* handle pending */ }}");
     println!("  }}");
     println!();
-    println!("Note: HSM-backed CSR generation is planned for future release");
+    println!("Benefits:");
+    println!("  • Private key never leaves the HSM");
+    println!("  • CSR signed using HSM sign() operation");
+    println!("  • Supports P-256, P-384, and RSA keys");
+    println!("  • Works with any KeyProvider implementation");
     println!();
 }
 
@@ -267,21 +271,21 @@ async fn perform_live_enrollment(server_url: &str) {
     println!("✓ Public key retrieved");
     println!();
 
-    // Generate CSR
-    // Note: Current implementation generates its own key pair
-    // In future, this will use the HSM key
-    println!("Generating CSR...");
-    println!("  (Note: Using temporary key pair - HSM integration pending)");
+    // Generate CSR using HSM-backed key
+    println!("Generating CSR with HSM-backed key...");
 
-    let (csr_der, _key) = match CsrBuilder::new()
+    let csr_der = match HsmCsrBuilder::new()
         .common_name("hsm-device.example.com")
         .organization("Example Corp")
         .organizational_unit("HSM Test")
+        .san_dns("hsm-device.example.com")
         .key_usage_digital_signature()
-        .key_usage_key_encipherment()
-        .build()
+        .key_usage_key_agreement()
+        .extended_key_usage_client_auth()
+        .build_with_provider(&hsm, &key_handle)
+        .await
     {
-        Ok(result) => result,
+        Ok(csr) => csr,
         Err(e) => {
             eprintln!("Failed to generate CSR: {}", e);
             return;
@@ -289,6 +293,7 @@ async fn perform_live_enrollment(server_url: &str) {
     };
 
     println!("✓ CSR generated: {} bytes", csr_der.len());
+    println!("  ✓ Signed using HSM key (private key never left HSM)");
     println!();
 
     // Perform enrollment

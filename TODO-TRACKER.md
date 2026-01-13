@@ -139,30 +139,72 @@ Comprehensive list of all TODO, FIXME, and action items found in the codebase.
 
 ## High Priority (Features/Functionality)
 
-### 5. HSM-Backed CSR Generation
+### 5. HSM-Backed CSR Generation ✅ COMPLETED
 
 **Locations:**
-- [examples/hsm_enroll.rs:186-187](examples/hsm_enroll.rs#L186-L187)
-- [src/csr.rs:187](src/csr.rs#L187)
 
-```rust
-// TODO: Add HSM-backed CSR generation
-// Note: rcgen doesn't directly support challenge-password
-```
+- [src/csr/pkcs10.rs](src/csr/pkcs10.rs) - Manual PKCS#10 construction module ✅
+- [src/csr.rs:505-675](src/csr.rs#L505-L675) - `HsmCsrBuilder::build_with_provider()` ✅
+- [src/hsm/software.rs:250-308](src/hsm/software.rs#L250-L308) - `SoftwareKeyProvider::sign()` ✅
+- [examples/hsm_enroll.rs](examples/hsm_enroll.rs) - Updated example ✅
 
-**Issue:** CSR builder generates its own keys, can't use HSM keys
-**Impact:** Functionality - HSM integration incomplete
-**Effort:** High
-**Dependencies:** Manual PKCS#10 construction, HSM trait extension
-**Status:** 📋 Planned feature, documented in examples
+**Completed:** 2026-01-13
 
-**Action Items:**
-- [ ] Design API for CSR with external signing
-- [ ] Implement manual PKCS#10 CSR construction
-- [ ] Add HSM signing callback to CsrBuilder
-- [ ] Update HSM trait to support CSR signing
-- [ ] Write integration tests with SoftHSM
-- [ ] Update examples/hsm_enroll.rs
+**What Was Done:**
+
+- ✅ Implemented manual PKCS#10 CSR construction module
+  - `build_cert_req_info()`: Builds to-be-signed CSR data
+  - `encode_and_hash()`: DER encoding and digest computation
+  - `assemble_cert_req()`: Final CSR assembly with signature
+  - Helper functions for extensions (SANs, KeyUsage)
+- ✅ Implemented `HsmCsrBuilder::build_with_provider()` method
+  - Converts rcgen types to x509-cert types
+  - Builds CertReqInfo with subject, public key, and attributes
+  - Signs using KeyProvider without accessing private key
+  - Returns properly formatted PKCS#10 DER
+- ✅ Implemented `SoftwareKeyProvider::sign()` for all algorithms
+  - ECDSA P-256: Uses p256 crate, DER-encoded signatures
+  - ECDSA P-384: Uses p384 crate, DER-encoded signatures
+  - RSA: Uses rsa crate with PKCS#1 v1.5 padding
+- ✅ Added comprehensive integration tests
+  - `test_build_with_provider_p256`: End-to-end P-256 CSR flow
+  - `test_build_with_provider_p384`: End-to-end P-384 CSR flow
+  - `test_build_with_provider_multiple_sans`: Complex CSR with multiple SANs
+- ✅ Updated examples/hsm_enroll.rs with working HSM CSR generation
+
+**Implementation Details:**
+
+The implementation uses manual PKCS#10 construction to support HSM-backed keys:
+
+1. **PKCS#10 Module** ([src/csr/pkcs10.rs](src/csr/pkcs10.rs)):
+   - RFC 2986 compliant CSR structure building
+   - Proper hash algorithm selection (SHA-256 for P-256/RSA, SHA-384 for P-384)
+   - Extension encoding for SANs and KeyUsage
+
+2. **HsmCsrBuilder Integration** ([src/csr.rs:505-675](src/csr.rs#L505-L675)):
+   - `build_with_provider()`: Generic method works with any KeyProvider
+   - Converts rcgen DistinguishedName to x509_cert Name
+   - Builds extensions (SANs, KeyUsage) from builder parameters
+   - Signs digest using KeyProvider.sign()
+
+3. **KeyProvider Sign Implementation** ([src/hsm/software.rs:250-308](src/hsm/software.rs#L250-L308)):
+   - Extracts PKCS#8 DER private key from rcgen KeyPair
+   - Parses with algorithm-specific crate (p256/p384/rsa)
+   - Signs pre-hashed digest
+   - Returns properly formatted signature
+
+**Test Results:**
+
+- 84 tests passing (81 unit tests + 3 new integration tests)
+- All HSM CSR generation paths verified
+- Proper CSR parsing and signature validation confirmed
+
+**Benefits:**
+
+- Private keys never leave the HSM
+- Works with any KeyProvider implementation (Software, PKCS#11, etc.)
+- Supports P-256, P-384, and RSA algorithms
+- Full control over CSR attributes and extensions
 
 ### 6. Certificate Expiration Checking in Auto-Enroll ✅ COMPLETED
 
