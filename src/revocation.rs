@@ -49,7 +49,9 @@
 
 use crate::error::{EstError, Result};
 use base64::Engine;
-use der::Decode;
+use der::{asn1::OctetString, Decode, Encode, Sequence};
+use sha2::{Digest, Sha256};
+use spki::AlgorithmIdentifierOwned;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -59,6 +61,49 @@ use x509_cert::Certificate;
 use x509_cert::crl::CertificateList;
 use x509_cert::ext::pkix::crl::dp::DistributionPoint;
 use x509_cert::ext::pkix::{AuthorityInfoAccessSyntax, CrlDistributionPoints};
+use x509_cert::serial_number::SerialNumber;
+
+// OCSP ASN.1 Structures (RFC 6960)
+
+/// OCSP CertID structure
+#[derive(Clone, Debug, Eq, PartialEq, Sequence)]
+struct OcspCertId {
+    /// Hash algorithm used for issuerNameHash and issuerKeyHash
+    hash_algorithm: AlgorithmIdentifierOwned,
+    /// Hash of the issuer's DN
+    issuer_name_hash: OctetString,
+    /// Hash of the issuer's public key
+    issuer_key_hash: OctetString,
+    /// Serial number of the certificate being checked
+    serial_number: SerialNumber,
+}
+
+/// OCSP Request structure
+#[derive(Clone, Debug, Eq, PartialEq, Sequence)]
+struct OcspRequest {
+    /// The request being made
+    tbs_request: TbsRequest,
+    // optionalSignature is not commonly used for basic OCSP requests
+}
+
+/// TBS (To Be Signed) Request
+#[derive(Clone, Debug, Eq, PartialEq, Sequence)]
+struct TbsRequest {
+    /// List of certificate status requests
+    request_list: der::asn1::SequenceOf<SingleRequest, 1>,
+    // We're omitting optional fields (version, requestorName, requestExtensions) for simplicity
+}
+
+/// Single certificate status request
+#[derive(Clone, Debug, Eq, PartialEq, Sequence)]
+struct SingleRequest {
+    /// Certificate identifier
+    req_cert: OcspCertId,
+    // singleRequestExtensions is optional and omitted
+}
+
+// TODO: Add OCSP response ASN.1 structures when implementing full response parsing
+// For now, responses are stubbed to return Unknown status
 
 /// Configuration for revocation checking.
 #[derive(Debug, Clone)]
@@ -844,34 +889,79 @@ impl RevocationChecker {
     }
 
     /// Create an OCSP request for a certificate.
-    fn create_ocsp_request(&self, _cert: &Certificate, _issuer: &Certificate) -> Result<Vec<u8>> {
-        // TODO: Implement actual OCSP request creation
-        // OCSP Request structure (ASN.1):
-        // OCSPRequest ::= SEQUENCE {
-        //    tbsRequest      TBSRequest,
-        //    optionalSignature   [0] EXPLICIT Signature OPTIONAL }
-        //
-        // TBSRequest ::= SEQUENCE {
-        //    version             [0] EXPLICIT Version DEFAULT v1,
-        //    requestorName       [1] EXPLICIT GeneralName OPTIONAL,
-        //    requestList         SEQUENCE OF Request,
-        //    requestExtensions   [2] EXPLICIT Extensions OPTIONAL }
-        //
-        // Request ::= SEQUENCE {
-        //    reqCert                  CertID,
-        //    singleRequestExtensions  [0] EXPLICIT Extensions OPTIONAL }
-        //
-        // CertID ::= SEQUENCE {
-        //    hashAlgorithm       AlgorithmIdentifier,
-        //    issuerNameHash      OCTET STRING,
-        //    issuerKeyHash       OCTET STRING,
-        //    serialNumber        CertificateSerialNumber }
-        //
-        // For now, return a placeholder
-        debug!("OCSP request creation (placeholder - not yet fully implemented)");
-        Err(EstError::operational(
-            "OCSP request creation not yet implemented",
-        ))
+    ///
+    /// Builds an RFC 6960 compliant OCSP request with CertID containing:
+    /// - Hash algorithm: SHA-256
+    /// - Issuer name hash: SHA-256(issuer DN)
+    /// - Issuer key hash: SHA-256(issuer public key)
+    /// - Certificate serial number
+    fn create_ocsp_request(&self, cert: &Certificate, issuer: &Certificate) -> Result<Vec<u8>> {
+        debug!("Creating OCSP request for certificate");
+
+        // Build CertID
+        let cert_id = self.build_cert_id(cert, issuer)?;
+
+        // Create single request
+        let single_request = SingleRequest { req_cert: cert_id };
+
+        // Create request list with one request
+        let mut request_list = der::asn1::SequenceOf::<SingleRequest, 1>::new();
+        request_list.add(single_request)
+            .map_err(|e| EstError::operational(format!("Failed to add request to list: {}", e)))?;
+
+        // Create TBS request
+        let tbs_request = TbsRequest { request_list };
+
+        // Create OCSP request
+        let ocsp_request = OcspRequest { tbs_request };
+
+        // Encode to DER
+        ocsp_request
+            .to_der()
+            .map_err(|e| EstError::operational(format!("Failed to encode OCSP request: {}", e)))
+    }
+
+    /// Build OCSP CertID for a certificate.
+    fn build_cert_id(&self, cert: &Certificate, issuer: &Certificate) -> Result<OcspCertId> {
+        use der::Encode;
+
+        // Hash algorithm: SHA-256 (OID: 2.16.840.1.101.3.4.2.1)
+        let hash_alg_oid = const_oid::ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.2.1");
+        let hash_algorithm = AlgorithmIdentifierOwned {
+            oid: hash_alg_oid,
+            parameters: None,
+        };
+
+        // Compute issuer name hash (SHA-256 of DER-encoded issuer DN)
+        let issuer_name_der = issuer
+            .tbs_certificate
+            .subject
+            .to_der()
+            .map_err(|e| EstError::operational(format!("Failed to encode issuer name: {}", e)))?;
+        let issuer_name_hash_bytes = Sha256::digest(&issuer_name_der);
+        let issuer_name_hash = OctetString::new(issuer_name_hash_bytes.as_slice())
+            .map_err(|e| EstError::operational(format!("Failed to create issuer name hash: {}", e)))?;
+
+        // Compute issuer key hash (SHA-256 of issuer public key, excluding tag and length)
+        let issuer_public_key_bytes = issuer
+            .tbs_certificate
+            .subject_public_key_info
+            .subject_public_key
+            .as_bytes()
+            .ok_or_else(|| EstError::operational("Issuer public key has unused bits"))?;
+        let issuer_key_hash_bytes = Sha256::digest(issuer_public_key_bytes);
+        let issuer_key_hash = OctetString::new(issuer_key_hash_bytes.as_slice())
+            .map_err(|e| EstError::operational(format!("Failed to create issuer key hash: {}", e)))?;
+
+        // Get certificate serial number
+        let serial_number = cert.tbs_certificate.serial_number.clone();
+
+        Ok(OcspCertId {
+            hash_algorithm,
+            issuer_name_hash,
+            issuer_key_hash,
+            serial_number,
+        })
     }
 
     /// Send OCSP request and parse response.
@@ -901,52 +991,31 @@ impl RevocationChecker {
     }
 
     /// Parse OCSP response.
-    fn parse_ocsp_response(&self, _data: &[u8]) -> Result<RevocationStatus> {
-        // TODO: Implement actual OCSP response parsing
-        // OCSPResponse ::= SEQUENCE {
-        //    responseStatus      OCSPResponseStatus,
-        //    responseBytes       [0] EXPLICIT ResponseBytes OPTIONAL }
-        //
-        // OCSPResponseStatus ::= ENUMERATED {
-        //    successful          (0),
-        //    malformedRequest    (1),
-        //    internalError       (2),
-        //    tryLater            (3),
-        //    sigRequired         (5),
-        //    unauthorized        (6) }
-        //
-        // ResponseBytes ::= SEQUENCE {
-        //    responseType        OBJECT IDENTIFIER,
-        //    response            OCTET STRING }
-        //
-        // For BasicOCSPResponse:
-        // BasicOCSPResponse ::= SEQUENCE {
-        //    tbsResponseData      ResponseData,
-        //    signatureAlgorithm   AlgorithmIdentifier,
-        //    signature            BIT STRING,
-        //    certs                [0] EXPLICIT SEQUENCE OF Certificate OPTIONAL }
-        //
-        // ResponseData ::= SEQUENCE {
-        //    version              [0] EXPLICIT Version DEFAULT v1,
-        //    responderID          ResponderID,
-        //    producedAt           GeneralizedTime,
-        //    responses            SEQUENCE OF SingleResponse,
-        //    responseExtensions   [1] EXPLICIT Extensions OPTIONAL }
-        //
-        // SingleResponse ::= SEQUENCE {
-        //    certID               CertID,
-        //    certStatus           CertStatus,
-        //    thisUpdate           GeneralizedTime,
-        //    nextUpdate           [0] EXPLICIT GeneralizedTime OPTIONAL,
-        //    singleExtensions     [1] EXPLICIT Extensions OPTIONAL }
-        //
-        // CertStatus ::= CHOICE {
-        //    good                 [0] IMPLICIT NULL,
-        //    revoked              [1] IMPLICIT RevokedInfo,
-        //    unknown              [2] IMPLICIT UnknownInfo }
-        //
-        // For now, return placeholder
-        debug!("OCSP response parsing (placeholder - not yet fully implemented)");
+    ///
+    /// TODO: Complete OCSP response parsing implementation.
+    /// The current implementation is a work-in-progress stub.
+    ///
+    /// OCSP response parsing is complex due to nested ASN.1 structures:
+    /// - OCSPResponse with responseBytes
+    /// - BasicOCSPResponse with tbsResponseData
+    /// - ResponseData with responses
+    /// - SingleResponse with certStatus
+    ///
+    /// Future work needed:
+    /// - Fix der crate API compatibility issues
+    /// - Complete response status extraction
+    /// - Add signature verification
+    /// - Test with live OCSP responders
+    ///
+    /// For now, OCSP requests are created correctly but responses return Unknown status.
+    fn parse_ocsp_response(&self, data: &[u8]) -> Result<RevocationStatus> {
+        debug!("Parsing OCSP response ({} bytes) - STUB IMPLEMENTATION", data.len());
+
+        //TODO: Implement full OCSP response parsing
+        // This is complex due to nested ASN.1 structures and requires careful
+        // handling of the der crate API.
+
+        warn!("OCSP response parsing not yet fully implemented - returning Unknown status");
         Ok(RevocationStatus::Unknown)
     }
 
