@@ -21,7 +21,7 @@
 use std::sync::Arc;
 
 use rustls::ClientConfig;
-use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject};
 
 use crate::config::{ClientIdentity, EstClientConfig, TrustAnchors};
 use crate::error::{EstError, Result};
@@ -161,10 +161,9 @@ fn build_root_store(trust_anchors: &TrustAnchors) -> Result<rustls::RootCertStor
 
 /// Parse PEM-encoded certificates.
 pub fn parse_pem_certificates(pem_data: &[u8]) -> Result<Vec<CertificateDer<'static>>> {
-    let mut reader = std::io::BufReader::new(pem_data);
-    let certs: Vec<_> = rustls_pemfile::certs(&mut reader)
+    let certs = CertificateDer::pem_slice_iter(pem_data)
         .filter_map(|result| result.ok())
-        .collect();
+        .collect::<Vec<_>>();
 
     if certs.is_empty() {
         return Err(EstError::invalid_pem("No certificates found in PEM data"));
@@ -175,34 +174,9 @@ pub fn parse_pem_certificates(pem_data: &[u8]) -> Result<Vec<CertificateDer<'sta
 
 /// Parse a PEM-encoded private key.
 pub fn parse_pem_private_key(pem_data: &[u8]) -> Result<PrivateKeyDer<'static>> {
-    let mut reader = std::io::BufReader::new(pem_data);
-
-    // Try to read PKCS#8 keys first, then RSA, then EC
-    loop {
-        match rustls_pemfile::read_one(&mut reader) {
-            Ok(Some(rustls_pemfile::Item::Pkcs8Key(key))) => {
-                return Ok(PrivateKeyDer::Pkcs8(key));
-            }
-            Ok(Some(rustls_pemfile::Item::Pkcs1Key(key))) => {
-                return Ok(PrivateKeyDer::Pkcs1(key));
-            }
-            Ok(Some(rustls_pemfile::Item::Sec1Key(key))) => {
-                return Ok(PrivateKeyDer::Sec1(key));
-            }
-            Ok(Some(_)) => {
-                // Skip other PEM items (certificates, etc.)
-                continue;
-            }
-            Ok(None) => {
-                break;
-            }
-            Err(e) => {
-                return Err(EstError::invalid_pem(format!("Failed to parse PEM: {}", e)));
-            }
-        }
-    }
-
-    Err(EstError::invalid_pem("No private key found in PEM data"))
+    // Try to parse as PKCS#8, PKCS#1, or SEC1 format
+    PrivateKeyDer::from_pem_slice(pem_data)
+        .map_err(|e| EstError::invalid_pem(format!("Failed to parse private key PEM: {}", e)))
 }
 
 /// Parse client identity from PEM data.

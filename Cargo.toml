@@ -9,6 +9,7 @@ categories = ["cryptography", "network-programming"]
 repository = "https://github.com/johnwillman/usg-est-client"
 readme = "README.md"
 
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(ossl300)'] }
 
@@ -25,8 +26,7 @@ native-tls = { version = "0.2", optional = true }
 
 # TLS
 rustls = "0.23.35"
-rustls-pemfile = "2.2"
-rustls-pki-types = "1.13"
+rustls-pki-types = { version = "1.13", features = ["alloc"] }
 webpki-roots = "1.0"
 
 # Cryptography - RustCrypto ecosystem
