@@ -1,0 +1,90 @@
+# cargo-deny configuration for USG EST Client
+# https://embarkstudios.github.io/cargo-deny/
+
+[advisories]
+# The path where the advisory database is cloned/fetched into
+db-path = "~/.cargo/advisory-db"
+# The url(s) of the advisory databases to use
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# Lint level for security vulnerabilities
+vulnerability = "deny"
+# Lint level for unmaintained crates
+unmaintained = "warn"
+# Lint level for crates with security notices
+notice = "warn"
+# Lint level for yanked crates
+yanked = "deny"
+
+# Known acceptable advisories (with justification)
+ignore = [
+    # paste crate is unmaintained but low risk (compile-time proc-macro only)
+    # Transitive dependency via cryptoki 0.11.0 (latest version)
+    # Action: Monitor for cryptoki updates
+    { id = "RUSTSEC-2024-0436", reason = "Low risk: compile-time proc-macro, transitive via cryptoki" },
+]
+
+[licenses]
+# The lint level for crates which do not have a detectable license
+unlicensed = "deny"
+# Lint level for licenses considered copyleft
+copyleft = "warn"
+# We allow these licenses for use
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "OpenSSL",  # For openssl/openssl-sys (FIPS feature)
+]
+# Confidence threshold for license detection (0.0 - 1.0)
+confidence-threshold = 0.8
+
+# Some crates don't have their license files included, allow those
+[[licenses.clarify]]
+name = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [
+    { path = "LICENSE", hash = 0xbd0eed23 }
+]
+
+[bans]
+# Lint level for when multiple versions of the same crate are detected
+multiple-versions = "warn"
+# Lint level for when a crate version requirement is `*`
+wildcards = "warn"
+# The lint level for crates that are yanked from their source
+yanked = "deny"
+
+# List of crates that are allowed to have multiple versions
+# (This is a common issue with transitive dependencies)
+skip = [
+    # Common version skews
+    { name = "bitflags", allow-multiple-versions = true },
+    { name = "syn", allow-multiple-versions = true },
+]
+
+# Crates that are banned and should not be used
+deny = [
+    # Old OpenSSL versions with known vulnerabilities
+    { name = "openssl", wrappers = [], version = "<0.10" },
+    # Insecure crypto implementations
+    { name = "md5", wrappers = [] },
+    { name = "sha1", wrappers = [] },
+]
+
+[sources]
+# Lint level for what to happen when a crate from a crate registry that is not
+# in the allow list is encountered
+unknown-registry = "deny"
+# Lint level for what to happen when a crate from a git repository that is not
+# in the allow list is encountered
+unknown-git = "deny"
+
+# Allow crates from crates.io
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+
+# List of URLs for allowed Git repositories
+allow-git = []

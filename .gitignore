@@ -21,3 +21,12 @@ CLAUDE.md
 # Documentation site artifacts
 site/
 .venv/
+
+# Fuzzing artifacts
+fuzz/target/
+fuzz/corpus/
+fuzz/artifacts/
+
+# Security scan reports
+audit-report.json
+coverage/

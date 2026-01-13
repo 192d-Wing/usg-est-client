@@ -1,0 +1,4 @@
+# Fuzzing artifacts and corpus
+artifacts/
+corpus/
+target/

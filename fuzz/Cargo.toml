@@ -1,0 +1,42 @@
+[package]
+name = "usg-est-client-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.usg-est-client]
+path = ".."
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "fuzz_parse_pem_certificates"
+path = "fuzz_targets/fuzz_parse_pem_certificates.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_parse_pem_private_key"
+path = "fuzz_targets/fuzz_parse_pem_private_key.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_validate_csr"
+path = "fuzz_targets/fuzz_validate_csr.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_parse_pkcs7"
+path = "fuzz_targets/fuzz_parse_pkcs7.rs"
+test = false
+doc = false
