@@ -380,13 +380,23 @@ impl FileLogger {
 
         // Remove oldest file if it exists
         let oldest = format!("{}.{}", path.display(), self.config.max_files);
-        let _ = fs::remove_file(&oldest);
+        if let Err(e) = fs::remove_file(&oldest) {
+            // Ignore NotFound errors, log others
+            if e.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!("Failed to remove old log file {}: {}", oldest, e);
+            }
+        }
 
         // Shift existing files
         for i in (1..self.config.max_files).rev() {
             let from = format!("{}.{}", path.display(), i);
             let to = format!("{}.{}", path.display(), i + 1);
-            let _ = fs::rename(&from, &to);
+            if let Err(e) = fs::rename(&from, &to) {
+                // Ignore NotFound errors, log others
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    tracing::warn!("Failed to rotate log file {} to {}: {}", from, to, e);
+                }
+            }
         }
 
         // Rename current file to .1

@@ -593,6 +593,11 @@ impl DodChainValidator {
             )
         })?;
 
+        // Validate chain is not empty before loop
+        if chain.is_empty() {
+            return Err(EstError::operational("Empty certificate chain"));
+        }
+
         // Check each certificate in chain (except root)
         for i in 0..chain.len() - 1 {
             let cert = &chain[i];

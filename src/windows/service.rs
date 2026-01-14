@@ -552,7 +552,9 @@ fn run_service(_arguments: Vec<std::ffi::OsString>) -> Result<()> {
         wait_hint: Duration::ZERO,
         process_id: None,
     };
-    let _ = status_handle.set_service_status(status);
+    if let Err(e) = status_handle.set_service_status(status) {
+        tracing::error!("Failed to set service status to STOPPED: {}", e);
+    }
 
     Ok(())
 }

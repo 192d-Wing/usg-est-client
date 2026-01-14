@@ -277,7 +277,8 @@ fn extract_version(data: &[u8]) -> Result<u8> {
     let (_, rest) = skip_tlv_header(data)?;
 
     // First element should be INTEGER (version)
-    if !rest.is_empty() && rest[0] == 0x02 {
+    // Fixed: Check rest.len() >= 2 before accessing rest[1]
+    if rest.len() >= 2 && rest[0] == 0x02 {
         let len = rest[1] as usize;
         if rest.len() >= 2 + len && len > 0 {
             return Ok(rest[2]);
@@ -463,7 +464,8 @@ fn extract_algorithm_name(data: &[u8]) -> String {
     }
 
     // Check for common RSA key encryption OID
-    if content.len() >= 9
+    // Fixed: Need length >= 11 to safely access content[2..11]
+    if content.len() >= 11
         && content[2..11] == [0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01]
     {
         return "RSA".to_string();

@@ -200,6 +200,10 @@ impl CertificateValidator {
         debug!("Built certificate chain with {} certificates", chain.len());
 
         // Step 2: Verify chain length
+        if chain.is_empty() {
+            return Err(EstError::operational("Empty certificate chain"));
+        }
+
         if chain.len() > self.config.max_chain_length {
             errors.push(format!(
                 "Certificate chain too long ({} > {})",
