@@ -75,8 +75,8 @@
 //! - [RFC 5280](https://tools.ietf.org/html/rfc5280) - X.509 PKI Certificate Validation
 //! - [DoD PKI Interoperability](https://public.cyber.mil/pki-pke/)
 
-use crate::dod::policies::{extract_dod_policies, DodCertificatePolicy};
-use crate::dod::roots::{load_dod_root_cas, DodRootCa};
+use crate::dod::policies::{DodCertificatePolicy, extract_dod_policies};
+use crate::dod::roots::{DodRootCa, load_dod_root_cas};
 use crate::error::{EstError, Result};
 use tracing::{debug, warn};
 use x509_cert::Certificate;
@@ -397,7 +397,8 @@ impl DodChainValidator {
 
         // Step 5: Check revocation (if enabled)
         if self.options.check_revocation {
-            self.check_revocation_async(&chain, revocation_checker).await?;
+            self.check_revocation_async(&chain, revocation_checker)
+                .await?;
         }
 
         result.valid = true;
@@ -424,9 +425,9 @@ impl DodChainValidator {
 
             // Find issuer in intermediates
             let issuer_dn = &current.tbs_certificate.issuer;
-            let issuer = intermediates.iter().find(|c| {
-                &c.tbs_certificate.subject == issuer_dn
-            });
+            let issuer = intermediates
+                .iter()
+                .find(|c| &c.tbs_certificate.subject == issuer_dn);
 
             match issuer {
                 Some(issuer_cert) => {
@@ -435,9 +436,10 @@ impl DodChainValidator {
                 }
                 None => {
                     // Check if issuer is a root CA
-                    let root = self.root_cas.iter().find(|r| {
-                        &r.certificate.tbs_certificate.subject == issuer_dn
-                    });
+                    let root = self
+                        .root_cas
+                        .iter()
+                        .find(|r| &r.certificate.tbs_certificate.subject == issuer_dn);
 
                     if let Some(root_ca) = root {
                         chain.push(root_ca.certificate.clone());
@@ -515,8 +517,7 @@ impl DodChainValidator {
             if now < not_before {
                 return Err(EstError::CertificateValidation(format!(
                     "Certificate '{}' is not yet valid (not_before: {:?})",
-                    subject,
-                    validity.not_before
+                    subject, validity.not_before
                 )));
             }
 
@@ -524,8 +525,7 @@ impl DodChainValidator {
             if now > not_after {
                 return Err(EstError::CertificateValidation(format!(
                     "Certificate '{}' has expired (not_after: {:?})",
-                    subject,
-                    validity.not_after
+                    subject, validity.not_after
                 )));
             }
 
@@ -565,14 +565,14 @@ impl DodChainValidator {
         #[cfg(feature = "revocation")]
         {
             return Err(EstError::operational(
-                "Revocation checking requires async context. Use validate_async() instead of validate()"
+                "Revocation checking requires async context. Use validate_async() instead of validate()",
             ));
         }
 
         #[cfg(not(feature = "revocation"))]
         {
             return Err(EstError::operational(
-                "Revocation checking requires the 'revocation' feature to be enabled"
+                "Revocation checking requires the 'revocation' feature to be enabled",
             ));
         }
     }
@@ -589,7 +589,7 @@ impl DodChainValidator {
     ) -> Result<()> {
         let checker = revocation_checker.ok_or_else(|| {
             EstError::operational(
-                "Revocation checking is enabled but no RevocationChecker provided"
+                "Revocation checking is enabled but no RevocationChecker provided",
             )
         })?;
 
@@ -608,7 +608,10 @@ impl DodChainValidator {
                 continue;
             }
 
-            debug!("Checking revocation for certificate in chain at position {}", i);
+            debug!(
+                "Checking revocation for certificate in chain at position {}",
+                i
+            );
 
             // Perform revocation check
             let result = checker.check_revocation(cert, issuer).await?;
@@ -617,7 +620,8 @@ impl DodChainValidator {
             match result.status {
                 RevocationStatus::Revoked => {
                     return Err(EstError::CertificateValidation(format!(
-                        "Certificate at position {} in chain is revoked", i
+                        "Certificate at position {} in chain is revoked",
+                        i
                     )));
                 }
                 RevocationStatus::Valid => {
@@ -625,7 +629,10 @@ impl DodChainValidator {
                 }
                 RevocationStatus::Unknown => {
                     // Log warnings but don't fail validation
-                    warn!("Could not determine revocation status for certificate at position {}", i);
+                    warn!(
+                        "Could not determine revocation status for certificate at position {}",
+                        i
+                    );
                     if !result.errors.is_empty() {
                         warn!("Revocation check errors: {:?}", result.errors);
                     }

@@ -182,7 +182,9 @@ pub fn from_est_event(
         .with_attribute(attributes::SEV, (severity as u8).to_string());
 
     // Add timestamp
-    let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string();
+    let timestamp = chrono::Utc::now()
+        .format("%Y-%m-%d %H:%M:%S%.3f")
+        .to_string();
     event = event
         .with_attribute(attributes::DEV_TIME, timestamp)
         .with_attribute(attributes::DEV_TIME_FORMAT, "yyyy-MM-dd HH:mm:ss.SSS");
@@ -238,8 +240,7 @@ mod tests {
 
     #[test]
     fn test_leef_escape_tabs() {
-        let event = LeefEvent::new("TEST-001")
-            .with_attribute("msg", "Tab\there");
+        let event = LeefEvent::new("TEST-001").with_attribute("msg", "Tab\there");
 
         let leef = event.to_leef();
 
@@ -248,8 +249,7 @@ mod tests {
 
     #[test]
     fn test_leef_escape_newlines() {
-        let event = LeefEvent::new("TEST-002")
-            .with_attribute("msg", "Line 1\nLine 2\rLine 3");
+        let event = LeefEvent::new("TEST-002").with_attribute("msg", "Line 1\nLine 2\rLine 3");
 
         let leef = event.to_leef();
 

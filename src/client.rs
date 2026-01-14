@@ -305,10 +305,10 @@ impl EstClient {
         let certs = parse_certs_only(&body)?;
 
         // Fixed: Replace unwrap() with proper error handling to prevent panic
-        let cert = certs.into_iter().next()
-            .ok_or_else(|| EstError::cms_parsing(
-                "No certificate in enrollment response",
-            ))?;
+        let cert = certs
+            .into_iter()
+            .next()
+            .ok_or_else(|| EstError::cms_parsing("No certificate in enrollment response"))?;
 
         // Validate the certificate if validation is configured
         #[cfg(feature = "validation")]

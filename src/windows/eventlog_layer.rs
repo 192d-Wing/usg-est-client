@@ -24,9 +24,9 @@
 
 use crate::windows::eventlog::{EventData, EventLog, EventType};
 use std::sync::Arc;
-use tracing::{field::Visit, Subscriber};
-use tracing_subscriber::layer::Context;
+use tracing::{Subscriber, field::Visit};
 use tracing_subscriber::Layer;
+use tracing_subscriber::layer::Context;
 
 /// Tracing layer that writes to Windows Event Log.
 ///
@@ -62,11 +62,7 @@ impl<S> Layer<S> for EventLogLayer
 where
     S: Subscriber,
 {
-    fn on_event(
-        &self,
-        event: &tracing::Event<'_>,
-        _ctx: Context<'_, S>,
-    ) {
+    fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
         // Extract event metadata
         let metadata = event.metadata();
         let level = metadata.level();
@@ -103,12 +99,9 @@ where
             visitor.message.clone()
         };
 
-        let _ = self.event_log.log_event(
-            event_id,
-            event_type,
-            &message,
-            Some(&event_data),
-        );
+        let _ = self
+            .event_log
+            .log_event(event_id, event_type, &message, Some(&event_data));
     }
 }
 
@@ -291,10 +284,10 @@ fn determine_event_id(target: &str, message: &str, level: &tracing::Level) -> u3
 
     // Default event IDs by level
     match *level {
-        tracing::Level::ERROR => 3099,  // Generic error
-        tracing::Level::WARN => 2099,   // Generic warning
-        tracing::Level::INFO => 1099,   // Generic info
-        _ => 1099,                       // Debug/trace as info
+        tracing::Level::ERROR => 3099, // Generic error
+        tracing::Level::WARN => 2099,  // Generic warning
+        tracing::Level::INFO => 1099,  // Generic info
+        _ => 1099,                     // Debug/trace as info
     }
 }
 
@@ -371,17 +364,17 @@ mod tests {
     fn test_determine_event_id_generic() {
         assert_eq!(
             determine_event_id("unknown", "Something happened", &tracing::Level::ERROR),
-            3099  // Generic error
+            3099 // Generic error
         );
 
         assert_eq!(
             determine_event_id("unknown", "Warning message", &tracing::Level::WARN),
-            2099  // Generic warning
+            2099 // Generic warning
         );
 
         assert_eq!(
             determine_event_id("unknown", "Info message", &tracing::Level::INFO),
-            1099  // Generic info
+            1099 // Generic info
         );
     }
 }

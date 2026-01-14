@@ -52,8 +52,7 @@ use der::Reader;
 use x509_cert::Certificate;
 
 /// DoD Certificate Policy arc (2.16.840.1.101.2.1.11)
-pub const DOD_POLICY_ARC: ObjectIdentifier =
-    ObjectIdentifier::new_unwrap("2.16.840.1.101.2.1.11");
+pub const DOD_POLICY_ARC: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.16.840.1.101.2.1.11");
 
 /// DoD Medium Assurance policy (software tokens)
 pub const DOD_MEDIUM_ASSURANCE: ObjectIdentifier =
@@ -68,8 +67,7 @@ pub const DOD_HIGH_ASSURANCE: ObjectIdentifier =
     ObjectIdentifier::new_unwrap("2.16.840.1.101.2.1.11.42");
 
 /// DoD PIV Authentication policy
-pub const DOD_PIV_AUTH: ObjectIdentifier =
-    ObjectIdentifier::new_unwrap("2.16.840.1.101.2.1.11.10");
+pub const DOD_PIV_AUTH: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.16.840.1.101.2.1.11.10");
 
 /// DoD PIV Authentication Hardware policy
 pub const DOD_PIV_AUTH_HARDWARE: ObjectIdentifier =
@@ -88,8 +86,7 @@ pub const DOD_CONTENT_SIGNING: ObjectIdentifier =
     ObjectIdentifier::new_unwrap("2.16.840.1.101.2.1.11.38");
 
 /// DoD Device Identification policy
-pub const DOD_DEVICE: ObjectIdentifier =
-    ObjectIdentifier::new_unwrap("2.16.840.1.101.2.1.11.44");
+pub const DOD_DEVICE: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.16.840.1.101.2.1.11.44");
 
 /// DoD certificate policy types
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -253,8 +250,7 @@ pub fn parse_dod_policy(oid: &ObjectIdentifier) -> Option<DodCertificatePolicy> 
 }
 
 /// Certificate policies extension OID (2.5.29.32)
-const CERTIFICATE_POLICIES_OID: ObjectIdentifier =
-    ObjectIdentifier::new_unwrap("2.5.29.32");
+const CERTIFICATE_POLICIES_OID: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.5.29.32");
 
 /// Validate that a certificate contains a DoD policy
 ///
@@ -284,11 +280,9 @@ const CERTIFICATE_POLICIES_OID: ObjectIdentifier =
 /// ```
 pub fn validate_dod_policy(cert: &Certificate) -> Result<DodCertificatePolicy> {
     // Get certificate extensions
-    let extensions = cert
-        .tbs_certificate
-        .extensions
-        .as_ref()
-        .ok_or_else(|| EstError::CertificateValidation("No extensions in certificate".to_string()))?;
+    let extensions = cert.tbs_certificate.extensions.as_ref().ok_or_else(|| {
+        EstError::CertificateValidation("No extensions in certificate".to_string())
+    })?;
 
     // Find Certificate Policies extension
     for ext in extensions.iter() {
@@ -342,8 +336,9 @@ fn parse_certificate_policies_extension(
 
     // Read the outer SEQUENCE
     let policies: der::asn1::SequenceOf<PolicyInformation, 16> =
-        der::asn1::SequenceOf::decode(&mut reader)
-            .map_err(|e| EstError::CertificateParsing(format!("Failed to parse policies: {}", e)))?;
+        der::asn1::SequenceOf::decode(&mut reader).map_err(|e| {
+            EstError::CertificateParsing(format!("Failed to parse policies: {}", e))
+        })?;
 
     // Find first DoD policy
     for policy_info in policies.iter() {
@@ -423,10 +418,7 @@ pub enum PolicyUse {
 }
 
 /// Validate that certificate policy allows a specific use
-pub fn validate_policy_for_use(
-    cert: &Certificate,
-    use_case: PolicyUse,
-) -> Result<()> {
+pub fn validate_policy_for_use(cert: &Certificate, use_case: PolicyUse) -> Result<()> {
     let policy = validate_dod_policy(cert)?;
 
     let allowed = match use_case {
@@ -462,7 +454,10 @@ mod tests {
         assert_eq!(DOD_MEDIUM_HARDWARE.to_string(), "2.16.840.1.101.2.1.11.18");
         assert_eq!(DOD_HIGH_ASSURANCE.to_string(), "2.16.840.1.101.2.1.11.42");
         assert_eq!(DOD_PIV_AUTH.to_string(), "2.16.840.1.101.2.1.11.10");
-        assert_eq!(DOD_PIV_AUTH_HARDWARE.to_string(), "2.16.840.1.101.2.1.11.20");
+        assert_eq!(
+            DOD_PIV_AUTH_HARDWARE.to_string(),
+            "2.16.840.1.101.2.1.11.20"
+        );
     }
 
     #[test]
@@ -527,7 +522,10 @@ mod tests {
         assert_eq!(DodCertificatePolicy::MediumHardware.assurance_level(), 2);
         assert_eq!(DodCertificatePolicy::PivAuthHardware.assurance_level(), 2);
         assert_eq!(DodCertificatePolicy::MediumAssurance.assurance_level(), 1);
-        assert_eq!(DodCertificatePolicy::Unknown("test".to_string()).assurance_level(), 0);
+        assert_eq!(
+            DodCertificatePolicy::Unknown("test".to_string()).assurance_level(),
+            0
+        );
     }
 
     #[test]

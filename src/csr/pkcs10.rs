@@ -139,8 +139,9 @@ pub(super) fn assemble_cert_req(
 ) -> Result<CertReq> {
     // Convert signature bytes to BitString
     // For ECDSA and RSA signatures, they should already be DER-encoded
-    let signature = BitString::from_bytes(&signature_bytes)
-        .map_err(|e| EstError::operational(format!("Failed to create signature BitString: {}", e)))?;
+    let signature = BitString::from_bytes(&signature_bytes).map_err(|e| {
+        EstError::operational(format!("Failed to create signature BitString: {}", e))
+    })?;
 
     // Assemble the final CertReq
     let cert_req = CertReq {
@@ -156,9 +157,7 @@ pub(super) fn assemble_cert_req(
 ///
 /// This creates a PKCS#9 extensionRequest attribute containing the requested
 /// X.509 extensions.
-pub(super) fn create_extension_request_attribute(
-    extensions: Vec<Extension>,
-) -> Result<Attribute> {
+pub(super) fn create_extension_request_attribute(extensions: Vec<Extension>) -> Result<Attribute> {
     if extensions.is_empty() {
         return Err(EstError::operational(
             "Cannot create extension request with no extensions",

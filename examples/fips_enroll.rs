@@ -26,7 +26,7 @@
 use der::Encode;
 use std::process;
 use usg_est_client::csr::CsrBuilder;
-use usg_est_client::fips::{enable_fips_mode, fips_module_info, FipsConfig};
+use usg_est_client::fips::{FipsConfig, enable_fips_mode, fips_module_info};
 use usg_est_client::{EnrollmentResponse, EstClient, EstClientConfig};
 
 #[tokio::main]
@@ -186,7 +186,10 @@ async fn main() {
             let cert_der = certificate.to_der().unwrap_or_default();
             println!("\n✅ SUCCESS: Certificate issued!");
             println!("   Certificate size: {} bytes (DER)", cert_der.len());
-            println!("   Certificate chain includes {} certificate(s)", ca_certs.len());
+            println!(
+                "   Certificate chain includes {} certificate(s)",
+                ca_certs.len()
+            );
             println!("\n🎉 FIPS-compliant certificate enrollment completed successfully!");
             println!("\nNext steps:");
             println!("1. Save the issued certificate and private key");

@@ -81,25 +81,24 @@ pub mod validation;
 
 // Re-export commonly used types
 #[cfg(feature = "dod-pki")]
-pub use roots::{load_dod_root_cas, validate_dod_chain, DodRootCa};
+pub use roots::{DodRootCa, load_dod_root_cas, validate_dod_chain};
 
 #[cfg(feature = "dod-pki")]
 pub use policies::{
-    extract_dod_policies, has_dod_policy, parse_dod_policy, validate_dod_policy,
-    validate_policy_for_use, DodCertificatePolicy, PolicyUse, DOD_CARD_AUTH,
-    DOD_COMMON_AUTH, DOD_CONTENT_SIGNING, DOD_DEVICE, DOD_HIGH_ASSURANCE,
-    DOD_MEDIUM_ASSURANCE, DOD_MEDIUM_HARDWARE, DOD_PIV_AUTH, DOD_PIV_AUTH_HARDWARE,
-    DOD_POLICY_ARC,
+    DOD_CARD_AUTH, DOD_COMMON_AUTH, DOD_CONTENT_SIGNING, DOD_DEVICE, DOD_HIGH_ASSURANCE,
+    DOD_MEDIUM_ASSURANCE, DOD_MEDIUM_HARDWARE, DOD_PIV_AUTH, DOD_PIV_AUTH_HARDWARE, DOD_POLICY_ARC,
+    DodCertificatePolicy, PolicyUse, extract_dod_policies, has_dod_policy, parse_dod_policy,
+    validate_dod_policy, validate_policy_for_use,
 };
 
 #[cfg(all(feature = "dod-pki", feature = "pkcs11"))]
 pub use cac::{
-    enumerate_cac_certificates, enumerate_cac_certificates_with_middleware,
-    find_est_certificate, list_readers, CacCertificate, CacReader, PivSlot,
+    CacCertificate, CacReader, PivSlot, enumerate_cac_certificates,
+    enumerate_cac_certificates_with_middleware, find_est_certificate, list_readers,
 };
 
 #[cfg(feature = "dod-pki")]
 pub use validation::{
-    is_dod_certificate, validate_dod_certificate, DodChainValidator, ValidationOptions,
-    ValidationOptionsBuilder, ValidationResult,
+    DodChainValidator, ValidationOptions, ValidationOptionsBuilder, ValidationResult,
+    is_dod_certificate, validate_dod_certificate,
 };

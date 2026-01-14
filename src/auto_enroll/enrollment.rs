@@ -11,11 +11,11 @@ use crate::auto_enroll::config::AutoEnrollConfig;
 #[cfg(windows)]
 use crate::error::{EstError, Result};
 #[cfg(windows)]
-use crate::windows::{CertStore, MachineIdentity};
+use crate::hsm::{KeyAlgorithm, KeyProvider};
 #[cfg(windows)]
 use crate::windows::cng::CngKeyProvider;
 #[cfg(windows)]
-use crate::hsm::{KeyAlgorithm, KeyProvider};
+use crate::windows::{CertStore, MachineIdentity};
 
 /// Check if initial enrollment is needed.
 ///
@@ -169,7 +169,10 @@ pub async fn perform_enrollment(config: &AutoEnrollConfig) -> Result<()> {
         "ECDSA-P256" => KeyAlgorithm::EccP256,
         "ECDSA-P384" => KeyAlgorithm::EccP384,
         algo => {
-            return Err(EstError::config(format!("Unsupported key algorithm: {}", algo)));
+            return Err(EstError::config(format!(
+                "Unsupported key algorithm: {}",
+                algo
+            )));
         }
     };
 
@@ -424,7 +427,10 @@ pub async fn perform_renewal(config: &AutoEnrollConfig) -> Result<()> {
         "ECDSA-P256" => KeyAlgorithm::EccP256,
         "ECDSA-P384" => KeyAlgorithm::EccP384,
         algo => {
-            return Err(EstError::config(format!("Unsupported key algorithm: {}", algo)));
+            return Err(EstError::config(format!(
+                "Unsupported key algorithm: {}",
+                algo
+            )));
         }
     };
 
@@ -579,28 +585,36 @@ fn parse_x509_time(x509_time: &x509_cert::time::Time) -> Result<std::time::Syste
 
 // Non-Windows stubs
 #[cfg(not(windows))]
-pub async fn needs_enrollment(_config: &crate::auto_enroll::AutoEnrollConfig) -> crate::error::Result<bool> {
+pub async fn needs_enrollment(
+    _config: &crate::auto_enroll::AutoEnrollConfig,
+) -> crate::error::Result<bool> {
     Err(crate::error::EstError::platform(
         "Certificate enrollment requires Windows",
     ))
 }
 
 #[cfg(not(windows))]
-pub async fn perform_enrollment(_config: &crate::auto_enroll::AutoEnrollConfig) -> crate::error::Result<()> {
+pub async fn perform_enrollment(
+    _config: &crate::auto_enroll::AutoEnrollConfig,
+) -> crate::error::Result<()> {
     Err(crate::error::EstError::platform(
         "Certificate enrollment requires Windows",
     ))
 }
 
 #[cfg(not(windows))]
-pub async fn check_renewal(_config: &crate::auto_enroll::AutoEnrollConfig) -> crate::error::Result<bool> {
+pub async fn check_renewal(
+    _config: &crate::auto_enroll::AutoEnrollConfig,
+) -> crate::error::Result<bool> {
     Err(crate::error::EstError::platform(
         "Certificate renewal requires Windows",
     ))
 }
 
 #[cfg(not(windows))]
-pub async fn perform_renewal(_config: &crate::auto_enroll::AutoEnrollConfig) -> crate::error::Result<()> {
+pub async fn perform_renewal(
+    _config: &crate::auto_enroll::AutoEnrollConfig,
+) -> crate::error::Result<()> {
     Err(crate::error::EstError::platform(
         "Certificate renewal requires Windows",
     ))

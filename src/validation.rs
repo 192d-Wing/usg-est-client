@@ -386,7 +386,6 @@ impl CertificateValidator {
 
     /// Check certificate validity period.
     fn check_validity_period(&self, cert: &Certificate) -> Result<()> {
-
         let now = SystemTime::now();
         let validity = &cert.tbs_certificate.validity;
 
@@ -455,7 +454,8 @@ impl CertificateValidator {
         days_since_epoch += (day - 1) as i64;
 
         // Convert to seconds
-        let seconds_since_epoch = days_since_epoch * 86400 + (hour * 3600 + minute * 60 + second) as i64;
+        let seconds_since_epoch =
+            days_since_epoch * 86400 + (hour * 3600 + minute * 60 + second) as i64;
 
         if seconds_since_epoch < 0 {
             return Err(EstError::operational(format!(
@@ -490,16 +490,13 @@ impl CertificateValidator {
                             // Verify cA flag is true for CA certificates
                             if !bc.ca {
                                 return Err(EstError::operational(
-                                    "CA certificate has cA flag set to FALSE in Basic Constraints"
+                                    "CA certificate has cA flag set to FALSE in Basic Constraints",
                                 ));
                             }
 
                             // Check pathLenConstraint if present
                             if let Some(path_len) = bc.path_len_constraint {
-                                debug!(
-                                    "CA certificate has path length constraint: {}",
-                                    path_len
-                                );
+                                debug!("CA certificate has path length constraint: {}", path_len);
                                 // Note: Path length validation should be enforced during
                                 // chain building, not just at this check point
                             }
@@ -522,7 +519,7 @@ impl CertificateValidator {
         // in all CA certificates
         warn!("CA certificate missing Basic Constraints extension");
         Err(EstError::operational(
-            "CA certificate missing required Basic Constraints extension"
+            "CA certificate missing required Basic Constraints extension",
         ))
     }
 
@@ -608,9 +605,10 @@ impl CertificateValidator {
 
         // Parse the RSA public key from SPKI
         // Extract the public key bytes
-        let public_key_bytes = issuer_spki.subject_public_key.as_bytes().ok_or_else(|| {
-            EstError::operational("Public key has unused bits")
-        })?;
+        let public_key_bytes = issuer_spki
+            .subject_public_key
+            .as_bytes()
+            .ok_or_else(|| EstError::operational("Public key has unused bits"))?;
 
         // Decode the RSA public key (PKCS#1 format inside the SPKI)
         use rsa::pkcs1::DecodeRsaPublicKey;
@@ -624,21 +622,30 @@ impl CertificateValidator {
         match alg_oid {
             RSA_SHA256 => {
                 let verifying_key = VerifyingKey::<Sha256>::new(public_key);
-                verifying_key
-                    .verify(tbs_bytes, &sig)
-                    .map_err(|e| EstError::operational(format!("RSA-SHA256 signature verification failed: {}", e)))?;
+                verifying_key.verify(tbs_bytes, &sig).map_err(|e| {
+                    EstError::operational(format!(
+                        "RSA-SHA256 signature verification failed: {}",
+                        e
+                    ))
+                })?;
             }
             RSA_SHA384 => {
                 let verifying_key = VerifyingKey::<Sha384>::new(public_key);
-                verifying_key
-                    .verify(tbs_bytes, &sig)
-                    .map_err(|e| EstError::operational(format!("RSA-SHA384 signature verification failed: {}", e)))?;
+                verifying_key.verify(tbs_bytes, &sig).map_err(|e| {
+                    EstError::operational(format!(
+                        "RSA-SHA384 signature verification failed: {}",
+                        e
+                    ))
+                })?;
             }
             RSA_SHA512 => {
                 let verifying_key = VerifyingKey::<Sha512>::new(public_key);
-                verifying_key
-                    .verify(tbs_bytes, &sig)
-                    .map_err(|e| EstError::operational(format!("RSA-SHA512 signature verification failed: {}", e)))?;
+                verifying_key.verify(tbs_bytes, &sig).map_err(|e| {
+                    EstError::operational(format!(
+                        "RSA-SHA512 signature verification failed: {}",
+                        e
+                    ))
+                })?;
             }
             _ => {
                 return Err(EstError::operational(format!(
@@ -669,45 +676,58 @@ impl CertificateValidator {
         const ECDSA_SHA512: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.4");
 
         // Parse the EC public key
-        let public_key_bytes = issuer_spki.subject_public_key.as_bytes().ok_or_else(|| {
-            EstError::operational("Public key has unused bits")
-        })?;
+        let public_key_bytes = issuer_spki
+            .subject_public_key
+            .as_bytes()
+            .ok_or_else(|| EstError::operational("Public key has unused bits"))?;
 
         match alg_oid {
             ECDSA_SHA256 => {
                 // P-256 curve
-                let verifying_key = P256VerifyingKey::from_sec1_bytes(public_key_bytes)
-                    .map_err(|e| EstError::operational(format!("Failed to parse P-256 public key: {}", e)))?;
+                let verifying_key =
+                    P256VerifyingKey::from_sec1_bytes(public_key_bytes).map_err(|e| {
+                        EstError::operational(format!("Failed to parse P-256 public key: {}", e))
+                    })?;
 
-                let sig = P256Signature::from_der(signature)
-                    .map_err(|e| EstError::operational(format!("Invalid ECDSA signature: {}", e)))?;
+                let sig = P256Signature::from_der(signature).map_err(|e| {
+                    EstError::operational(format!("Invalid ECDSA signature: {}", e))
+                })?;
 
                 // Hash the TBS data
                 let hash = Sha256::digest(tbs_bytes);
 
-                verifying_key
-                    .verify(&hash, &sig)
-                    .map_err(|e| EstError::operational(format!("ECDSA-SHA256 signature verification failed: {}", e)))?;
+                verifying_key.verify(&hash, &sig).map_err(|e| {
+                    EstError::operational(format!(
+                        "ECDSA-SHA256 signature verification failed: {}",
+                        e
+                    ))
+                })?;
             }
             ECDSA_SHA384 => {
                 // P-384 curve
-                let verifying_key = P384VerifyingKey::from_sec1_bytes(public_key_bytes)
-                    .map_err(|e| EstError::operational(format!("Failed to parse P-384 public key: {}", e)))?;
+                let verifying_key =
+                    P384VerifyingKey::from_sec1_bytes(public_key_bytes).map_err(|e| {
+                        EstError::operational(format!("Failed to parse P-384 public key: {}", e))
+                    })?;
 
-                let sig = P384Signature::from_der(signature)
-                    .map_err(|e| EstError::operational(format!("Invalid ECDSA signature: {}", e)))?;
+                let sig = P384Signature::from_der(signature).map_err(|e| {
+                    EstError::operational(format!("Invalid ECDSA signature: {}", e))
+                })?;
 
                 // Hash the TBS data
                 let hash = Sha384::digest(tbs_bytes);
 
-                verifying_key
-                    .verify(&hash, &sig)
-                    .map_err(|e| EstError::operational(format!("ECDSA-SHA384 signature verification failed: {}", e)))?;
+                verifying_key.verify(&hash, &sig).map_err(|e| {
+                    EstError::operational(format!(
+                        "ECDSA-SHA384 signature verification failed: {}",
+                        e
+                    ))
+                })?;
             }
             ECDSA_SHA512 => {
                 // P-521 would require p521 crate, not yet supported
                 return Err(EstError::operational(
-                    "ECDSA with SHA-512 (P-521) not yet supported"
+                    "ECDSA with SHA-512 (P-521) not yet supported",
                 ));
             }
             _ => {

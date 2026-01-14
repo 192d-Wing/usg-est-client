@@ -7,8 +7,8 @@
 
 use usg_est_client::error::Result;
 use usg_est_client::hsm::{KeyAlgorithm, KeyProvider};
-use usg_est_client::windows::cng::{providers, CngKeyProvider};
 use usg_est_client::windows::CertStore;
+use usg_est_client::windows::cng::{CngKeyProvider, providers};
 
 /// Test CNG provider initialization with software provider
 #[test]
@@ -33,10 +33,7 @@ fn test_cng_provider_with_custom_provider() -> Result<()> {
 fn test_cng_provider_invalid_provider_fails() {
     let result = CngKeyProvider::with_provider("Invalid Provider Name");
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("not available"));
+    assert!(result.unwrap_err().to_string().contains("not available"));
 }
 
 /// Test RSA-2048 key generation in CNG
@@ -218,16 +215,18 @@ fn test_certstore_associate_cng_key_invalid_thumbprint() -> Result<()> {
     let store = CertStore::open_path("LocalMachine\\My")?;
 
     let result = store.associate_cng_key(
-        "INVALID",                            // Invalid thumbprint
+        "INVALID", // Invalid thumbprint
         "test-container",
         providers::SOFTWARE,
     );
 
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("Invalid SHA-1 thumbprint"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid SHA-1 thumbprint")
+    );
 
     Ok(())
 }
@@ -240,17 +239,15 @@ fn test_certstore_associate_cng_key_nonexistent_cert() -> Result<()> {
     // Valid format but non-existent thumbprint
     let fake_thumbprint = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
-    let result = store.associate_cng_key(
-        fake_thumbprint,
-        "test-container",
-        providers::SOFTWARE,
-    );
+    let result = store.associate_cng_key(fake_thumbprint, "test-container", providers::SOFTWARE);
 
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("Certificate not found"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("Certificate not found")
+    );
 
     Ok(())
 }

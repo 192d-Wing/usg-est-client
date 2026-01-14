@@ -8,7 +8,7 @@
 
 use crate::error::{EstError, Result};
 use windows::Win32::Security::Cryptography::{
-    CryptProtectData, CryptUnprotectData, CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN,
+    CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN, CryptProtectData, CryptUnprotectData,
 };
 
 /// Protect data with DPAPI (user-scoped)
@@ -16,7 +16,10 @@ use windows::Win32::Security::Cryptography::{
 /// The data is encrypted with a key derived from the user's login credentials.
 /// Only the same user on the same machine can unprotect the data.
 pub fn protect(data: &[u8], description: &str) -> Result<Vec<u8>> {
-    let description_wide: Vec<u16> = description.encode_utf16().chain(std::iter::once(0)).collect();
+    let description_wide: Vec<u16> = description
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
 
     let mut data_in = CRYPT_INTEGER_BLOB {
         cbData: data.len() as u32,
@@ -45,9 +48,8 @@ pub fn protect(data: &[u8], description: &str) -> Result<Vec<u8>> {
     }
 
     // Copy protected data
-    let protected = unsafe {
-        std::slice::from_raw_parts(data_out.pbData, data_out.cbData as usize).to_vec()
-    };
+    let protected =
+        unsafe { std::slice::from_raw_parts(data_out.pbData, data_out.cbData as usize).to_vec() };
 
     // Free DPAPI memory
     unsafe {
@@ -84,15 +86,12 @@ pub fn unprotect(protected: &[u8]) -> Result<Vec<u8>> {
     };
 
     if result.is_err() {
-        return Err(EstError::platform(
-            "Failed to unprotect data with DPAPI",
-        ));
+        return Err(EstError::platform("Failed to unprotect data with DPAPI"));
     }
 
     // Copy unprotected data
-    let unprotected = unsafe {
-        std::slice::from_raw_parts(data_out.pbData, data_out.cbData as usize).to_vec()
-    };
+    let unprotected =
+        unsafe { std::slice::from_raw_parts(data_out.pbData, data_out.cbData as usize).to_vec() };
 
     // Free DPAPI memory
     unsafe {

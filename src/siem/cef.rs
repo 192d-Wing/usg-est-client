@@ -200,8 +200,8 @@ mod tests {
 
     #[test]
     fn test_cef_basic_format() {
-        let event = CefEvent::new("CERT-2002", "Certificate Enrolled")
-            .with_severity(CefSeverity::Low);
+        let event =
+            CefEvent::new("CERT-2002", "Certificate Enrolled").with_severity(CefSeverity::Low);
 
         let cef = event.to_cef();
 
@@ -241,8 +241,8 @@ mod tests {
 
     #[test]
     fn test_cef_escape_newlines() {
-        let event = CefEvent::new("TEST-002", "Test Event")
-            .with_extension("msg", "Line 1\nLine 2\rLine 3");
+        let event =
+            CefEvent::new("TEST-002", "Test Event").with_extension("msg", "Line 1\nLine 2\rLine 3");
 
         let cef = event.to_cef();
 

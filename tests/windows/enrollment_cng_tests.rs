@@ -10,7 +10,7 @@ use usg_est_client::auto_enroll::config::{
 };
 use usg_est_client::error::Result;
 use usg_est_client::hsm::{KeyAlgorithm, KeyProvider};
-use usg_est_client::windows::cng::{providers, CngKeyProvider};
+use usg_est_client::windows::cng::{CngKeyProvider, providers};
 
 /// Test that enrollment configuration properly handles CNG provider
 #[test]
@@ -134,19 +134,16 @@ windows_store = "LocalMachine\\My"
 #[test]
 fn test_cng_provider_selection() -> Result<()> {
     // Test default (None) should use SOFTWARE
-    let provider_name = None::<&str>
-        .map(|s| s)
-        .unwrap_or(providers::SOFTWARE);
+    let provider_name = None::<&str>.map(|s| s).unwrap_or(providers::SOFTWARE);
     assert_eq!(provider_name, providers::SOFTWARE);
 
     // Test explicit software provider
-    let provider_name = Some("Microsoft Software Key Storage Provider")
-        .unwrap_or(providers::SOFTWARE);
+    let provider_name =
+        Some("Microsoft Software Key Storage Provider").unwrap_or(providers::SOFTWARE);
     assert_eq!(provider_name, "Microsoft Software Key Storage Provider");
 
     // Test explicit TPM provider
-    let provider_name = Some("Microsoft Platform Crypto Provider")
-        .unwrap_or(providers::SOFTWARE);
+    let provider_name = Some("Microsoft Platform Crypto Provider").unwrap_or(providers::SOFTWARE);
     assert_eq!(provider_name, "Microsoft Platform Crypto Provider");
 
     Ok(())
@@ -191,10 +188,7 @@ fn test_renewal_workflow_fresh_keys() -> Result<()> {
 
     // Verify they are different keys
     assert_ne!(original_container, renewal_container);
-    assert_ne!(
-        original_key.metadata().label,
-        renewal_key.metadata().label
-    );
+    assert_ne!(original_key.metadata().label, renewal_key.metadata().label);
 
     Ok(())
 }
@@ -227,12 +221,7 @@ fn test_cng_container_naming_convention() -> Result<()> {
     let provider = CngKeyProvider::new()?;
 
     // Test with various labels
-    let test_labels = vec![
-        "simple",
-        "with-dashes",
-        "with.dots",
-        "device.example.com",
-    ];
+    let test_labels = vec!["simple", "with-dashes", "with.dots", "device.example.com"];
 
     for label in test_labels {
         let key_handle = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some(label))?;
@@ -323,7 +312,10 @@ fn test_error_handling_invalid_algorithm() {
     // The actual validation happens in the enrollment workflow when parsing config
 
     // Document expected behavior
-    assert!(true, "Invalid algorithms are rejected during config parsing");
+    assert!(
+        true,
+        "Invalid algorithms are rejected during config parsing"
+    );
 }
 
 /// Test CNG provider persistence across calls

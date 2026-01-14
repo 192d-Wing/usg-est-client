@@ -4,12 +4,11 @@
 //! Common Event Format (CEF) integration tests
 
 use std::collections::HashMap;
-use usg_est_client::siem::cef::{extensions, from_est_event, CefEvent, CefSeverity};
+use usg_est_client::siem::cef::{CefEvent, CefSeverity, extensions, from_est_event};
 
 #[test]
 fn test_cef_basic_format() {
-    let event = CefEvent::new("CERT-2002", "Certificate Enrolled")
-        .with_severity(CefSeverity::Low);
+    let event = CefEvent::new("CERT-2002", "Certificate Enrolled").with_severity(CefSeverity::Low);
 
     let cef = event.to_cef();
 
@@ -142,8 +141,8 @@ fn test_cef_escape_backslash_in_header() {
 
 #[test]
 fn test_cef_escape_newlines_in_extension() {
-    let event = CefEvent::new("TEST-002", "Test Event")
-        .with_extension("msg", "Line 1\nLine 2\rLine 3");
+    let event =
+        CefEvent::new("TEST-002", "Test Event").with_extension("msg", "Line 1\nLine 2\rLine 3");
 
     let cef = event.to_cef();
 
@@ -152,8 +151,8 @@ fn test_cef_escape_newlines_in_extension() {
 
 #[test]
 fn test_cef_escape_backslash_in_extension() {
-    let event = CefEvent::new("TEST-003", "Test Event")
-        .with_extension("path", "C:\\Windows\\System32");
+    let event =
+        CefEvent::new("TEST-003", "Test Event").with_extension("path", "C:\\Windows\\System32");
 
     let cef = event.to_cef();
 
@@ -287,7 +286,12 @@ fn test_cef_severity_from_category_default_low() {
 #[test]
 fn test_cef_from_est_event_basic() {
     let details = HashMap::new();
-    let event = from_est_event("CERT-2002", "Certificate Enrolled", "certificate_lifecycle", details);
+    let event = from_est_event(
+        "CERT-2002",
+        "Certificate Enrolled",
+        "certificate_lifecycle",
+        details,
+    );
 
     let cef = event.to_cef();
 
@@ -302,9 +306,17 @@ fn test_cef_from_est_event_with_details() {
     let mut details = HashMap::new();
     details.insert("src".to_string(), "10.0.1.100".to_string());
     details.insert("shost".to_string(), "workstation01.example.mil".to_string());
-    details.insert("cs1".to_string(), "CN=workstation01.example.mil".to_string());
+    details.insert(
+        "cs1".to_string(),
+        "CN=workstation01.example.mil".to_string(),
+    );
 
-    let event = from_est_event("CERT-2002", "Certificate Enrolled", "certificate_lifecycle", details);
+    let event = from_est_event(
+        "CERT-2002",
+        "Certificate Enrolled",
+        "certificate_lifecycle",
+        details,
+    );
 
     let cef = event.to_cef();
 
@@ -316,7 +328,12 @@ fn test_cef_from_est_event_with_details() {
 #[test]
 fn test_cef_from_est_event_security_violation() {
     let details = HashMap::new();
-    let event = from_est_event("SEC-9001", "Security Violation", "security_violation", details);
+    let event = from_est_event(
+        "SEC-9001",
+        "Security Violation",
+        "security_violation",
+        details,
+    );
 
     let cef = event.to_cef();
 
@@ -361,7 +378,10 @@ fn test_cef_complete_certificate_event() {
         .with_extension(extensions::DHOST, "est-server.example.mil")
         .with_extension(extensions::CAT, "certificate_lifecycle")
         .with_extension(extensions::OUTCOME, "success")
-        .with_extension(extensions::CERT_SUBJECT, "CN=workstation01.example.mil, O=U.S. Government")
+        .with_extension(
+            extensions::CERT_SUBJECT,
+            "CN=workstation01.example.mil, O=U.S. Government",
+        )
         .with_extension(extensions::CERT_SUBJECT_LABEL, "Certificate Subject")
         .with_extension(extensions::CERT_ISSUER, "CN=EST CA, O=U.S. Government")
         .with_extension(extensions::CERT_ISSUER_LABEL, "Certificate Issuer")

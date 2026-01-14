@@ -162,7 +162,7 @@ impl EstClientConfigBuilder {
 
         // Validate URL scheme for security
         match parsed.scheme() {
-            "https" => {}, // OK - secure
+            "https" => {} // OK - secure
             "http" => {
                 // Allow but warn - HTTP should only be for testing
                 tracing::warn!(
@@ -450,7 +450,7 @@ pub struct HttpAuth {
     pub username: String,
 
     /// Password - automatically zeroed on drop.
-    #[zeroize(skip)]  // We'll manually zeroize via ZeroizeOnDrop
+    #[zeroize(skip)] // We'll manually zeroize via ZeroizeOnDrop
     pub password: String,
 }
 

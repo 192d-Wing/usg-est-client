@@ -350,11 +350,11 @@ impl AutoEnrollConfig {
     /// The credential is identified by the target name (typically the server URL).
     #[cfg(windows)]
     fn read_credential_manager(&self, target_name: &str) -> Result<String, EstError> {
-        use windows::core::PCWSTR;
         use windows::Win32::Foundation::ERROR_NOT_FOUND;
         use windows::Win32::Security::Credentials::{
-            CredFree, CredReadW, CREDENTIALW, CRED_TYPE_GENERIC,
+            CRED_TYPE_GENERIC, CREDENTIALW, CredFree, CredReadW,
         };
+        use windows::core::PCWSTR;
 
         tracing::debug!(
             "Reading credential from Windows Credential Manager: {}",
@@ -362,7 +362,10 @@ impl AutoEnrollConfig {
         );
 
         // Convert target name to wide string
-        let target_wide: Vec<u16> = target_name.encode_utf16().chain(std::iter::once(0)).collect();
+        let target_wide: Vec<u16> = target_name
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
 
         unsafe {
             let mut pcredential: *mut CREDENTIALW = std::ptr::null_mut();
@@ -391,13 +394,14 @@ impl AutoEnrollConfig {
 
             // Extract password from credential
             let credential = &*pcredential;
-            let password_bytes =
-                std::slice::from_raw_parts(credential.CredentialBlob, credential.CredentialBlobSize as usize);
+            let password_bytes = std::slice::from_raw_parts(
+                credential.CredentialBlob,
+                credential.CredentialBlobSize as usize,
+            );
 
             // Password is stored as UTF-8 bytes
-            let password = String::from_utf8(password_bytes.to_vec()).map_err(|_| {
-                EstError::config("Invalid UTF-8 in credential password")
-            })?;
+            let password = String::from_utf8(password_bytes.to_vec())
+                .map_err(|_| EstError::config("Invalid UTF-8 in credential password"))?;
 
             // Free the credential memory
             CredFree(pcredential as *const _);

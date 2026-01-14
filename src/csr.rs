@@ -124,11 +124,13 @@ mod builder {
         /// Ensure DNS names conform to RFC 1035 before calling this method.
         pub fn san_dns(mut self, dns: impl Into<String>) -> Self {
             let dns_str = dns.into();
-            let dns_name = dns_str.as_str().try_into()
-                .unwrap_or_else(|_| panic!(
+            let dns_name = dns_str.as_str().try_into().unwrap_or_else(|_| {
+                panic!(
                     "Invalid DNS name for SAN: '{}'. DNS names must conform to RFC 1035. \
-                     Check for invalid characters or excessive length.", dns_str
-                ));
+                     Check for invalid characters or excessive length.",
+                    dns_str
+                )
+            });
             self.params
                 .subject_alt_names
                 .push(SanType::DnsName(dns_name));
@@ -149,11 +151,13 @@ mod builder {
         /// Ensure email addresses are properly formatted before calling this method.
         pub fn san_email(mut self, email: impl Into<String>) -> Self {
             let email_str = email.into();
-            let email_addr = email_str.as_str().try_into()
-                .unwrap_or_else(|_| panic!(
+            let email_addr = email_str.as_str().try_into().unwrap_or_else(|_| {
+                panic!(
                     "Invalid email address for SAN: '{}'. Email must conform to RFC 822. \
-                     Check for proper format (user@domain.com).", email_str
-                ));
+                     Check for proper format (user@domain.com).",
+                    email_str
+                )
+            });
             self.params
                 .subject_alt_names
                 .push(SanType::Rfc822Name(email_addr));
@@ -168,14 +172,14 @@ mod builder {
         /// Ensure URIs are properly formatted before calling this method.
         pub fn san_uri(mut self, uri: impl Into<String>) -> Self {
             let uri_str = uri.into();
-            let uri_value = uri_str.as_str().try_into()
-                .unwrap_or_else(|_| panic!(
+            let uri_value = uri_str.as_str().try_into().unwrap_or_else(|_| {
+                panic!(
                     "Invalid URI for SAN: '{}'. URI must conform to RFC 3986. \
-                     Check for proper scheme and format (e.g., https://example.com).", uri_str
-                ));
-            self.params
-                .subject_alt_names
-                .push(SanType::URI(uri_value));
+                     Check for proper scheme and format (e.g., https://example.com).",
+                    uri_str
+                )
+            });
+            self.params.subject_alt_names.push(SanType::URI(uri_value));
             self
         }
 
@@ -323,7 +327,9 @@ mod builder {
 mod hsm_csr {
     use crate::error::{EstError, Result};
     use crate::hsm::{KeyHandle, KeyProvider, SoftwareKeyProvider};
-    use rcgen::{CertificateParams, DnType, DnValue, ExtendedKeyUsagePurpose, KeyUsagePurpose, SanType};
+    use rcgen::{
+        CertificateParams, DnType, DnValue, ExtendedKeyUsagePurpose, KeyUsagePurpose, SanType,
+    };
     use std::net::IpAddr;
     use std::str::FromStr;
     use x509_cert::ext::Extension;
@@ -432,11 +438,13 @@ mod hsm_csr {
         /// Ensure DNS names conform to RFC 1035 before calling this method.
         pub fn san_dns(mut self, dns: impl Into<String>) -> Self {
             let dns_str = dns.into();
-            let dns_name = dns_str.as_str().try_into()
-                .unwrap_or_else(|_| panic!(
+            let dns_name = dns_str.as_str().try_into().unwrap_or_else(|_| {
+                panic!(
                     "Invalid DNS name for SAN: '{}'. DNS names must conform to RFC 1035. \
-                     Check for invalid characters or excessive length.", dns_str
-                ));
+                     Check for invalid characters or excessive length.",
+                    dns_str
+                )
+            });
             self.params
                 .subject_alt_names
                 .push(SanType::DnsName(dns_name));
@@ -457,11 +465,13 @@ mod hsm_csr {
         /// Ensure email addresses are properly formatted before calling this method.
         pub fn san_email(mut self, email: impl Into<String>) -> Self {
             let email_str = email.into();
-            let email_addr = email_str.as_str().try_into()
-                .unwrap_or_else(|_| panic!(
+            let email_addr = email_str.as_str().try_into().unwrap_or_else(|_| {
+                panic!(
                     "Invalid email address for SAN: '{}'. Email must conform to RFC 822. \
-                     Check for proper format (user@domain.com).", email_str
-                ));
+                     Check for proper format (user@domain.com).",
+                    email_str
+                )
+            });
             self.params
                 .subject_alt_names
                 .push(SanType::Rfc822Name(email_addr));
@@ -476,14 +486,14 @@ mod hsm_csr {
         /// Ensure URIs are properly formatted before calling this method.
         pub fn san_uri(mut self, uri: impl Into<String>) -> Self {
             let uri_str = uri.into();
-            let uri_value = uri_str.as_str().try_into()
-                .unwrap_or_else(|_| panic!(
+            let uri_value = uri_str.as_str().try_into().unwrap_or_else(|_| {
+                panic!(
                     "Invalid URI for SAN: '{}'. URI must conform to RFC 3986. \
-                     Check for proper scheme and format (e.g., https://example.com).", uri_str
-                ));
-            self.params
-                .subject_alt_names
-                .push(SanType::URI(uri_value));
+                     Check for proper scheme and format (e.g., https://example.com).",
+                    uri_str
+                )
+            });
+            self.params.subject_alt_names.push(SanType::URI(uri_value));
             self
         }
 
@@ -673,18 +683,19 @@ mod hsm_csr {
 
         /// Build Subject Alternative Name extension.
         fn build_san_extension(&self) -> Result<Extension> {
+            use der::Encode;
             use der::asn1::OctetString;
             use x509_cert::ext::pkix::SubjectAltName;
             use x509_cert::ext::pkix::name::GeneralName;
-            use der::Encode;
 
             let mut general_names = Vec::new();
 
             for san in &self.params.subject_alt_names {
                 let general_name = match san {
                     SanType::DnsName(name) => {
-                        let ia5_str = der::asn1::Ia5String::new(name.as_ref())
-                            .map_err(|e| EstError::operational(format!("Invalid DNS name: {}", e)))?;
+                        let ia5_str = der::asn1::Ia5String::new(name.as_ref()).map_err(|e| {
+                            EstError::operational(format!("Invalid DNS name: {}", e))
+                        })?;
                         GeneralName::DnsName(ia5_str)
                     }
                     SanType::IpAddress(ip) => {
@@ -692,8 +703,9 @@ mod hsm_csr {
                             IpAddr::V4(v4) => v4.octets().to_vec(),
                             IpAddr::V6(v6) => v6.octets().to_vec(),
                         };
-                        GeneralName::IpAddress(OctetString::new(octets)
-                            .map_err(|e| EstError::operational(format!("Invalid IP address: {}", e)))?)
+                        GeneralName::IpAddress(OctetString::new(octets).map_err(|e| {
+                            EstError::operational(format!("Invalid IP address: {}", e))
+                        })?)
                     }
                     SanType::URI(uri) => {
                         let ia5_str = der::asn1::Ia5String::new(uri.as_ref())
@@ -701,9 +713,7 @@ mod hsm_csr {
                         GeneralName::UniformResourceIdentifier(ia5_str)
                     }
                     _ => {
-                        return Err(EstError::operational(
-                            "Unsupported SAN type",
-                        ));
+                        return Err(EstError::operational("Unsupported SAN type"));
                     }
                 };
                 general_names.push(general_name);
@@ -721,8 +731,9 @@ mod hsm_csr {
             Ok(Extension {
                 extn_id: const_oid::db::rfc5280::ID_CE_SUBJECT_ALT_NAME,
                 critical: false,
-                extn_value: OctetString::new(san_der)
-                    .map_err(|e| EstError::operational(format!("Failed to create OctetString: {}", e)))?,
+                extn_value: OctetString::new(san_der).map_err(|e| {
+                    EstError::operational(format!("Failed to create OctetString: {}", e))
+                })?,
             })
         }
 
@@ -957,11 +968,16 @@ mod hsm_tests {
         assert!(!csr_der.is_empty());
 
         // Verify CSR can be parsed
-        let cert_req = CertReq::from_der(&csr_der)
-            .expect("Failed to parse CSR");
+        let cert_req = CertReq::from_der(&csr_der).expect("Failed to parse CSR");
 
         // Verify subject
-        assert!(cert_req.info.subject.to_string().contains("provider-test.example.com"));
+        assert!(
+            cert_req
+                .info
+                .subject
+                .to_string()
+                .contains("provider-test.example.com")
+        );
 
         // Verify signature is present
         assert!(!cert_req.signature.as_bytes().unwrap().is_empty());
@@ -996,10 +1012,15 @@ mod hsm_tests {
         assert!(!csr_der.is_empty());
 
         // Parse and verify
-        let cert_req = CertReq::from_der(&csr_der)
-            .expect("Failed to parse P-384 CSR");
+        let cert_req = CertReq::from_der(&csr_der).expect("Failed to parse P-384 CSR");
 
-        assert!(cert_req.info.subject.to_string().contains("p384-test.example.com"));
+        assert!(
+            cert_req
+                .info
+                .subject
+                .to_string()
+                .contains("p384-test.example.com")
+        );
     }
 
     #[tokio::test]
@@ -1020,7 +1041,9 @@ mod hsm_tests {
             .san_dns("multi-san.example.com")
             .san_dns("alt1.example.com")
             .san_dns("alt2.example.com")
-            .san_ip(std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, 100)))
+            .san_ip(std::net::IpAddr::V4(std::net::Ipv4Addr::new(
+                192, 168, 1, 100,
+            )))
             .san_uri("https://api.example.com")
             .key_usage_digital_signature()
             .build_with_provider(&provider, &key_handle)
@@ -1030,8 +1053,7 @@ mod hsm_tests {
         assert!(!csr_der.is_empty());
 
         // Verify it parses correctly
-        let cert_req = CertReq::from_der(&csr_der)
-            .expect("Failed to parse multi-SAN CSR");
+        let cert_req = CertReq::from_der(&csr_der).expect("Failed to parse multi-SAN CSR");
 
         // Verify attributes are present (SANs are in extension request attribute)
         assert!(!cert_req.info.attributes.is_empty());

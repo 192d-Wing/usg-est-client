@@ -776,7 +776,7 @@ impl CertStore {
             use std::ffi::OsStr;
             use std::os::windows::ffi::OsStrExt;
             use windows::Win32::Security::Cryptography::{
-                CRYPT_INTEGER_BLOB, CRYPT_KEY_PROV_INFO, AT_KEYEXCHANGE,
+                AT_KEYEXCHANGE, CRYPT_INTEGER_BLOB, CRYPT_KEY_PROV_INFO,
             };
             use windows::core::PWSTR;
 

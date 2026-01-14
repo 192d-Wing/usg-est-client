@@ -196,7 +196,9 @@ pub fn parse_pem_certificates(pem_data: &[u8]) -> Result<Vec<CertificateDer<'sta
     }
 
     if certs.is_empty() {
-        return Err(EstError::invalid_pem("No valid certificates found in PEM data"));
+        return Err(EstError::invalid_pem(
+            "No valid certificates found in PEM data",
+        ));
     }
 
     Ok(certs)

@@ -37,8 +37,8 @@
 //! ```
 
 use crate::error::{EstError, Result};
-use x509_cert::Certificate;
 use der::Decode;
+use x509_cert::Certificate;
 
 /// DoD Root CA certificate with metadata
 #[derive(Debug, Clone)]
@@ -192,14 +192,10 @@ fn format_dn(name: &x509_cert::name::Name) -> String {
     let mut components = Vec::new();
 
     // Common DN attribute OIDs
-    const CN: der::asn1::ObjectIdentifier =
-        der::asn1::ObjectIdentifier::new_unwrap("2.5.4.3"); // commonName
-    const O: der::asn1::ObjectIdentifier =
-        der::asn1::ObjectIdentifier::new_unwrap("2.5.4.10"); // organizationName
-    const OU: der::asn1::ObjectIdentifier =
-        der::asn1::ObjectIdentifier::new_unwrap("2.5.4.11"); // organizationalUnitName
-    const C: der::asn1::ObjectIdentifier =
-        der::asn1::ObjectIdentifier::new_unwrap("2.5.4.6"); // countryName
+    const CN: der::asn1::ObjectIdentifier = der::asn1::ObjectIdentifier::new_unwrap("2.5.4.3"); // commonName
+    const O: der::asn1::ObjectIdentifier = der::asn1::ObjectIdentifier::new_unwrap("2.5.4.10"); // organizationName
+    const OU: der::asn1::ObjectIdentifier = der::asn1::ObjectIdentifier::new_unwrap("2.5.4.11"); // organizationalUnitName
+    const C: der::asn1::ObjectIdentifier = der::asn1::ObjectIdentifier::new_unwrap("2.5.4.6"); // countryName
 
     for rdn in name.0.iter() {
         for atv in rdn.0.iter() {
@@ -248,7 +244,7 @@ fn format_time(time: &x509_cert::time::Time) -> String {
 
 /// Calculate SHA-256 fingerprint of certificate
 fn calculate_fingerprint_sha256(der_bytes: &[u8]) -> String {
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
 
     let mut hasher = Sha256::new();
     hasher.update(der_bytes);
@@ -290,10 +286,7 @@ fn calculate_fingerprint_sha256(der_bytes: &[u8]) -> String {
 /// # Ok(())
 /// # }
 /// ```
-pub fn validate_dod_chain(
-    _cert: &Certificate,
-    _intermediates: &[Certificate],
-) -> Result<()> {
+pub fn validate_dod_chain(_cert: &Certificate, _intermediates: &[Certificate]) -> Result<()> {
     // Placeholder implementation
     // Full implementation would:
     // 1. Load DoD Root CAs
@@ -305,7 +298,8 @@ pub fn validate_dod_chain(
     // For now, return an error indicating this is not yet implemented
     Err(EstError::Config(
         "DoD certificate chain validation is not yet implemented. \
-         This will be completed in Phase 12.2.3".to_string(),
+         This will be completed in Phase 12.2.3"
+            .to_string(),
     ))
 }
 

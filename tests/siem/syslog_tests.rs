@@ -187,7 +187,9 @@ fn test_syslog_message_content() {
         .with_message("Certificate enrolled successfully for CN=workstation01.example.mil");
 
     let formatted = msg.to_rfc5424("localhost");
-    assert!(formatted.ends_with("Certificate enrolled successfully for CN=workstation01.example.mil"));
+    assert!(
+        formatted.ends_with("Certificate enrolled successfully for CN=workstation01.example.mil")
+    );
 }
 
 #[test]
@@ -282,8 +284,8 @@ fn test_syslog_all_facilities() {
 
 #[test]
 fn test_syslog_rfc3339_timestamp_format() {
-    let msg = SyslogMessage::new(Facility::Local0, Severity::Informational, "test")
-        .with_message("Test");
+    let msg =
+        SyslogMessage::new(Facility::Local0, Severity::Informational, "test").with_message("Test");
 
     let formatted = msg.to_rfc5424("localhost");
 
@@ -353,13 +355,15 @@ fn test_syslog_client_tls_not_implemented() {
 
     let client = SyslogClient::new(config).expect("Failed to create client");
 
-    let msg = SyslogMessage::new(Facility::Local0, Severity::Informational, "test")
-        .with_message("Test");
+    let msg =
+        SyslogMessage::new(Facility::Local0, Severity::Informational, "test").with_message("Test");
 
     let result = client.send(&msg);
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("TLS syslog support not yet implemented"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("TLS syslog support not yet implemented")
+    );
 }

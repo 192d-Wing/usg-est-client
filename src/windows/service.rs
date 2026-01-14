@@ -417,8 +417,7 @@ impl EnrollmentService {
 
         // Load configuration
         let config = self.load_config()?;
-        tracing::info!("Loaded configuration from: {}",
-            config.server.url);
+        tracing::info!("Loaded configuration from: {}", config.server.url);
 
         // Check if enrollment is needed
         if crate::auto_enroll::needs_enrollment(&config).await? {

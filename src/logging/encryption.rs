@@ -71,8 +71,8 @@
 use crate::error::{EstError, Result};
 use crate::logging::{FileLogger, LogConfig, LogEntry};
 use aes_gcm::{
-    aead::{Aead, KeyInit, OsRng},
     Aes256Gcm, Nonce,
+    aead::{Aead, KeyInit, OsRng},
 };
 use sha2::{Digest, Sha256};
 use std::fs::{self, OpenOptions};
@@ -126,9 +126,8 @@ impl LogKeys {
         use crate::windows::security::DpapiBlob;
 
         // Load DPAPI-protected blob
-        let protected = fs::read(path).map_err(|e| {
-            EstError::platform(format!("Failed to read encryption keys: {}", e))
-        })?;
+        let protected = fs::read(path)
+            .map_err(|e| EstError::platform(format!("Failed to read encryption keys: {}", e)))?;
 
         // Unprotect with DPAPI
         let blob = DpapiBlob::from_bytes(&protected)?;
@@ -160,9 +159,8 @@ impl LogKeys {
         use std::os::unix::fs::PermissionsExt;
 
         // Verify file permissions (must be 0600)
-        let metadata = fs::metadata(path).map_err(|e| {
-            EstError::platform(format!("Failed to read encryption keys: {}", e))
-        })?;
+        let metadata = fs::metadata(path)
+            .map_err(|e| EstError::platform(format!("Failed to read encryption keys: {}", e)))?;
 
         let perms = metadata.permissions();
         if perms.mode() & 0o077 != 0 {
@@ -172,9 +170,8 @@ impl LogKeys {
             )));
         }
 
-        let keys_bytes = fs::read(path).map_err(|e| {
-            EstError::platform(format!("Failed to read encryption keys: {}", e))
-        })?;
+        let keys_bytes = fs::read(path)
+            .map_err(|e| EstError::platform(format!("Failed to read encryption keys: {}", e)))?;
 
         if keys_bytes.len() != KEY_SIZE + MAC_KEY_SIZE {
             return Err(EstError::platform(format!(
@@ -211,9 +208,8 @@ impl LogKeys {
         let protected = blob.to_bytes();
 
         // Write to file
-        fs::write(path, protected).map_err(|e| {
-            EstError::platform(format!("Failed to write encryption keys: {}", e))
-        })?;
+        fs::write(path, protected)
+            .map_err(|e| EstError::platform(format!("Failed to write encryption keys: {}", e)))?;
 
         // Zeroize plaintext
         keys_bytes.zeroize();
@@ -237,24 +233,20 @@ impl LogKeys {
             .create(true)
             .truncate(true)
             .open(path)
-            .map_err(|e| {
-                EstError::platform(format!("Failed to create key file: {}", e))
-            })?;
+            .map_err(|e| EstError::platform(format!("Failed to create key file: {}", e)))?;
 
         // Set permissions to 0600 before writing
-        let mut perms = file.metadata()
-            .map_err(|e| {
-                EstError::platform(format!("Failed to get key file metadata: {}", e))
-            })?
+        let mut perms = file
+            .metadata()
+            .map_err(|e| EstError::platform(format!("Failed to get key file metadata: {}", e)))?
             .permissions();
         perms.set_mode(0o600);
         file.set_permissions(perms).map_err(|e| {
             EstError::platform(format!("Failed to set key file permissions: {}", e))
         })?;
 
-        file.write_all(&keys_bytes).map_err(|e| {
-            EstError::platform(format!("Failed to write encryption keys: {}", e))
-        })?;
+        file.write_all(&keys_bytes)
+            .map_err(|e| EstError::platform(format!("Failed to write encryption keys: {}", e)))?;
 
         // Zeroize plaintext
         keys_bytes.zeroize();
@@ -356,14 +348,13 @@ impl EncryptedLogger {
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         // Initialize cipher
-        let cipher = Aes256Gcm::new_from_slice(&self.keys.encryption_key).map_err(|e| {
-            EstError::operational(format!("Failed to initialize cipher: {}", e))
-        })?;
+        let cipher = Aes256Gcm::new_from_slice(&self.keys.encryption_key)
+            .map_err(|e| EstError::operational(format!("Failed to initialize cipher: {}", e)))?;
 
         // Encrypt
-        let ciphertext = cipher.encrypt(nonce, plaintext.as_bytes()).map_err(|e| {
-            EstError::operational(format!("Failed to encrypt log entry: {}", e))
-        })?;
+        let ciphertext = cipher
+            .encrypt(nonce, plaintext.as_bytes())
+            .map_err(|e| EstError::operational(format!("Failed to encrypt log entry: {}", e)))?;
 
         // Compute HMAC over version:nonce:ciphertext
         let mac = self.compute_mac(&nonce_bytes, &ciphertext);
@@ -385,8 +376,8 @@ impl EncryptedLogger {
         use hmac::{Hmac, Mac};
         type HmacSha256 = Hmac<Sha256>;
 
-        let mut mac = HmacSha256::new_from_slice(&self.keys.mac_key)
-            .expect("HMAC can take keys of any size");
+        let mut mac =
+            HmacSha256::new_from_slice(&self.keys.mac_key).expect("HMAC can take keys of any size");
 
         mac.update(FORMAT_VERSION.as_bytes());
         mac.update(b":");
@@ -441,8 +432,8 @@ impl EncryptedLogger {
             use hmac::{Hmac, Mac};
             type HmacSha256 = Hmac<Sha256>;
 
-            let mut mac = HmacSha256::new_from_slice(&keys.mac_key)
-                .expect("HMAC can take keys of any size");
+            let mut mac =
+                HmacSha256::new_from_slice(&keys.mac_key).expect("HMAC can take keys of any size");
 
             mac.update(FORMAT_VERSION.as_bytes());
             mac.update(b":");
@@ -463,13 +454,12 @@ impl EncryptedLogger {
 
         // Decrypt
         let nonce = Nonce::from_slice(&nonce_bytes);
-        let cipher = Aes256Gcm::new_from_slice(&keys.encryption_key).map_err(|e| {
-            EstError::operational(format!("Failed to initialize cipher: {}", e))
-        })?;
+        let cipher = Aes256Gcm::new_from_slice(&keys.encryption_key)
+            .map_err(|e| EstError::operational(format!("Failed to initialize cipher: {}", e)))?;
 
-        let plaintext_bytes = cipher.decrypt(nonce, ciphertext.as_ref()).map_err(|e| {
-            EstError::operational(format!("Failed to decrypt log entry: {}", e))
-        })?;
+        let plaintext_bytes = cipher
+            .decrypt(nonce, ciphertext.as_ref())
+            .map_err(|e| EstError::operational(format!("Failed to decrypt log entry: {}", e)))?;
 
         String::from_utf8(plaintext_bytes)
             .map_err(|e| EstError::operational(format!("Invalid UTF-8 in decrypted log: {}", e)))
@@ -490,9 +480,8 @@ impl LogDecryptor {
 
     /// Decrypt a log file line-by-line
     pub fn decrypt_file(&self, encrypted_path: &Path, output_path: &Path) -> Result<()> {
-        let encrypted_content = fs::read_to_string(encrypted_path).map_err(|e| {
-            EstError::platform(format!("Failed to read encrypted log: {}", e))
-        })?;
+        let encrypted_content = fs::read_to_string(encrypted_path)
+            .map_err(|e| EstError::platform(format!("Failed to read encrypted log: {}", e)))?;
 
         let mut decrypted_lines = Vec::new();
 
@@ -507,17 +496,15 @@ impl LogDecryptor {
                 continue;
             }
 
-            let decrypted = EncryptedLogger::decrypt_log_line(line, &self.keys)
-                .map_err(|e| {
-                    EstError::operational(format!("Failed to decrypt line {}: {}", line_num + 1, e))
-                })?;
+            let decrypted = EncryptedLogger::decrypt_log_line(line, &self.keys).map_err(|e| {
+                EstError::operational(format!("Failed to decrypt line {}: {}", line_num + 1, e))
+            })?;
 
             decrypted_lines.push(decrypted);
         }
 
-        fs::write(output_path, decrypted_lines.join("\n")).map_err(|e| {
-            EstError::platform(format!("Failed to write decrypted log: {}", e))
-        })?;
+        fs::write(output_path, decrypted_lines.join("\n"))
+            .map_err(|e| EstError::platform(format!("Failed to write decrypted log: {}", e)))?;
 
         Ok(())
     }
@@ -593,9 +580,15 @@ mod tests {
         let config = LogConfig::file(&log_path).with_level(LogLevel::Info);
         let logger = EncryptedLogger::new(config, &key_path).unwrap();
 
-        logger.log(&LogEntry::new(LogLevel::Info, "Entry 1")).unwrap();
-        logger.log(&LogEntry::new(LogLevel::Warn, "Entry 2")).unwrap();
-        logger.log(&LogEntry::new(LogLevel::Error, "Entry 3")).unwrap();
+        logger
+            .log(&LogEntry::new(LogLevel::Info, "Entry 1"))
+            .unwrap();
+        logger
+            .log(&LogEntry::new(LogLevel::Warn, "Entry 2"))
+            .unwrap();
+        logger
+            .log(&LogEntry::new(LogLevel::Error, "Entry 3"))
+            .unwrap();
 
         // Decrypt file
         let decryptor = LogDecryptor::new(&key_path).unwrap();
@@ -623,7 +616,10 @@ mod tests {
         let parts: Vec<&str> = contents.trim().split(':').collect();
 
         // Validate parts before accessing
-        assert!(parts.len() >= 4, "Expected at least 4 parts in encrypted log");
+        assert!(
+            parts.len() >= 4,
+            "Expected at least 4 parts in encrypted log"
+        );
         assert!(parts[2].len() > 4, "Ciphertext part too short to tamper");
 
         // Corrupt the ciphertext
@@ -639,7 +635,12 @@ mod tests {
         let decryptor = LogDecryptor::new(&key_path).unwrap();
         let result = decryptor.decrypt_line(&tampered);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("MAC verification failed"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("MAC verification failed")
+        );
     }
 
     #[test]

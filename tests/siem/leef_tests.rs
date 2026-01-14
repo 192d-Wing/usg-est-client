@@ -4,7 +4,7 @@
 //! Log Event Extended Format (LEEF) integration tests
 
 use std::collections::HashMap;
-use usg_est_client::siem::leef::{attributes, from_est_event, LeefEvent, LeefSeverity};
+use usg_est_client::siem::leef::{LeefEvent, LeefSeverity, attributes, from_est_event};
 
 #[test]
 fn test_leef_basic_format() {
@@ -31,7 +31,11 @@ fn test_leef_pipe_delimited_header() {
     let leef = event.to_leef();
 
     // Should have 4 pipes in header: LEEF:2.0|Vendor|Product|Version|EventID
-    let header_pipes = leef.chars().take_while(|&c| c != '\t').filter(|&c| c == '|').count();
+    let header_pipes = leef
+        .chars()
+        .take_while(|&c| c != '\t')
+        .filter(|&c| c == '|')
+        .count();
     assert!(header_pipes >= 4);
 }
 
@@ -141,7 +145,10 @@ fn test_leef_standard_event_attributes() {
     let event = LeefEvent::new("CERT-2002")
         .with_attribute(attributes::EVENT_ID, "CERT-2002")
         .with_attribute(attributes::EVENT_NAME, "Certificate Enrolled")
-        .with_attribute(attributes::EVENT_DESC, "User certificate enrolled successfully")
+        .with_attribute(
+            attributes::EVENT_DESC,
+            "User certificate enrolled successfully",
+        )
         .with_attribute(attributes::CAT, "certificate_lifecycle")
         .with_attribute(attributes::SEV, "2");
 
@@ -329,7 +336,12 @@ fn test_leef_severity_from_category_default_info() {
 #[test]
 fn test_leef_from_est_event_basic() {
     let details = HashMap::new();
-    let event = from_est_event("CERT-2002", "Certificate Enrolled", "certificate_lifecycle", details);
+    let event = from_est_event(
+        "CERT-2002",
+        "Certificate Enrolled",
+        "certificate_lifecycle",
+        details,
+    );
 
     let leef = event.to_leef();
 
@@ -344,10 +356,21 @@ fn test_leef_from_est_event_basic() {
 fn test_leef_from_est_event_with_details() {
     let mut details = HashMap::new();
     details.insert("src".to_string(), "10.0.1.100".to_string());
-    details.insert("srcHost".to_string(), "workstation01.example.mil".to_string());
-    details.insert("certSubject".to_string(), "CN=workstation01.example.mil".to_string());
+    details.insert(
+        "srcHost".to_string(),
+        "workstation01.example.mil".to_string(),
+    );
+    details.insert(
+        "certSubject".to_string(),
+        "CN=workstation01.example.mil".to_string(),
+    );
 
-    let event = from_est_event("CERT-2002", "Certificate Enrolled", "certificate_lifecycle", details);
+    let event = from_est_event(
+        "CERT-2002",
+        "Certificate Enrolled",
+        "certificate_lifecycle",
+        details,
+    );
 
     let leef = event.to_leef();
 
@@ -359,7 +382,12 @@ fn test_leef_from_est_event_with_details() {
 #[test]
 fn test_leef_from_est_event_security_violation() {
     let details = HashMap::new();
-    let event = from_est_event("SEC-9001", "Security Violation", "security_violation", details);
+    let event = from_est_event(
+        "SEC-9001",
+        "Security Violation",
+        "security_violation",
+        details,
+    );
 
     let leef = event.to_leef();
 
@@ -418,7 +446,10 @@ fn test_leef_complete_certificate_event() {
         .with_attribute(attributes::SRC_HOST, "workstation01.example.mil")
         .with_attribute(attributes::DST, "10.0.2.100")
         .with_attribute(attributes::DST_HOST, "est-server.example.mil")
-        .with_attribute(attributes::CERT_SUBJECT, "CN=workstation01.example.mil, O=U.S. Government")
+        .with_attribute(
+            attributes::CERT_SUBJECT,
+            "CN=workstation01.example.mil, O=U.S. Government",
+        )
         .with_attribute(attributes::CERT_ISSUER, "CN=EST CA, O=U.S. Government")
         .with_attribute(attributes::CERT_SERIAL, "1A:2B:3C:4D:5E:6F")
         .with_attribute(attributes::RESULT, "success");
@@ -443,7 +474,10 @@ fn test_leef_complete_key_generation_event() {
         .with_attribute(attributes::SRC_HOST, "workstation01.example.mil")
         .with_attribute(attributes::KEY_ALGORITHM, "RSA")
         .with_attribute(attributes::KEY_SIZE, "2048")
-        .with_attribute(attributes::KEY_CONTAINER, "EST-workstation01-rsa2048-1736779200")
+        .with_attribute(
+            attributes::KEY_CONTAINER,
+            "EST-workstation01-rsa2048-1736779200",
+        )
         .with_attribute(attributes::RESULT, "success");
 
     let leef = event.to_leef();
@@ -472,6 +506,9 @@ fn test_leef_builder_pattern() {
 
     assert_eq!(event.event_id, "KEY-3001");
     assert_eq!(event.attributes.len(), 3);
-    assert_eq!(event.attributes.get("keyAlgorithm"), Some(&"RSA".to_string()));
+    assert_eq!(
+        event.attributes.get("keyAlgorithm"),
+        Some(&"RSA".to_string())
+    );
     assert_eq!(event.attributes.get("keySize"), Some(&"2048".to_string()));
 }

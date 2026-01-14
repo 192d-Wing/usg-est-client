@@ -279,8 +279,8 @@ fn print_usage(program: &str) {
 
 #[cfg(all(windows, feature = "windows-service"))]
 fn run_service_mode() -> ExitCode {
-    use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::Layer;
+    use tracing_subscriber::layer::SubscriberExt;
     use usg_est_client::windows::EventLogLayer;
 
     // Initialize tracing with Windows Event Log integration
@@ -397,9 +397,9 @@ fn ctrlc_handler(state: Arc<usg_est_client::windows::service::ServiceState>) {
 mod enrollment {
     use usg_est_client::auto_enroll::config::AutoEnrollConfig;
     use usg_est_client::error::Result;
-    use usg_est_client::windows::{CertStore, MachineIdentity};
-    use usg_est_client::windows::cng::CngKeyProvider;
     use usg_est_client::hsm::{KeyAlgorithm, KeyProvider};
+    use usg_est_client::windows::cng::CngKeyProvider;
+    use usg_est_client::windows::{CertStore, MachineIdentity};
 
     /// Check if enrollment is needed.
     pub async fn needs_enrollment(config: &AutoEnrollConfig) -> Result<bool> {
@@ -450,10 +450,7 @@ mod enrollment {
                         Ok(true)
                     }
                     ExpirationStatus::Valid { days_remaining } => {
-                        tracing::info!(
-                            "Certificate is valid, expires in {} days",
-                            days_remaining
-                        );
+                        tracing::info!("Certificate is valid, expires in {} days", days_remaining);
                         Ok(false)
                     }
                 }
@@ -578,10 +575,7 @@ mod enrollment {
             .unwrap_or(usg_est_client::windows::cng::providers::SOFTWARE);
 
         let cng_provider = CngKeyProvider::with_provider(cng_provider_name)?;
-        tracing::info!(
-            "Generating key pair in CNG provider: {}",
-            cng_provider_name
-        );
+        tracing::info!("Generating key pair in CNG provider: {}", cng_provider_name);
 
         // Generate key pair in CNG
         let label = format!("{}-{}", cn, chrono::Utc::now().timestamp());
@@ -636,7 +630,10 @@ mod enrollment {
             .map(|s| s.as_str());
 
         let thumbprint = store.import_certificate(&cert_der, friendly_name)?;
-        tracing::info!("Imported certificate to store with thumbprint: {}", thumbprint);
+        tracing::info!(
+            "Imported certificate to store with thumbprint: {}",
+            thumbprint
+        );
 
         // Associate CNG private key with certificate
         let container_name = CngKeyProvider::get_container_name(&key_handle)?;
@@ -746,12 +743,20 @@ mod enrollment {
             }
         };
 
-        tracing::info!("Found existing certificate for renewal: {}", existing_cert.subject);
+        tracing::info!(
+            "Found existing certificate for renewal: {}",
+            existing_cert.subject
+        );
 
         // 3. Extract subject information from existing certificate
         // Parse the existing certificate to extract subject details
         let existing_cert_parsed = x509_cert::Certificate::from_der(&existing_cert.certificate)
-            .map_err(|e| usg_est_client::error::EstError::operational(format!("Failed to parse existing certificate: {}", e)))?;
+            .map_err(|e| {
+                usg_est_client::error::EstError::operational(format!(
+                    "Failed to parse existing certificate: {}",
+                    e
+                ))
+            })?;
 
         // 4. Build CSR with same subject as existing certificate
         tracing::info!("Building renewal CSR for CN: {}", cn);
@@ -889,7 +894,12 @@ mod enrollment {
         };
 
         // 8. Archive old certificate if configured
-        if config.storage.as_ref().map(|s| s.archive_old).unwrap_or(false) {
+        if config
+            .storage
+            .as_ref()
+            .map(|s| s.archive_old)
+            .unwrap_or(false)
+        {
             tracing::info!("Archiving old certificate");
             // Windows cert store typically handles this automatically
             // Old certificates remain in store but marked as superseded
@@ -903,7 +913,10 @@ mod enrollment {
             .map(|s| s.as_str());
 
         let thumbprint = store.import_certificate(&new_cert_der, friendly_name)?;
-        tracing::info!("Imported renewed certificate with thumbprint: {}", thumbprint);
+        tracing::info!(
+            "Imported renewed certificate with thumbprint: {}",
+            thumbprint
+        );
 
         // Associate CNG private key with renewed certificate
         let container_name = CngKeyProvider::get_container_name(&key_handle)?;
@@ -990,9 +1003,9 @@ mod enrollment {
     mod tests {
         use super::*;
         use std::time::{Duration, SystemTime};
+        use x509_cert::Certificate;
         use x509_cert::der::Encode;
         use x509_cert::time::Time;
-        use x509_cert::Certificate;
 
         /// Create a test certificate with a specific expiration time
         fn create_test_cert_with_expiry(not_after_duration: Duration) -> Certificate {
@@ -1044,7 +1057,8 @@ mod enrollment {
         #[test]
         fn test_expired_certificate() {
             // Certificate expired 1 day ago
-            let cert = create_test_cert_with_expiry(Duration::from_secs(0) - Duration::from_secs(86400));
+            let cert =
+                create_test_cert_with_expiry(Duration::from_secs(0) - Duration::from_secs(86400));
 
             let result = check_certificate_expiration(&cert, 30).unwrap();
 

@@ -256,12 +256,13 @@ impl KeyProvider for SoftwareKeyProvider {
         // Sign based on algorithm
         match handle.algorithm() {
             KeyAlgorithm::EcdsaP256 => {
-                use p256::ecdsa::{signature::Signer, Signature, SigningKey};
+                use p256::ecdsa::{Signature, SigningKey, signature::Signer};
                 use p256::pkcs8::DecodePrivateKey;
 
                 // Parse PKCS#8 DER into P-256 signing key
-                let signing_key = SigningKey::from_pkcs8_der(&pkcs8_der)
-                    .map_err(|e| EstError::csr(format!("Failed to parse P-256 private key: {}", e)))?;
+                let signing_key = SigningKey::from_pkcs8_der(&pkcs8_der).map_err(|e| {
+                    EstError::csr(format!("Failed to parse P-256 private key: {}", e))
+                })?;
 
                 // Sign the digest (data is already hashed by encode_and_hash)
                 let signature: Signature = signing_key.sign(data);
@@ -270,12 +271,13 @@ impl KeyProvider for SoftwareKeyProvider {
                 Ok(signature.to_der().as_bytes().to_vec())
             }
             KeyAlgorithm::EcdsaP384 => {
-                use p384::ecdsa::{signature::Signer, Signature, SigningKey};
+                use p384::ecdsa::{Signature, SigningKey, signature::Signer};
                 use p384::pkcs8::DecodePrivateKey;
 
                 // Parse PKCS#8 DER into P-384 signing key
-                let signing_key = SigningKey::from_pkcs8_der(&pkcs8_der)
-                    .map_err(|e| EstError::csr(format!("Failed to parse P-384 private key: {}", e)))?;
+                let signing_key = SigningKey::from_pkcs8_der(&pkcs8_der).map_err(|e| {
+                    EstError::csr(format!("Failed to parse P-384 private key: {}", e))
+                })?;
 
                 // Sign the digest
                 let signature: Signature = signing_key.sign(data);
@@ -284,15 +286,16 @@ impl KeyProvider for SoftwareKeyProvider {
                 Ok(signature.to_der().as_bytes().to_vec())
             }
             KeyAlgorithm::Rsa { .. } => {
+                use rsa::RsaPrivateKey;
                 use rsa::pkcs1v15::SigningKey;
                 use rsa::pkcs8::DecodePrivateKey;
-                use rsa::signature::{Signer, SignatureEncoding};
-                use rsa::RsaPrivateKey;
+                use rsa::signature::{SignatureEncoding, Signer};
                 use sha2::Sha256;
 
                 // Parse PKCS#8 DER into RSA private key
-                let private_key = RsaPrivateKey::from_pkcs8_der(&pkcs8_der)
-                    .map_err(|e| EstError::csr(format!("Failed to parse RSA private key: {}", e)))?;
+                let private_key = RsaPrivateKey::from_pkcs8_der(&pkcs8_der).map_err(|e| {
+                    EstError::csr(format!("Failed to parse RSA private key: {}", e))
+                })?;
 
                 // Create signing key with SHA-256
                 let signing_key = SigningKey::<Sha256>::new(private_key);

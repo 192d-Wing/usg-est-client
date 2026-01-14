@@ -432,8 +432,7 @@ fn parse_cac_certificate(certificate: Certificate, slot: PivSlot) -> CacCertific
     let is_valid = check_validity(&certificate.tbs_certificate.validity);
 
     // Extract key algorithm
-    let key_algorithm =
-        format_key_algorithm(&certificate.tbs_certificate.subject_public_key_info);
+    let key_algorithm = format_key_algorithm(&certificate.tbs_certificate.subject_public_key_info);
 
     CacCertificate {
         slot,
@@ -576,9 +575,8 @@ pub fn find_est_certificate() -> Result<Option<CacCertificate>> {
 pub fn list_readers() -> Result<Vec<CacReader>> {
     use cryptoki::context::{CInitializeArgs, CInitializeFlags, Pkcs11};
 
-    let lib_path = detect_pkcs11_middleware().ok_or_else(|| {
-        EstError::Pkcs11("No PKCS#11 middleware found".to_string())
-    })?;
+    let lib_path = detect_pkcs11_middleware()
+        .ok_or_else(|| EstError::Pkcs11("No PKCS#11 middleware found".to_string()))?;
 
     let pkcs11 = Pkcs11::new(&lib_path)
         .map_err(|e| EstError::Pkcs11(format!("Failed to load PKCS#11 library: {}", e)))?;
@@ -631,7 +629,10 @@ mod tests {
         assert_eq!(PivSlot::from_slot_id(0x9A), Some(PivSlot::Authentication));
         assert_eq!(PivSlot::from_slot_id(0x9C), Some(PivSlot::DigitalSignature));
         assert_eq!(PivSlot::from_slot_id(0x9D), Some(PivSlot::KeyManagement));
-        assert_eq!(PivSlot::from_slot_id(0x9E), Some(PivSlot::CardAuthentication));
+        assert_eq!(
+            PivSlot::from_slot_id(0x9E),
+            Some(PivSlot::CardAuthentication)
+        );
         assert_eq!(
             PivSlot::from_slot_id(0x82),
             Some(PivSlot::RetiredKeyManagement(0))

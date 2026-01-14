@@ -38,7 +38,7 @@
 use std::process;
 use usg_est_client::csr::CsrBuilder;
 use usg_est_client::dod::{
-    load_dod_root_cas, DodCertificatePolicy, DodChainValidator, ValidationOptions,
+    DodCertificatePolicy, DodChainValidator, ValidationOptions, load_dod_root_cas,
 };
 use usg_est_client::{EnrollmentResponse, EstClient, EstClientConfig};
 
@@ -94,7 +94,9 @@ async fn main() {
         }
         Err(e) => {
             println!("Note: DoD Root CAs not embedded: {}", e);
-            println!("  Download from: https://dl.dod.cyber.mil/wp-content/uploads/pki-pke/zip/unclass-certificates_pkcs7_DoD.zip");
+            println!(
+                "  Download from: https://dl.dod.cyber.mil/wp-content/uploads/pki-pke/zip/unclass-certificates_pkcs7_DoD.zip"
+            );
             println!("  Continuing with WebPKI trust anchors...\n");
         }
     }
@@ -120,7 +122,10 @@ async fn main() {
 
                 // Find best certificate for EST enrollment
                 if let Some(best) = certs.iter().find(|c| c.can_use_for_est()) {
-                    println!("\nUsing certificate from slot {} for EST enrollment", best.slot);
+                    println!(
+                        "\nUsing certificate from slot {} for EST enrollment",
+                        best.slot
+                    );
                 } else {
                     eprintln!("No suitable certificate found for EST enrollment");
                     process::exit(1);
@@ -255,20 +260,18 @@ async fn main() {
                 .build();
 
             match DodChainValidator::with_options(validation_options) {
-                Ok(validator) => {
-                    match validator.validate(&certificate, &ca_certs.certificates) {
-                        Ok(result) => {
-                            println!("  Valid DoD certificate: {}", result.valid);
-                            if let Some(root) = &result.root_ca {
-                                println!("  Chains to: {}", root);
-                            }
-                            println!("  Policies: {:?}", result.policies);
+                Ok(validator) => match validator.validate(&certificate, &ca_certs.certificates) {
+                    Ok(result) => {
+                        println!("  Valid DoD certificate: {}", result.valid);
+                        if let Some(root) = &result.root_ca {
+                            println!("  Chains to: {}", root);
                         }
-                        Err(e) => {
-                            println!("  Validation note: {}", e);
-                        }
+                        println!("  Policies: {:?}", result.policies);
                     }
-                }
+                    Err(e) => {
+                        println!("  Validation note: {}", e);
+                    }
+                },
                 Err(_) => {
                     println!("  (Validator not available)");
                 }

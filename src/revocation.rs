@@ -49,7 +49,7 @@
 
 use crate::error::{EstError, Result};
 use base64::Engine;
-use der::{asn1::OctetString, Decode, Encode, Sequence};
+use der::{Decode, Encode, Sequence, asn1::OctetString};
 use sha2::{Digest, Sha256};
 use spki::AlgorithmIdentifierOwned;
 use std::collections::HashMap;
@@ -144,10 +144,14 @@ impl<'a> SimpleDerParser<'a> {
             // Long form
             let num_octets = (first & 0x7F) as usize;
             if num_octets > 4 {
-                return Err(EstError::operational("Length encoding too long (max 4 octets)"));
+                return Err(EstError::operational(
+                    "Length encoding too long (max 4 octets)",
+                ));
             }
             if num_octets == 0 {
-                return Err(EstError::operational("Invalid length encoding (zero octets)"));
+                return Err(EstError::operational(
+                    "Invalid length encoding (zero octets)",
+                ));
             }
 
             let mut length = 0usize;
@@ -650,9 +654,10 @@ impl RevocationChecker {
         );
 
         // Encode the TBSCertList to get the data that was signed
-        let tbs_bytes = crl.tbs_cert_list.to_der().map_err(|e| {
-            EstError::operational(format!("Failed to encode TBS CertList: {}", e))
-        })?;
+        let tbs_bytes = crl
+            .tbs_cert_list
+            .to_der()
+            .map_err(|e| EstError::operational(format!("Failed to encode TBS CertList: {}", e)))?;
 
         // Get the signature bytes
         let signature = crl.signature.as_bytes().ok_or_else(|| {
@@ -707,9 +712,10 @@ impl RevocationChecker {
         const RSA_SHA512: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.13");
 
         // Parse the RSA public key from SPKI
-        let public_key_bytes = issuer_spki.subject_public_key.as_bytes().ok_or_else(|| {
-            EstError::operational("Public key has unused bits")
-        })?;
+        let public_key_bytes = issuer_spki
+            .subject_public_key
+            .as_bytes()
+            .ok_or_else(|| EstError::operational("Public key has unused bits"))?;
 
         // Decode the RSA public key (PKCS#1 format inside the SPKI)
         use rsa::pkcs1::DecodeRsaPublicKey;
@@ -723,21 +729,30 @@ impl RevocationChecker {
         match alg_oid {
             RSA_SHA256 => {
                 let verifying_key = VerifyingKey::<Sha256>::new(public_key);
-                verifying_key
-                    .verify(tbs_bytes, &sig)
-                    .map_err(|e| EstError::operational(format!("RSA-SHA256 signature verification failed: {}", e)))?;
+                verifying_key.verify(tbs_bytes, &sig).map_err(|e| {
+                    EstError::operational(format!(
+                        "RSA-SHA256 signature verification failed: {}",
+                        e
+                    ))
+                })?;
             }
             RSA_SHA384 => {
                 let verifying_key = VerifyingKey::<Sha384>::new(public_key);
-                verifying_key
-                    .verify(tbs_bytes, &sig)
-                    .map_err(|e| EstError::operational(format!("RSA-SHA384 signature verification failed: {}", e)))?;
+                verifying_key.verify(tbs_bytes, &sig).map_err(|e| {
+                    EstError::operational(format!(
+                        "RSA-SHA384 signature verification failed: {}",
+                        e
+                    ))
+                })?;
             }
             RSA_SHA512 => {
                 let verifying_key = VerifyingKey::<Sha512>::new(public_key);
-                verifying_key
-                    .verify(tbs_bytes, &sig)
-                    .map_err(|e| EstError::operational(format!("RSA-SHA512 signature verification failed: {}", e)))?;
+                verifying_key.verify(tbs_bytes, &sig).map_err(|e| {
+                    EstError::operational(format!(
+                        "RSA-SHA512 signature verification failed: {}",
+                        e
+                    ))
+                })?;
             }
             _ => {
                 return Err(EstError::operational(format!(
@@ -760,12 +775,12 @@ impl RevocationChecker {
     ) -> Result<()> {
         use const_oid::ObjectIdentifier;
         use p256::ecdsa::{
-            signature::Verifier as P256Verifier, Signature as P256Signature,
-            VerifyingKey as P256VerifyingKey,
+            Signature as P256Signature, VerifyingKey as P256VerifyingKey,
+            signature::Verifier as P256Verifier,
         };
         use p384::ecdsa::{
-            signature::Verifier as P384Verifier, Signature as P384Signature,
-            VerifyingKey as P384VerifyingKey,
+            Signature as P384Signature, VerifyingKey as P384VerifyingKey,
+            signature::Verifier as P384Verifier,
         };
         use sha2::{Digest, Sha256, Sha384, Sha512};
 
@@ -774,56 +789,75 @@ impl RevocationChecker {
         const ECDSA_SHA512: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.4");
 
         // Parse the ECDSA public key from SPKI
-        let public_key_bytes = issuer_spki.subject_public_key.as_bytes().ok_or_else(|| {
-            EstError::operational("Public key has unused bits")
-        })?;
+        let public_key_bytes = issuer_spki
+            .subject_public_key
+            .as_bytes()
+            .ok_or_else(|| EstError::operational("Public key has unused bits"))?;
 
         // Verify based on curve and hash algorithm
         match alg_oid {
             ECDSA_SHA256 => {
                 // P-256 with SHA-256
-                let verifying_key = P256VerifyingKey::from_sec1_bytes(public_key_bytes)
-                    .map_err(|e| EstError::operational(format!("Failed to parse P-256 public key: {}", e)))?;
+                let verifying_key =
+                    P256VerifyingKey::from_sec1_bytes(public_key_bytes).map_err(|e| {
+                        EstError::operational(format!("Failed to parse P-256 public key: {}", e))
+                    })?;
 
-                let sig = P256Signature::from_der(signature)
-                    .map_err(|e| EstError::operational(format!("Invalid ECDSA signature: {}", e)))?;
+                let sig = P256Signature::from_der(signature).map_err(|e| {
+                    EstError::operational(format!("Invalid ECDSA signature: {}", e))
+                })?;
 
                 // Hash the message
                 let hash = Sha256::digest(tbs_bytes);
 
-                verifying_key
-                    .verify(&hash, &sig)
-                    .map_err(|e| EstError::operational(format!("ECDSA-SHA256 signature verification failed: {}", e)))?;
+                verifying_key.verify(&hash, &sig).map_err(|e| {
+                    EstError::operational(format!(
+                        "ECDSA-SHA256 signature verification failed: {}",
+                        e
+                    ))
+                })?;
             }
             ECDSA_SHA384 => {
                 // P-384 with SHA-384
-                let verifying_key = P384VerifyingKey::from_sec1_bytes(public_key_bytes)
-                    .map_err(|e| EstError::operational(format!("Failed to parse P-384 public key: {}", e)))?;
+                let verifying_key =
+                    P384VerifyingKey::from_sec1_bytes(public_key_bytes).map_err(|e| {
+                        EstError::operational(format!("Failed to parse P-384 public key: {}", e))
+                    })?;
 
-                let sig = P384Signature::from_der(signature)
-                    .map_err(|e| EstError::operational(format!("Invalid ECDSA signature: {}", e)))?;
+                let sig = P384Signature::from_der(signature).map_err(|e| {
+                    EstError::operational(format!("Invalid ECDSA signature: {}", e))
+                })?;
 
                 // Hash the message
                 let hash = Sha384::digest(tbs_bytes);
 
-                verifying_key
-                    .verify(&hash, &sig)
-                    .map_err(|e| EstError::operational(format!("ECDSA-SHA384 signature verification failed: {}", e)))?;
+                verifying_key.verify(&hash, &sig).map_err(|e| {
+                    EstError::operational(format!(
+                        "ECDSA-SHA384 signature verification failed: {}",
+                        e
+                    ))
+                })?;
             }
             ECDSA_SHA512 => {
                 // P-384 with SHA-512 (typically)
-                let verifying_key = P384VerifyingKey::from_sec1_bytes(public_key_bytes)
-                    .map_err(|e| EstError::operational(format!("Failed to parse P-384 public key: {}", e)))?;
+                let verifying_key =
+                    P384VerifyingKey::from_sec1_bytes(public_key_bytes).map_err(|e| {
+                        EstError::operational(format!("Failed to parse P-384 public key: {}", e))
+                    })?;
 
-                let sig = P384Signature::from_der(signature)
-                    .map_err(|e| EstError::operational(format!("Invalid ECDSA signature: {}", e)))?;
+                let sig = P384Signature::from_der(signature).map_err(|e| {
+                    EstError::operational(format!("Invalid ECDSA signature: {}", e))
+                })?;
 
                 // Hash the message
                 let hash = Sha512::digest(tbs_bytes);
 
-                verifying_key
-                    .verify(&hash, &sig)
-                    .map_err(|e| EstError::operational(format!("ECDSA-SHA512 signature verification failed: {}", e)))?;
+                verifying_key.verify(&hash, &sig).map_err(|e| {
+                    EstError::operational(format!(
+                        "ECDSA-SHA512 signature verification failed: {}",
+                        e
+                    ))
+                })?;
             }
             _ => {
                 return Err(EstError::operational(format!(
@@ -1052,7 +1086,8 @@ impl RevocationChecker {
 
         // Create request list with one request
         let mut request_list = der::asn1::SequenceOf::<SingleRequest, 1>::new();
-        request_list.add(single_request)
+        request_list
+            .add(single_request)
             .map_err(|e| EstError::operational(format!("Failed to add request to list: {}", e)))?;
 
         // Create TBS request
@@ -1079,14 +1114,15 @@ impl RevocationChecker {
         };
 
         // Compute issuer name hash (SHA-256 of DER-encoded issuer DN)
-        let issuer_name_der = issuer
-            .tbs_certificate
-            .subject
-            .to_der()
-            .map_err(|e| EstError::operational(format!("Failed to encode issuer name: {}", e)))?;
+        let issuer_name_der =
+            issuer.tbs_certificate.subject.to_der().map_err(|e| {
+                EstError::operational(format!("Failed to encode issuer name: {}", e))
+            })?;
         let issuer_name_hash_bytes = Sha256::digest(&issuer_name_der);
-        let issuer_name_hash = OctetString::new(issuer_name_hash_bytes.as_slice())
-            .map_err(|e| EstError::operational(format!("Failed to create issuer name hash: {}", e)))?;
+        let issuer_name_hash =
+            OctetString::new(issuer_name_hash_bytes.as_slice()).map_err(|e| {
+                EstError::operational(format!("Failed to create issuer name hash: {}", e))
+            })?;
 
         // Compute issuer key hash (SHA-256 of issuer public key, excluding tag and length)
         let issuer_public_key_bytes = issuer
@@ -1096,8 +1132,9 @@ impl RevocationChecker {
             .as_bytes()
             .ok_or_else(|| EstError::operational("Issuer public key has unused bits"))?;
         let issuer_key_hash_bytes = Sha256::digest(issuer_public_key_bytes);
-        let issuer_key_hash = OctetString::new(issuer_key_hash_bytes.as_slice())
-            .map_err(|e| EstError::operational(format!("Failed to create issuer key hash: {}", e)))?;
+        let issuer_key_hash = OctetString::new(issuer_key_hash_bytes.as_slice()).map_err(|e| {
+            EstError::operational(format!("Failed to create issuer key hash: {}", e))
+        })?;
 
         // Get certificate serial number
         let serial_number = cert.tbs_certificate.serial_number.clone();
@@ -1201,7 +1238,10 @@ impl RevocationChecker {
                 }
                 5 => Err(EstError::protocol("OCSP: signature required")),
                 6 => Err(EstError::protocol("OCSP: unauthorized")),
-                _ => Err(EstError::protocol(format!("OCSP: unknown status {}", response_status))),
+                _ => Err(EstError::protocol(format!(
+                    "OCSP: unknown status {}",
+                    response_status
+                ))),
             };
         }
 
@@ -1259,7 +1299,10 @@ impl RevocationChecker {
                 debug!("OCSP: certificate status UNKNOWN");
                 Ok(RevocationStatus::Unknown)
             }
-            _ => Err(EstError::operational(format!("Invalid cert status: {}", cert_status))),
+            _ => Err(EstError::operational(format!(
+                "Invalid cert status: {}",
+                cert_status
+            ))),
         }
     }
 

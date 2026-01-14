@@ -316,8 +316,7 @@ impl AlgorithmPolicy {
 
         // Blocked algorithms
         let blocked = [
-            "3des", "des", "md5", "sha1", "sha-1", "rc4", "rc2", "md4", "md2", "rsa1024",
-            "rsa512",
+            "3des", "des", "md5", "sha1", "sha-1", "rc4", "rc2", "md4", "md2", "rsa1024", "rsa512",
         ];
 
         for blocked_alg in &blocked {
@@ -368,13 +367,13 @@ impl AlgorithmValidator {
     }
 
     /// Validate all aspects of an asymmetric algorithm
-    pub fn validate_asymmetric_full(
-        &self,
-        algorithm: AsymmetricAlgorithm,
-    ) -> Result<()> {
+    pub fn validate_asymmetric_full(&self, algorithm: AsymmetricAlgorithm) -> Result<()> {
         self.policy.validate_asymmetric(algorithm)?;
 
-        tracing::debug!("Validated FIPS-approved asymmetric algorithm: {}", algorithm);
+        tracing::debug!(
+            "Validated FIPS-approved asymmetric algorithm: {}",
+            algorithm
+        );
         Ok(())
     }
 
@@ -451,12 +450,16 @@ mod tests {
         let validator = AlgorithmValidator::new();
 
         // All AES variants should be approved
-        assert!(validator
-            .validate_symmetric_full(SymmetricAlgorithm::Aes128Cbc)
-            .is_ok());
-        assert!(validator
-            .validate_symmetric_full(SymmetricAlgorithm::Aes256Gcm)
-            .is_ok());
+        assert!(
+            validator
+                .validate_symmetric_full(SymmetricAlgorithm::Aes128Cbc)
+                .is_ok()
+        );
+        assert!(
+            validator
+                .validate_symmetric_full(SymmetricAlgorithm::Aes256Gcm)
+                .is_ok()
+        );
     }
 
     #[test]
@@ -464,20 +467,28 @@ mod tests {
         let validator = AlgorithmValidator::new();
 
         // RSA 2048+ should be approved
-        assert!(validator
-            .validate_asymmetric_full(AsymmetricAlgorithm::Rsa2048)
-            .is_ok());
-        assert!(validator
-            .validate_asymmetric_full(AsymmetricAlgorithm::Rsa4096)
-            .is_ok());
+        assert!(
+            validator
+                .validate_asymmetric_full(AsymmetricAlgorithm::Rsa2048)
+                .is_ok()
+        );
+        assert!(
+            validator
+                .validate_asymmetric_full(AsymmetricAlgorithm::Rsa4096)
+                .is_ok()
+        );
 
         // ECDSA P-256+ should be approved
-        assert!(validator
-            .validate_asymmetric_full(AsymmetricAlgorithm::EcdsaP256)
-            .is_ok());
-        assert!(validator
-            .validate_asymmetric_full(AsymmetricAlgorithm::EcdsaP521)
-            .is_ok());
+        assert!(
+            validator
+                .validate_asymmetric_full(AsymmetricAlgorithm::EcdsaP256)
+                .is_ok()
+        );
+        assert!(
+            validator
+                .validate_asymmetric_full(AsymmetricAlgorithm::EcdsaP521)
+                .is_ok()
+        );
     }
 
     #[test]
@@ -526,20 +537,28 @@ mod tests {
         let validator = AlgorithmValidator::new();
 
         // FIPS-approved OIDs should pass
-        assert!(validator
-            .validate_signature_algorithm_oid("1.2.840.113549.1.1.11")
-            .is_ok()); // sha256WithRSAEncryption
-        assert!(validator
-            .validate_signature_algorithm_oid("1.2.840.10045.4.3.2")
-            .is_ok()); // ecdsa-with-SHA256
+        assert!(
+            validator
+                .validate_signature_algorithm_oid("1.2.840.113549.1.1.11")
+                .is_ok()
+        ); // sha256WithRSAEncryption
+        assert!(
+            validator
+                .validate_signature_algorithm_oid("1.2.840.10045.4.3.2")
+                .is_ok()
+        ); // ecdsa-with-SHA256
 
         // Blocked OIDs should fail
-        assert!(validator
-            .validate_signature_algorithm_oid("1.2.840.113549.1.1.4")
-            .is_err()); // md5WithRSAEncryption
-        assert!(validator
-            .validate_signature_algorithm_oid("1.2.840.113549.1.1.5")
-            .is_err()); // sha1WithRSAEncryption
+        assert!(
+            validator
+                .validate_signature_algorithm_oid("1.2.840.113549.1.1.4")
+                .is_err()
+        ); // md5WithRSAEncryption
+        assert!(
+            validator
+                .validate_signature_algorithm_oid("1.2.840.113549.1.1.5")
+                .is_err()
+        ); // sha1WithRSAEncryption
     }
 
     #[test]

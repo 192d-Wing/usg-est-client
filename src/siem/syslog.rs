@@ -12,8 +12,8 @@
 //! - SIEM-specific structured data
 
 use crate::error::{EstError, Result};
-use std::net::{TcpStream, ToSocketAddrs};
 use std::io::Write;
+use std::net::{TcpStream, ToSocketAddrs};
 use std::time::SystemTime;
 
 /// Syslog severity levels (RFC 5424 Section 6.2.1)
@@ -176,8 +176,7 @@ impl SyslogMessage {
 fn format_rfc3339_timestamp() -> String {
     let now = SystemTime::now();
     // Use chrono for RFC 3339 formatting
-    chrono::DateTime::<chrono::Utc>::from(now)
-        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+    chrono::DateTime::<chrono::Utc>::from(now).to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
 
 /// Format structured data element
@@ -269,8 +268,9 @@ impl SyslogClient {
             .next()
             .ok_or_else(|| EstError::operational("No address resolved for syslog server"))?;
 
-        let mut stream = TcpStream::connect(addr)
-            .map_err(|e| EstError::operational(format!("Failed to connect to syslog server: {}", e)))?;
+        let mut stream = TcpStream::connect(addr).map_err(|e| {
+            EstError::operational(format!("Failed to connect to syslog server: {}", e))
+        })?;
 
         // RFC 5425 octet counting framing
         let frame = format!("{} {}\n", message.len(), message);

@@ -335,7 +335,9 @@ impl FileLogger {
         let line_bytes = line_with_newline.as_bytes();
 
         // Fixed: Handle lock poisoning gracefully instead of panicking
-        let mut writer = self.writer.lock()
+        let mut writer = self
+            .writer
+            .lock()
             .map_err(|e| EstError::operational(format!("Log writer lock poisoned: {}", e)))?;
 
         // Check for rotation
@@ -349,8 +351,9 @@ impl FileLogger {
             // Perform rotation
             drop(writer);
             self.rotate()?;
-            writer = self.writer.lock()
-                .map_err(|e| EstError::operational(format!("Log writer lock poisoned after rotation: {}", e)))?;
+            writer = self.writer.lock().map_err(|e| {
+                EstError::operational(format!("Log writer lock poisoned after rotation: {}", e))
+            })?;
         }
 
         match *writer {
@@ -412,8 +415,9 @@ impl FileLogger {
             .map_err(EstError::Io)?;
 
         // Fixed: Handle lock poisoning gracefully
-        let mut writer = self.writer.lock()
-            .map_err(|e| EstError::operational(format!("Log writer lock poisoned during rotation: {}", e)))?;
+        let mut writer = self.writer.lock().map_err(|e| {
+            EstError::operational(format!("Log writer lock poisoned during rotation: {}", e))
+        })?;
         *writer = LogWriter::File {
             writer: BufWriter::new(file),
             path: path.clone(),
