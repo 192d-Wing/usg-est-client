@@ -450,15 +450,16 @@ pub async fn run_health_check() -> Result<TpmHealthCheck> {
         },
     });
 
-    if provider_check.is_err() {
-        return Ok(TpmHealthCheck {
-            healthy: false,
-            checks,
-            message: "Failed to initialize TPM provider".to_string(),
-        });
-    }
-
-    let provider = provider_check.unwrap();
+    let provider = match provider_check {
+        Ok(p) => p,
+        Err(e) => {
+            return Ok(TpmHealthCheck {
+                healthy: false,
+                checks,
+                message: format!("Failed to initialize TPM provider: {}", e),
+            });
+        }
+    };
 
     // Check 3: Key generation
     let key_gen_result = provider

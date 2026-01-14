@@ -104,16 +104,16 @@ pub fn parse_certs_only(body: &[u8]) -> Result<Vec<Certificate>> {
 /// Used for enrollment responses where we expect exactly one certificate.
 #[allow(dead_code)]
 pub fn parse_single_certificate(body: &[u8]) -> Result<Certificate> {
-    let certs = parse_certs_only(body)?;
+    let mut certs = parse_certs_only(body)?;
 
     match certs.len() {
         0 => Err(EstError::cms_parsing("No certificate in response")),
-        1 => Ok(certs.into_iter().next().unwrap()),
+        1 => Ok(certs.remove(0)),
         n => {
             // Return the first certificate (the issued one)
             // Additional certificates are typically the CA chain
             tracing::debug!("Response contains {} certificates, using first", n);
-            Ok(certs.into_iter().next().unwrap())
+            Ok(certs.remove(0))
         }
     }
 }
