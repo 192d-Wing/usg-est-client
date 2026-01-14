@@ -91,6 +91,8 @@ opentelemetry_sdk = { version = "0.31.0", optional = true, features = [
 aes = { version = "0.8", optional = true }
 cbc = { version = "0.1", optional = true }
 des = { version = "0.8", optional = true }
+aes-gcm = { version = "0.10", optional = true }
+hmac = { version = "0.12", optional = true }
 
 # FIPS 140-2 compliance (optional, for DoD deployment)
 openssl = { version = "0.10", optional = true, features = ["vendored"] }
@@ -191,7 +193,7 @@ metrics-prometheus = [
     "opentelemetry_sdk",
 ]
 revocation = []
-enveloped = ["aes", "cbc", "des"]
+enveloped = ["aes", "cbc", "des", "aes-gcm", "hmac"]
 auto-enroll = [
     "toml",
     "serde",

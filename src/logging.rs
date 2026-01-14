@@ -639,3 +639,7 @@ mod tests {
         assert!(contents2.contains("Multi test"));
     }
 }
+
+// Optional encryption module (requires 'enveloped' feature for AES-GCM)
+#[cfg(feature = "enveloped")]
+pub mod encryption;

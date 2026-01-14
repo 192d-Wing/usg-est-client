@@ -102,6 +102,9 @@ pub mod credentials;
 #[cfg(feature = "windows-service")]
 pub mod security;
 
+// DPAPI wrapper for data protection
+pub mod dpapi;
+
 pub use certstore::{CertStore, CertStoreLocation, StoredCertificate};
 pub use cng::CngKeyProvider;
 pub use identity::MachineIdentity;
