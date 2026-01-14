@@ -139,6 +139,10 @@ mod tests {
     use crate::metrics::OperationType;
     use std::time::Duration;
 
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+    // and panics in tests provide clear failure messages. See ERROR-HANDLING-PATTERNS.md
+    // Pattern 5 for justification.
+
     #[tokio::test]
     async fn test_opentelemetry_exporter_creation() {
         let exporter = OpenTelemetryExporter::new("test-est-client", "0.1.0");
