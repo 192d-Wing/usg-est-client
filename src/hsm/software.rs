@@ -167,7 +167,9 @@ impl SoftwareKeyProvider {
 
     /// Get a cloned key pair for a handle.
     fn get_key_pair(&self, handle: &KeyHandle) -> Result<(KeyPair, KeyMetadata)> {
-        let keys = self.keys.read()
+        let keys = self
+            .keys
+            .read()
             .map_err(|e| EstError::hsm(format!("Key storage lock poisoned: {}", e)))?;
         let (kp, metadata) = keys
             .get(&handle.id)
@@ -203,7 +205,9 @@ impl KeyProvider for SoftwareKeyProvider {
     ) -> Result<KeyHandle> {
         // Check for duplicate labels
         if let Some(label_str) = label {
-            let keys = self.keys.read()
+            let keys = self
+                .keys
+                .read()
                 .map_err(|e| EstError::hsm(format!("Key storage lock poisoned: {}", e)))?;
             for (_, metadata) in keys.values() {
                 if metadata.label.as_deref() == Some(label_str) {
@@ -235,7 +239,9 @@ impl KeyProvider for SoftwareKeyProvider {
 
         // Store the key pair
         {
-            let mut keys = self.keys.write()
+            let mut keys = self
+                .keys
+                .write()
                 .map_err(|e| EstError::hsm(format!("Key storage lock poisoned: {}", e)))?;
             keys.insert(key_id.clone(), (key_pair, metadata.clone()));
         }
@@ -332,7 +338,9 @@ impl KeyProvider for SoftwareKeyProvider {
     }
 
     async fn list_keys(&self) -> Result<Vec<KeyHandle>> {
-        let keys = self.keys.read()
+        let keys = self
+            .keys
+            .read()
             .map_err(|e| EstError::hsm(format!("Key storage lock poisoned: {}", e)))?;
 
         let mut handles = Vec::new();
@@ -359,7 +367,9 @@ impl KeyProvider for SoftwareKeyProvider {
     }
 
     async fn find_key(&self, label: &str) -> Result<Option<KeyHandle>> {
-        let keys = self.keys.read()
+        let keys = self
+            .keys
+            .read()
             .map_err(|e| EstError::hsm(format!("Key storage lock poisoned: {}", e)))?;
 
         for (key_id, (key_pair, metadata)) in keys.iter() {
@@ -388,7 +398,9 @@ impl KeyProvider for SoftwareKeyProvider {
     }
 
     async fn delete_key(&self, handle: &KeyHandle) -> Result<()> {
-        let mut keys = self.keys.write()
+        let mut keys = self
+            .keys
+            .write()
             .map_err(|e| EstError::hsm(format!("Key storage lock poisoned: {}", e)))?;
 
         if keys.remove(&handle.id).is_some() {

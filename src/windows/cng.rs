@@ -498,7 +498,8 @@ impl KeyProvider for CngKeyProvider {
                 },
             };
 
-            self._keys.lock()
+            self._keys
+                .lock()
                 .map_err(|e| EstError::platform(format!("Key storage lock poisoned: {}", e)))?
                 .insert(key_id.clone(), algorithm);
 
@@ -566,7 +567,9 @@ impl KeyProvider for CngKeyProvider {
 
         #[cfg(not(windows))]
         {
-            let keys = self._keys.lock()
+            let keys = self
+                ._keys
+                .lock()
                 .map_err(|e| EstError::platform(format!("Key storage lock poisoned: {}", e)))?;
             Ok(keys
                 .iter()
@@ -596,7 +599,9 @@ impl KeyProvider for CngKeyProvider {
 
         #[cfg(not(windows))]
         {
-            let keys = self._keys.lock()
+            let keys = self
+                ._keys
+                .lock()
                 .map_err(|e| EstError::platform(format!("Key storage lock poisoned: {}", e)))?;
             for (id, alg) in keys.iter() {
                 if let Ok(name) = std::str::from_utf8(id) {
@@ -628,7 +633,8 @@ impl KeyProvider for CngKeyProvider {
 
         #[cfg(not(windows))]
         {
-            self._keys.lock()
+            self._keys
+                .lock()
                 .map_err(|e| EstError::platform(format!("Key storage lock poisoned: {}", e)))?
                 .remove(handle.id());
             Ok(())
