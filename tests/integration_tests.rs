@@ -38,3 +38,6 @@ mod metrics_test;
 
 #[cfg(all(windows, feature = "windows-service"))]
 mod windows;
+
+#[cfg(feature = "siem")]
+mod siem;

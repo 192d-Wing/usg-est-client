@@ -178,6 +178,9 @@ pub mod windows;
 #[cfg(feature = "windows-service")]
 pub mod logging;
 
+#[cfg(feature = "siem")]
+pub mod siem;
+
 // Re-export main types at crate root for convenience
 pub use client::EstClient;
 #[cfg(feature = "validation")]

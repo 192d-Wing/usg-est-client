@@ -72,6 +72,7 @@ time = { version = "0.3", optional = true, features = [
     "parsing",
     "macros",
 ] }
+chrono = { version = "0.4", optional = true }
 
 # PKCS#11 support (optional, for HSM integration)
 cryptoki = { version = "0.11", optional = true }
@@ -200,6 +201,9 @@ auto-enroll = [
     "renewal",
     "csr-gen",
 ]
+# SIEM integration (syslog forwarding, CEF, LEEF formats)
+# Provides enterprise security monitoring integration
+siem = ["serde", "serde_json", "chrono", "hostname"]
 
 # Platform-specific TLS backends (alternative to default rustls)
 # Use native-tls for OS-integrated TLS (SChannel on Windows, Security.framework on macOS, OpenSSL on Linux)

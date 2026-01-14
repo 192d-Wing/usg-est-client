@@ -1,0 +1,112 @@
+{
+  "index_patterns": ["est-client-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 3,
+      "number_of_replicas": 1,
+      "index.lifecycle.name": "est-client-policy",
+      "index.lifecycle.rollover_alias": "est-client",
+      "refresh_interval": "5s"
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": {
+          "type": "date"
+        },
+        "event_id": {
+          "type": "keyword"
+        },
+        "event_name": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "severity": {
+          "type": "keyword"
+        },
+        "severity_value": {
+          "type": "integer"
+        },
+        "category": {
+          "type": "keyword"
+        },
+        "outcome": {
+          "type": "keyword"
+        },
+        "source_host": {
+          "type": "keyword"
+        },
+        "source_ip": {
+          "type": "ip"
+        },
+        "source_user": {
+          "type": "keyword"
+        },
+        "source_process": {
+          "type": "keyword"
+        },
+        "target_url": {
+          "type": "keyword"
+        },
+        "target_host": {
+          "type": "keyword"
+        },
+        "target_port": {
+          "type": "integer"
+        },
+        "cert_subject": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 512
+            }
+          }
+        },
+        "cert_issuer": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 512
+            }
+          }
+        },
+        "cert_serial": {
+          "type": "keyword"
+        },
+        "cert_not_before": {
+          "type": "date"
+        },
+        "cert_not_after": {
+          "type": "date"
+        },
+        "geoip": {
+          "properties": {
+            "location": {
+              "type": "geo_point"
+            },
+            "city_name": {
+              "type": "keyword"
+            },
+            "country_name": {
+              "type": "keyword"
+            },
+            "region_name": {
+              "type": "keyword"
+            }
+          }
+        }
+      }
+    }
+  },
+  "priority": 200,
+  "version": 1,
+  "_meta": {
+    "description": "Template for EST Client security logs"
+  }
+}
