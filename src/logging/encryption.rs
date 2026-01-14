@@ -6,6 +6,26 @@
 //! This module provides optional encryption and HMAC signing for audit logs
 //! to meet SC-28 (Protection of Information at Rest) requirements.
 //!
+//! # NIST 800-53 Controls
+//!
+//! - **SC-28**: Protection of Information at Rest
+//!   - AES-256-GCM encryption of audit log files
+//!   - DPAPI-protected encryption keys (Windows) or file-based keys (Unix)
+//!   - Per-log-line encryption with unique nonces
+//! - **SC-13**: Cryptographic Protection
+//!   - FIPS-approved algorithms (AES-256-GCM, HMAC-SHA256)
+//!   - Cryptographically secure random number generation
+//!   - Authenticated encryption (confidentiality + integrity)
+//! - **SC-12**: Cryptographic Key Establishment and Management
+//!   - Automatic key generation on first use
+//!   - Secure key storage via DPAPI or restricted file permissions
+//!   - Key rotation support
+//! - **AU-9**: Protection of Audit Information
+//!   - HMAC-SHA256 integrity protection prevents tampering
+//!   - Encryption protects confidentiality of sensitive audit data
+//! - **SC-8**: Transmission Confidentiality and Integrity
+//!   - Protection of audit data at rest complements TLS for data in transit
+//!
 //! # Features
 //!
 //! - **AES-256-GCM encryption** for confidentiality
@@ -433,7 +453,9 @@ impl EncryptedLogger {
             mac.finalize().into_bytes().to_vec()
         };
 
-        if mac_computed != mac_received {
+        // Use constant-time comparison to prevent timing attacks
+        use subtle::ConstantTimeEq;
+        if mac_computed.ct_eq(&mac_received).unwrap_u8() == 0 {
             return Err(EstError::operational(
                 "MAC verification failed: log entry may have been tampered with",
             ));

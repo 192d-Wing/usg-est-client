@@ -841,16 +841,21 @@ impl RevocationChecker {
     async fn cache_crl(&self, url: &str, crl: CertificateList) -> Result<()> {
         let mut cache = self.crl_cache.write().await;
 
-        // Check cache size and evict oldest if needed
-        if cache.len() >= self.config.crl_cache_max_entries {
-            // Simple eviction: remove oldest entry
-            if let Some(oldest_key) = cache
+        // Evict oldest entries while cache is at or above limit
+        // Fixed: TOCTOU race condition - keep lock throughout eviction
+        while cache.len() >= self.config.crl_cache_max_entries {
+            // Find and remove oldest entry in a single atomic operation
+            let oldest_key = cache
                 .iter()
                 .min_by_key(|(_, entry)| entry.cached_at)
-                .map(|(k, _)| k.clone())
-            {
-                cache.remove(&oldest_key);
-                debug!("Evicted oldest CRL from cache");
+                .map(|(k, _)| k.clone());
+
+            if let Some(key) = oldest_key {
+                cache.remove(&key);
+                debug!("Evicted oldest CRL from cache: {}", key);
+            } else {
+                // Cache is empty, shouldn't happen but break to avoid infinite loop
+                break;
             }
         }
 
