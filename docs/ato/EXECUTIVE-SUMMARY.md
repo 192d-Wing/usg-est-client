@@ -412,7 +412,8 @@ cargo check --lib
 - 1 unmaintained dependency (`paste` crate - transitive from `cryptoki`)
 
 **Mitigation:**
-- MEDIUM items scheduled for Q2 2026 refactoring sprint
+
+- MEDIUM items scheduled for Q2 2026 refactoring sprint (see [REFACTORING-SPRINT-PLAN.md](REFACTORING-SPRINT-PLAN.md))
 - LOW items are maintenance tasks, not security risks
 - Dependency vulnerabilities tracked in POA&M
 - Alternative to `paste` crate being evaluated
@@ -459,6 +460,17 @@ See source code comments in:
 - `src/windows/credentials.rs`
 - `src/windows/eventlog.rs`
 - `src/dod/cac.rs`
+
+### Appendix D: Q2 2026 Refactoring Sprint Plan
+
+See [REFACTORING-SPRINT-PLAN.md](REFACTORING-SPRINT-PLAN.md) for:
+
+- 8-week sprint structure (5 phases)
+- 339 → 68 unwrap() reduction strategy (80% reduction)
+- 5 remediation patterns for different scenarios
+- Testing strategy with error injection
+- Resource requirements: 540 hours, 2 engineers
+- CI/CD tooling for regression prevention
 
 ---
 
