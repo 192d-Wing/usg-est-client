@@ -137,7 +137,12 @@ impl SoftwareKeyProvider {
 
     /// Get the next unique key ID.
     fn next_key_id(&self) -> Vec<u8> {
-        let mut id = self.next_id.write().unwrap();
+        let mut id = self.next_id.write().unwrap_or_else(|poisoned| {
+            tracing::warn!("Key ID counter lock poisoned, resetting to 0");
+            let mut inner = poisoned.into_inner();
+            *inner = 0;
+            inner
+        });
         let current = *id;
         *id += 1;
         current.to_be_bytes().to_vec()
@@ -162,7 +167,8 @@ impl SoftwareKeyProvider {
 
     /// Get a cloned key pair for a handle.
     fn get_key_pair(&self, handle: &KeyHandle) -> Result<(KeyPair, KeyMetadata)> {
-        let keys = self.keys.read().unwrap();
+        let keys = self.keys.read()
+            .map_err(|e| EstError::hsm(format!("Key storage lock poisoned: {}", e)))?;
         let (kp, metadata) = keys
             .get(&handle.id)
             .ok_or_else(|| EstError::csr(format!("Key not found: {:?}", handle.id)))?;
@@ -197,7 +203,8 @@ impl KeyProvider for SoftwareKeyProvider {
     ) -> Result<KeyHandle> {
         // Check for duplicate labels
         if let Some(label_str) = label {
-            let keys = self.keys.read().unwrap();
+            let keys = self.keys.read()
+                .map_err(|e| EstError::hsm(format!("Key storage lock poisoned: {}", e)))?;
             for (_, metadata) in keys.values() {
                 if metadata.label.as_deref() == Some(label_str) {
                     return Err(EstError::csr(format!(
@@ -228,7 +235,8 @@ impl KeyProvider for SoftwareKeyProvider {
 
         // Store the key pair
         {
-            let mut keys = self.keys.write().unwrap();
+            let mut keys = self.keys.write()
+                .map_err(|e| EstError::hsm(format!("Key storage lock poisoned: {}", e)))?;
             keys.insert(key_id.clone(), (key_pair, metadata.clone()));
         }
 
@@ -324,7 +332,8 @@ impl KeyProvider for SoftwareKeyProvider {
     }
 
     async fn list_keys(&self) -> Result<Vec<KeyHandle>> {
-        let keys = self.keys.read().unwrap();
+        let keys = self.keys.read()
+            .map_err(|e| EstError::hsm(format!("Key storage lock poisoned: {}", e)))?;
 
         let mut handles = Vec::new();
         for (key_id, (key_pair, metadata)) in keys.iter() {
@@ -350,7 +359,8 @@ impl KeyProvider for SoftwareKeyProvider {
     }
 
     async fn find_key(&self, label: &str) -> Result<Option<KeyHandle>> {
-        let keys = self.keys.read().unwrap();
+        let keys = self.keys.read()
+            .map_err(|e| EstError::hsm(format!("Key storage lock poisoned: {}", e)))?;
 
         for (key_id, (key_pair, metadata)) in keys.iter() {
             if metadata.label.as_deref() == Some(label) {
@@ -378,7 +388,8 @@ impl KeyProvider for SoftwareKeyProvider {
     }
 
     async fn delete_key(&self, handle: &KeyHandle) -> Result<()> {
-        let mut keys = self.keys.write().unwrap();
+        let mut keys = self.keys.write()
+            .map_err(|e| EstError::hsm(format!("Key storage lock poisoned: {}", e)))?;
 
         if keys.remove(&handle.id).is_some() {
             Ok(())
@@ -406,9 +417,14 @@ mod tests {
     use super::*;
     use der::Encode;
 
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+    // and panics in tests provide clear failure messages. See ERROR-HANDLING-PATTERNS.md
+    // Pattern 5 for justification.
+
     #[tokio::test]
     async fn test_new_provider() {
         let provider = SoftwareKeyProvider::new();
+        // Test fixture is known valid
         let keys = provider.list_keys().await.unwrap();
         assert_eq!(keys.len(), 0);
     }
