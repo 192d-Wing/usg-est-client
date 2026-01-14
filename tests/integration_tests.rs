@@ -35,3 +35,6 @@ mod errors;
 #[cfg(feature = "metrics")]
 #[path = "integration/metrics_test.rs"]
 mod metrics_test;
+
+#[cfg(all(windows, feature = "windows-service"))]
+mod windows;
