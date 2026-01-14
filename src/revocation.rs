@@ -157,9 +157,10 @@ impl<'a> SimpleDerParser<'a> {
             let mut length = 0usize;
             for _ in 0..num_octets {
                 // Fixed: Use checked arithmetic to prevent integer overflow
+                let byte = self.read_byte()? as usize;
                 length = length
                     .checked_shl(8)
-                    .and_then(|l| l.checked_add(self.read_byte()? as usize))
+                    .and_then(|l| l.checked_add(byte))
                     .ok_or_else(|| {
                         EstError::operational("Length field overflow (value too large)")
                     })?;

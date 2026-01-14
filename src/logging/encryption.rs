@@ -74,6 +74,7 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
     aead::{Aead, KeyInit, OsRng},
 };
+use base64::Engine;
 use sha2::{Digest, Sha256};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -314,6 +315,11 @@ impl EncryptedLogger {
 
     /// Log an encrypted entry
     pub fn log(&self, entry: &LogEntry) -> Result<()> {
+        // Check log level
+        if entry.level < self.inner.config.level {
+            return Ok(());
+        }
+
         // Format entry as plaintext
         let plaintext = if self.inner.config.json_format {
             entry.format_json()
@@ -327,16 +333,33 @@ impl EncryptedLogger {
         // Encrypt the entry
         let encrypted = self.encrypt_log_line(&plaintext)?;
 
-        // Create a wrapper entry with encrypted content
-        let encrypted_entry = LogEntry {
-            level: entry.level,
-            message: encrypted,
-            timestamp: entry.timestamp.clone(),
-            fields: Vec::new(),
-        };
+        // Write encrypted line directly (don't format again)
+        let line_with_newline = format!("{}\n", encrypted);
+        let line_bytes = line_with_newline.as_bytes();
 
-        // Log the encrypted entry (will write raw encrypted_entry.message)
-        self.inner.log(&encrypted_entry)
+        // Fixed: Handle lock poisoning gracefully instead of panicking
+        let mut writer = self
+            .inner
+            .writer
+            .lock()
+            .map_err(|e| EstError::operational(format!("Log writer lock poisoned: {}", e)))?;
+
+        // Write to log writer
+        use std::io::Write;
+        match &mut *writer {
+            crate::logging::LogWriter::File { writer: file_writer, current_size, .. } => {
+                file_writer.write_all(line_bytes)
+                    .and_then(|_| file_writer.flush())
+                    .map_err(|e| EstError::operational(format!("Failed to write encrypted log: {}", e)))?;
+                *current_size += line_bytes.len() as u64;
+                Ok(())
+            }
+            crate::logging::LogWriter::Stdout(stdout) => {
+                stdout.write_all(line_bytes)
+                    .and_then(|_| stdout.flush())
+                    .map_err(|e| EstError::operational(format!("Failed to write encrypted log: {}", e)))
+            }
+        }
     }
 
     /// Encrypt a log line
@@ -376,8 +399,8 @@ impl EncryptedLogger {
         use hmac::{Hmac, Mac};
         type HmacSha256 = Hmac<Sha256>;
 
-        let mut mac =
-            HmacSha256::new_from_slice(&self.keys.mac_key).expect("HMAC can take keys of any size");
+        let mut mac = <HmacSha256 as Mac>::new_from_slice(&self.keys.mac_key)
+            .expect("HMAC can take keys of any size");
 
         mac.update(FORMAT_VERSION.as_bytes());
         mac.update(b":");
@@ -427,13 +450,13 @@ impl EncryptedLogger {
             )));
         }
 
-        // Verify MAC
-        let mac_computed = {
+        // Verify MAC using constant-time comparison
+        {
             use hmac::{Hmac, Mac};
             type HmacSha256 = Hmac<Sha256>;
 
-            let mut mac =
-                HmacSha256::new_from_slice(&keys.mac_key).expect("HMAC can take keys of any size");
+            let mut mac = <HmacSha256 as Mac>::new_from_slice(&keys.mac_key)
+                .expect("HMAC can take keys of any size");
 
             mac.update(FORMAT_VERSION.as_bytes());
             mac.update(b":");
@@ -441,15 +464,11 @@ impl EncryptedLogger {
             mac.update(b":");
             mac.update(&ciphertext);
 
-            mac.finalize().into_bytes().to_vec()
-        };
-
-        // Use constant-time comparison to prevent timing attacks
-        use subtle::ConstantTimeEq;
-        if mac_computed.ct_eq(&mac_received).unwrap_u8() == 0 {
-            return Err(EstError::operational(
-                "MAC verification failed: log entry may have been tampered with",
-            ));
+            // verify_slice performs constant-time comparison
+            mac.verify_slice(&mac_received)
+                .map_err(|_| EstError::operational(
+                    "MAC verification failed: log entry may have been tampered with",
+                ))?;
         }
 
         // Decrypt

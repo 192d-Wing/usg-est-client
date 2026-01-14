@@ -78,6 +78,7 @@
 use crate::dod::policies::{DodCertificatePolicy, extract_dod_policies};
 use crate::dod::roots::{DodRootCa, load_dod_root_cas};
 use crate::error::{EstError, Result};
+use std::time::SystemTime;
 use tracing::{debug, warn};
 use x509_cert::Certificate;
 

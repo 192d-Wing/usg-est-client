@@ -210,7 +210,7 @@ mod tests {
         assert!(cef.contains("EST Client"));
         assert!(cef.contains("CERT-2002"));
         assert!(cef.contains("Certificate Enrolled"));
-        assert!(cef.contains("|3|")); // Low severity
+        assert!(cef.ends_with("|3")); // Low severity at end (no extensions)
     }
 
     #[test]
