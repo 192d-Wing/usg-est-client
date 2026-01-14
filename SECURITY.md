@@ -252,17 +252,81 @@ The client implements RFC 7030 (EST) with security enhancements:
 
 **DO NOT** create public GitHub issues for security vulnerabilities.
 
-To report security issues:
-1. Email: [REDACTED - Configure for your organization]
-2. Provide detailed description and proof of concept if applicable
-3. Allow reasonable time for assessment and remediation
+### Responsible Disclosure
+
+We follow a coordinated disclosure process. To report security vulnerabilities:
+
+**Preferred Method:** [GitHub Security Advisories](https://github.com/johnwillman/usg-est-client/security/advisories) (Private)
+1. Navigate to the Security tab
+2. Click "Report a vulnerability"
+3. Provide detailed information
+
+**Alternative Methods:**
+- **Email:** security@[organization].mil (for DoD deployments)
+- **Encrypted Email:** PGP key available in repository
+- **Phone:** [Security Hotline] (CRITICAL issues only)
+
+### What to Include
+
+When reporting vulnerabilities, please provide:
+- Vulnerability description and potential impact
+- Affected version(s)
+- Steps to reproduce
+- Proof of concept (if applicable)
+- Suggested fix (if any)
+
+### Response Timeline
+
+We are committed to timely responses:
+- **CRITICAL:** Acknowledgment within 2 hours, patch within 24 hours
+- **HIGH:** Acknowledgment within 8 hours, patch within 7 days
+- **MEDIUM:** Acknowledgment within 24 hours, patch within 30 days
+- **LOW:** Acknowledgment within 72 hours, patch within 90 days
+
+See our [Security Update SLA](docs/ato/security-update-sla.md) for complete details.
+
+### Disclosure Policy
+
+- Standard disclosure: 90 days after patch release
+- Earlier disclosure if actively exploited
+- Coordinated with reporter
+- Security researchers credited (with permission)
 
 ## Security Updates
 
-This library receives security updates. Monitor:
-- GitHub Security Advisories
-- Dependabot alerts
-- Release notes for security fixes
+### Update Service Level Agreement
+
+This library provides formal security update commitments. Our [Security Update SLA](docs/ato/security-update-sla.md) defines:
+
+**Response Times by Severity:**
+
+| Severity | Patch Release | Example Vulnerabilities |
+|----------|---------------|------------------------|
+| **CRITICAL** | 24 hours | Remote code execution, PKI compromise |
+| **HIGH** | 7 days | Authentication bypass, key exposure |
+| **MEDIUM** | 30 days | Information disclosure, DoS |
+| **LOW** | 90 days | Minor information leaks |
+
+**Stay Informed:**
+- [GitHub Security Advisories](https://github.com/johnwillman/usg-est-client/security/advisories)
+- [GitHub Releases](https://github.com/johnwillman/usg-est-client/releases) - Check release notes
+- Dependabot alerts (if repository is watched)
+- Security mailing list: security-announce@[organization]
+
+**Supported Versions:**
+- **Current version (1.x):** Full security support
+- **Previous version (0.x):** Critical vulnerabilities only until 2026-12-31
+- **Older versions:** No support - upgrade required
+
+### Dependency Security
+
+We monitor dependencies daily:
+- ✅ Automated `cargo audit` scanning
+- ✅ Dependabot security updates
+- ✅ License compliance verification
+- ✅ Supply chain security (SBOM provided)
+
+Dependency vulnerabilities are patched according to the same SLA as direct vulnerabilities.
 
 ## License
 
@@ -270,6 +334,7 @@ Security-related contributions are welcome under the Apache 2.0 license.
 
 ---
 
-**Last Updated**: 2026-01-12
+**Last Updated**: 2026-01-13
 **Security Audit Date**: 2026-01-12
-**Next Review**: 2026-04-12 (quarterly)
+**Security Update SLA**: 2026-01-13 (POA&M SI-001)
+**Next Review**: 2026-04-13 (quarterly)
