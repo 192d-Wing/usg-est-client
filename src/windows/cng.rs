@@ -498,7 +498,9 @@ impl KeyProvider for CngKeyProvider {
                 },
             };
 
-            self._keys.lock().unwrap().insert(key_id.clone(), algorithm);
+            self._keys.lock()
+                .map_err(|e| EstError::platform(format!("Key storage lock poisoned: {}", e)))?
+                .insert(key_id.clone(), algorithm);
 
             Ok(KeyHandle::new(key_id, algorithm, metadata))
         }
@@ -564,7 +566,8 @@ impl KeyProvider for CngKeyProvider {
 
         #[cfg(not(windows))]
         {
-            let keys = self._keys.lock().unwrap();
+            let keys = self._keys.lock()
+                .map_err(|e| EstError::platform(format!("Key storage lock poisoned: {}", e)))?;
             Ok(keys
                 .iter()
                 .map(|(id, alg)| {
@@ -593,7 +596,8 @@ impl KeyProvider for CngKeyProvider {
 
         #[cfg(not(windows))]
         {
-            let keys = self._keys.lock().unwrap();
+            let keys = self._keys.lock()
+                .map_err(|e| EstError::platform(format!("Key storage lock poisoned: {}", e)))?;
             for (id, alg) in keys.iter() {
                 if let Ok(name) = std::str::from_utf8(id) {
                     if name.contains(label) {
@@ -624,7 +628,9 @@ impl KeyProvider for CngKeyProvider {
 
         #[cfg(not(windows))]
         {
-            self._keys.lock().unwrap().remove(handle.id());
+            self._keys.lock()
+                .map_err(|e| EstError::platform(format!("Key storage lock poisoned: {}", e)))?
+                .remove(handle.id());
             Ok(())
         }
     }
@@ -643,6 +649,10 @@ impl KeyProvider for CngKeyProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+    // and panics in tests provide clear failure messages. See ERROR-HANDLING-PATTERNS.md
+    // Pattern 5 for justification.
 
     #[test]
     fn test_provider_names() {

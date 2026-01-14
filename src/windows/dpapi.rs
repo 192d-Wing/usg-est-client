@@ -105,6 +105,10 @@ pub fn unprotect(protected: &[u8]) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
 
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+    // and panics in tests provide clear failure messages. See ERROR-HANDLING-PATTERNS.md
+    // Pattern 5 for justification.
+
     #[test]
     fn test_protect_unprotect() {
         let plaintext = b"sensitive data that needs protection";
