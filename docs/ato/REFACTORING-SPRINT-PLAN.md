@@ -474,16 +474,22 @@ fi
 
 ### CI Dashboard
 
-Add to GitHub Actions:
+Configure in GitLab CI/CD (`.gitlab-ci.yml`):
 
 ```yaml
-- name: Track unwrap() metrics
-  run: |
-    echo "## unwrap() Tracking" >> $GITHUB_STEP_SUMMARY
-    echo "| File | Count |" >> $GITHUB_STEP_SUMMARY
-    echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
-    grep -r "unwrap()" src/ --include="*.rs" -c | sort -t: -k2 -rn | head -10 \
-      | awk -F: '{print "| "$1" | "$2" |"}' >> $GITHUB_STEP_SUMMARY
+unwrap-tracking:
+  stage: analysis
+  image: alpine:latest
+  script:
+    - |
+      echo "## unwrap() Tracking" >> report.md
+      echo "| File | Count |" >> report.md
+      echo "|------|-------|" >> report.md
+      grep -rc "unwrap()" src/ --include="*.rs" | sort -t: -k2 -rn | head -10 \
+        | awk -F: '{print "| "$1" | "$2" |"}' >> report.md
+  artifacts:
+    reports:
+      metrics: report.md
 ```
 
 ---
@@ -646,7 +652,7 @@ git push origin main
 
 3. **Test Infrastructure**
    - Windows Server licenses: Available via MSDN
-   - CI/CD capacity: GitHub Actions sufficient
+   - CI/CD capacity: GitLab CI/CD runners sufficient
 
 ### Internal Dependencies
 
@@ -776,7 +782,7 @@ Week 9: Buffer + Documentation
 | `src/auto_enroll/config.rs` | 10 | MEDIUM | 4 |
 | `src/operations/serverkeygen.rs` | 10 | MEDIUM | 4 |
 
-**Full inventory:** See CI dashboard at `.github/workflows/unwrap-tracking.yml`
+**Full inventory:** See CI dashboard in GitLab pipeline artifacts (`unwrap-tracking` job)
 
 ---
 
