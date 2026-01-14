@@ -538,8 +538,6 @@ pages:
     paths:
       - public
     expire_in: 1 week
-  only:
-    - main
   rules:
     # Only run when docs change or on main branch pushes
     - if: '$CI_COMMIT_BRANCH == "main"'
