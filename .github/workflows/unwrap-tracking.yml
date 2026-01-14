@@ -1,0 +1,143 @@
+name: unwrap() Tracking Dashboard
+
+# Track unwrap() reduction progress for Q2 2026 Refactoring Sprint
+# See: docs/ato/REFACTORING-SPRINT-PLAN.md
+
+on:
+  push:
+    branches: [ main, 'feature/**', 'refactor/**' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  track-unwrap:
+    name: Track unwrap() Count
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Count unwrap() calls by file
+        id: count
+        run: |
+          echo "## unwrap() Tracking Dashboard" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Sprint Goal:** Reduce from 339 to 68 unwrap() calls (80% reduction)" >> $GITHUB_STEP_SUMMARY
+          echo "**Timeline:** Q2 2026 (8 weeks)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Total count
+          TOTAL=$(grep -rn "unwrap()" src/ --include="*.rs" 2>/dev/null | wc -l | tr -d ' ')
+          BASELINE=339
+          GOAL=68
+          REDUCTION=$((BASELINE - TOTAL))
+          TARGET_REDUCTION=$((BASELINE - GOAL))
+          PROGRESS=$((REDUCTION * 100 / TARGET_REDUCTION))
+
+          echo "### Overall Progress" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Current Count** | $TOTAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Baseline (2026-01-14)** | $BASELINE |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Sprint Goal** | $GOAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Reduction So Far** | $REDUCTION |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Progress** | $PROGRESS% |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check if count increased
+          if [ "$TOTAL" -gt "$BASELINE" ]; then
+            INCREASE=$((TOTAL - BASELINE))
+            echo "::error::unwrap() count increased by $INCREASE (current: $TOTAL, baseline: $BASELINE)"
+            echo "❌ **ERROR: unwrap() count increased by $INCREASE!**" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          elif [ "$TOTAL" -eq "$BASELINE" ]; then
+            echo "::notice::unwrap() count unchanged at $TOTAL"
+            echo "⚠️ No change in unwrap() count" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "::notice::unwrap() count reduced by $REDUCTION (current: $TOTAL)"
+            echo "✅ **Great progress! Reduced by $REDUCTION**" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Top 15 files by unwrap() count
+          echo "### Top Files by unwrap() Count" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| File | Count | Sprint Phase |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|--------------|" >> $GITHUB_STEP_SUMMARY
+
+          grep -rc "unwrap()" src/ --include="*.rs" 2>/dev/null \
+            | grep -v ":0$" \
+            | sort -t: -k2 -rn \
+            | head -15 \
+            | while IFS=: read -r file count; do
+                # Determine phase based on file path
+                phase=""
+                case "$file" in
+                  *hsm/pkcs11.rs*) phase="Phase 2 (HSM)" ;;
+                  *hsm/*) phase="Phase 2 (HSM)" ;;
+                  *windows/cng.rs*) phase="Phase 3 (Windows)" ;;
+                  *windows/certstore.rs*) phase="Phase 3 (Windows)" ;;
+                  *windows/service.rs*) phase="Phase 3 (Windows)" ;;
+                  *windows/tpm.rs*) phase="Phase 3 (Windows)" ;;
+                  *windows/*) phase="Phase 3 (Windows)" ;;
+                  *auto_enroll/*) phase="Phase 4 (Auto-Enroll)" ;;
+                  *operations/*) phase="Phase 4 (Auto-Enroll)" ;;
+                  *validation.rs*) phase="Phase 5 (Core)" ;;
+                  *logging/*) phase="Phase 5 (Core)" ;;
+                  *config.rs*) phase="Phase 5 (Core)" ;;
+                  *tls.rs*) phase="Phase 5 (Core)" ;;
+                  *) phase="Phase 5 (Core)" ;;
+                esac
+                echo "| \`${file#src/}\` | $count | $phase |" >> $GITHUB_STEP_SUMMARY
+              done
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Module breakdown
+          echo "### Module Breakdown" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Module | Count | Target | Phase |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|--------|-------|" >> $GITHUB_STEP_SUMMARY
+
+          HSM_COUNT=$(grep -rn "unwrap()" src/hsm/ --include="*.rs" 2>/dev/null | wc -l | tr -d ' ')
+          echo "| \`src/hsm/\` | $HSM_COUNT | 5 | Phase 2 (Weeks 3-4) |" >> $GITHUB_STEP_SUMMARY
+
+          WINDOWS_COUNT=$(grep -rn "unwrap()" src/windows/ --include="*.rs" 2>/dev/null | wc -l | tr -d ' ')
+          echo "| \`src/windows/\` | $WINDOWS_COUNT | 8 | Phase 3 (Weeks 5-6) |" >> $GITHUB_STEP_SUMMARY
+
+          AUTOENROLL_COUNT=$(grep -rn "unwrap()" src/auto_enroll/ --include="*.rs" 2>/dev/null | wc -l | tr -d ' ')
+          OPERATIONS_COUNT=$(grep -rn "unwrap()" src/operations/ --include="*.rs" 2>/dev/null | wc -l | tr -d ' ')
+          PIPELINE_TOTAL=$((AUTOENROLL_COUNT + OPERATIONS_COUNT))
+          echo "| \`src/auto_enroll/\` + \`src/operations/\` | $PIPELINE_TOTAL | 5 | Phase 4 (Week 7) |" >> $GITHUB_STEP_SUMMARY
+
+          VALIDATION_COUNT=$(grep -n "unwrap()" src/validation.rs 2>/dev/null | wc -l | tr -d ' ')
+          LOGGING_COUNT=$(grep -rn "unwrap()" src/logging/ --include="*.rs" 2>/dev/null | wc -l | tr -d ' ')
+          CONFIG_COUNT=$(grep -n "unwrap()" src/config.rs 2>/dev/null | wc -l | tr -d ' ')
+          CORE_TOTAL=$((VALIDATION_COUNT + LOGGING_COUNT + CONFIG_COUNT))
+          echo "| Core (\`validation\`, \`logging\`, \`config\`) | $CORE_TOTAL | 10 | Phase 5 (Week 8) |" >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Documentation link
+          echo "### Resources" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- 📘 [Error Handling Patterns Guide](docs/dev/ERROR-HANDLING-PATTERNS.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- 📋 [Refactoring Sprint Plan](docs/ato/REFACTORING-SPRINT-PLAN.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- 📊 [Executive Summary](docs/ato/EXECUTIVE-SUMMARY.md)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Comment on PR (if applicable)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync(process.env.GITHUB_STEP_SUMMARY, 'utf8');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });

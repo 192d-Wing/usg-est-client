@@ -1,0 +1,46 @@
+# EST Client Cargo Configuration
+#
+# This file configures Cargo build settings and lints for the EST Client Library
+
+[build]
+# Enable all features by default for development
+# all-features = true
+
+[target.'cfg(all())']
+rustflags = [
+    # Warn on unwrap() usage - Part of Q2 2026 refactoring sprint
+    "-W", "clippy::unwrap_used",
+
+    # Warn on expect() usage - Should have justification comments
+    "-W", "clippy::expect_used",
+
+    # Additional clippy lints for production code quality
+    "-W", "clippy::panic",
+    "-W", "clippy::todo",
+    "-W", "clippy::unimplemented",
+]
+
+# Allow unwrap/expect in test code where panic is acceptable
+[target.'cfg(test)']
+rustflags = [
+    "-A", "clippy::unwrap_used",
+    "-A", "clippy::expect_used",
+    "-A", "clippy::panic",
+]
+
+# Allow in benchmark code
+[target.'cfg(bench)']
+rustflags = [
+    "-A", "clippy::unwrap_used",
+    "-A", "clippy::expect_used",
+]
+
+[alias]
+# Convenient aliases for checking unwrap usage
+check-unwrap = "clippy -- -W clippy::unwrap_used -W clippy::expect_used"
+
+# Run full lint suite
+lint-all = "clippy --all-targets --all-features -- -D warnings"
+
+# Security-focused clippy checks
+lint-security = "clippy --all-targets --all-features -- -W clippy::unwrap_used -W clippy::expect_used -W clippy::panic -W clippy::indexing_slicing -W clippy::cast_possible_truncation -W clippy::cast_sign_loss"
