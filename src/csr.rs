@@ -811,6 +811,10 @@ pub fn feature_not_enabled() {
 mod tests {
     use super::*;
 
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+    // and panics in tests provide clear failure messages. See ERROR-HANDLING-PATTERNS.md
+    // Pattern 5 for justification.
+
     #[test]
     fn test_csr_builder_basic() {
         let (csr_der, _key_pair) = CsrBuilder::new()

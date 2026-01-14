@@ -714,6 +714,10 @@ pub fn extract_encryption_algorithm(algorithm_der: &[u8]) -> Result<EncryptionAl
 mod tests {
     use super::*;
 
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+    // and panics in tests provide clear failure messages. See ERROR-HANDLING-PATTERNS.md
+    // Pattern 5 for justification.
+
     #[test]
     fn test_encryption_algorithm_key_sizes() {
         assert_eq!(EncryptionAlgorithm::Aes128Cbc.key_size(), 16);

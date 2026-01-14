@@ -593,6 +593,10 @@ impl CertificateValidationConfig {
 mod tests {
     use super::*;
 
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+    // and panics in tests provide clear failure messages. See ERROR-HANDLING-PATTERNS.md
+    // Pattern 5 for justification.
+
     #[test]
     fn test_build_url_without_label() {
         let config = EstClientConfig::builder()

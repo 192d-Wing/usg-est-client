@@ -249,6 +249,10 @@ pub fn verify_all_fingerprints(certs: &CaCertificates, expected: &[[u8; 32]]) ->
 mod tests {
     use super::*;
 
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+    // and panics in tests provide clear failure messages. See ERROR-HANDLING-PATTERNS.md
+    // Pattern 5 for justification.
+
     #[test]
     fn test_format_fingerprint() {
         let fp = [0xABu8; 32];
