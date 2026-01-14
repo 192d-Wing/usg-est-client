@@ -18,6 +18,22 @@
 //! This module implements the `KeyProvider` trait for Windows CNG, enabling
 //! EST enrollment operations to use keys stored in Windows key storage providers.
 //!
+//! # NIST 800-53 Controls
+//!
+//! - **SC-12**: Cryptographic Key Establishment and Management
+//!   - RSA (2048/3072/4096-bit) and ECDSA (P-256/P-384) key generation
+//!   - Support for multiple key storage providers (Software, Smart Card, TPM)
+//!   - Key lifecycle management through CNG APIs
+//! - **SC-13**: Cryptographic Protection
+//!   - FIPS 140-2 compliant algorithms when Windows FIPS mode enabled
+//!   - NIST-approved signature algorithms (ECDSA with SHA-256, RSA with SHA-256)
+//! - **SC-28**: Protection of Information at Rest
+//!   - Non-exportable key protection (default)
+//!   - TPM-backed key storage option for hardware-protected keys
+//! - **SC-2**: Separation of Function
+//!   - Separation between software, smart card, and TPM key storage
+//!   - Provider-specific access control through Windows ACLs
+//!
 //! # Key Storage Providers
 //!
 //! Windows CNG supports multiple key storage providers:

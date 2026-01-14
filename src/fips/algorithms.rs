@@ -6,6 +6,20 @@
 //! This module enforces FIPS 140-2 approved algorithms and blocks non-compliant
 //! cryptographic operations.
 //!
+//! # NIST 800-53 Controls
+//!
+//! - **SC-13**: Cryptographic Protection
+//!   - Enforces use of NIST-approved cryptographic algorithms
+//!   - Blocks deprecated/weak algorithms (3DES, MD5, SHA-1, RC4)
+//!   - Validates algorithm compliance before cryptographic operations
+//!   - FIPS 140-2 compliant when using OpenSSL FIPS module
+//! - **SC-12**: Cryptographic Key Establishment and Management
+//!   - Enforces minimum key sizes (RSA ≥2048, ECDSA ≥P-256)
+//!   - Validates key algorithm compatibility with FIPS 140-2
+//! - **IA-7**: Cryptographic Module Authentication
+//!   - Ensures only FIPS-validated cryptographic modules are used
+//!   - Runtime validation of FIPS mode status
+//!
 //! # FIPS-Approved Algorithms
 //!
 //! ## Symmetric Encryption

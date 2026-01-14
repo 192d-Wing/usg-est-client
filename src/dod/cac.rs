@@ -6,6 +6,26 @@
 //! This module provides integration with Common Access Cards (CAC) and Personal
 //! Identity Verification (PIV) cards for DoD deployments.
 //!
+//! # NIST 800-53 Controls
+//!
+//! - **IA-2**: Identification and Authentication (Organizational Users)
+//!   - Multi-factor authentication using CAC/PIV smart cards
+//!   - Hardware token (something you have) + PIN (something you know)
+//!   - FIPS 201-2 compliant PIV authentication
+//! - **IA-4**: Identifier Management
+//!   - Unique identification via PIV card serial numbers and certificates
+//!   - Identity binding to cryptographic keys on smart card
+//! - **IA-5**: Authenticator Management
+//!   - Secure authenticator (PIV card) lifecycle
+//!   - PIN-protected access to private keys
+//!   - Certificate-based authentication credentials
+//! - **IA-8**: Identification and Authentication (Non-Organizational Users)
+//!   - Federal PKI certificate-based authentication
+//!   - Support for DoD External Certificate Authority (ECA) certificates
+//! - **SC-17**: Public Key Infrastructure Certificates
+//!   - PIV certificate validation and trust chain verification
+//!   - Integration with DoD PKI infrastructure
+//!
 //! # Overview
 //!
 //! CAC and PIV cards contain multiple certificates in different slots:

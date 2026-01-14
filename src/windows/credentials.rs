@@ -21,6 +21,22 @@
 //! - **DPAPI**: Encrypt sensitive data using Windows Data Protection API
 //! - **Environment Variables**: Support for container/CI environments
 //!
+//! # NIST 800-53 Controls
+//!
+//! - **IA-5**: Authenticator Management
+//!   - Secure storage of authentication credentials (passwords, tokens)
+//!   - DPAPI encryption of credential material
+//!   - Credential lifecycle management (store, retrieve, delete)
+//! - **IA-7**: Cryptographic Module Authentication
+//!   - Integration with Windows Credential Manager for secure storage
+//!   - DPAPI-based encryption of sensitive authentication data
+//! - **AC-2**: Account Management
+//!   - Per-target credential storage and retrieval
+//!   - Isolation of credentials by target name
+//! - **SC-28**: Protection of Information at Rest
+//!   - DPAPI encryption of stored credentials
+//!   - Windows Credential Manager secure storage backend
+//!
 //! # Security Features
 //!
 //! - Credentials are never logged or written to disk in plaintext

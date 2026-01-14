@@ -6,6 +6,21 @@
 //! This module provides a `tracing` subscriber layer that writes log events
 //! to the Windows Event Log. This enables integration with enterprise logging
 //! infrastructure and SIEM systems.
+//!
+//! # NIST 800-53 Controls
+//!
+//! - **AU-2**: Audit Events
+//!   - Automatic conversion of application events to audit records
+//!   - Severity-based event categorization (Info, Warning, Error)
+//! - **AU-3**: Content of Audit Records
+//!   - Structured field extraction from tracing events
+//!   - Automatic inclusion of timestamps and event metadata
+//! - **AU-6**: Audit Review, Analysis, and Reporting
+//!   - Real-time event forwarding to Windows Event Log
+//!   - Integration with Windows Event Forwarding (WEF)
+//! - **AU-9**: Protection of Audit Information
+//!   - Events protected by Windows Event Log security model
+//!   - Leverages Windows ACL-based access control
 
 use crate::windows::eventlog::{EventData, EventLog, EventType};
 use std::sync::Arc;

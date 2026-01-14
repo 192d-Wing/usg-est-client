@@ -19,6 +19,24 @@
 //! Windows Platform Crypto Provider (PCP). TPM-protected keys offer hardware-level
 //! security, making key extraction extremely difficult even if the system is compromised.
 //!
+//! # NIST 800-53 Controls
+//!
+//! - **SC-12**: Cryptographic Key Establishment and Management
+//!   - Hardware-based key generation using TPM 2.0
+//!   - Non-extractable private keys (keys cannot leave TPM)
+//!   - TPM key attestation capability
+//!   - Key lifecycle tied to TPM hardware
+//! - **SC-13**: Cryptographic Protection
+//!   - TPM 2.0 FIPS 140-2 Level 2 compliant cryptographic operations
+//!   - Hardware-backed signature generation
+//!   - Tamper-resistant key storage
+//! - **SC-28**: Protection of Information at Rest
+//!   - Private keys stored in TPM hardware, never in software
+//!   - Platform Crypto Provider (PCP) hardware protection
+//! - **SI-7**: Software, Firmware, and Information Integrity
+//!   - TPM key attestation to prove hardware protection
+//!   - Remote verification of key provenance
+//!
 //! # Features
 //!
 //! - **TPM 2.0 Detection**: Automatically detect TPM availability and version

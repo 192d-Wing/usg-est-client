@@ -139,14 +139,28 @@
 //! - **Rate Limiting**: Implement rate limiting to prevent log flooding
 //! - **Log Integrity**: Consider signing or encrypting logs for non-repudiation
 //!
-//! # Compliance
+//! # NIST 800-53 Controls
 //!
-//! This module helps meet the following compliance requirements:
+//! - **AU-6**: Audit Review, Analysis, and Reporting
+//!   - Real-time audit event forwarding to enterprise SIEM platforms
+//!   - Structured event formats (CEF, LEEF, RFC 5424 syslog)
+//!   - Facilitates automated audit analysis and correlation
+//! - **AU-9**: Protection of Audit Information
+//!   - TLS encryption for audit data in transit
+//!   - Secure authentication to SIEM endpoints
+//!   - Protection against unauthorized modification during transmission
+//! - **AU-12**: Audit Generation
+//!   - Automatic generation of audit events for all security-relevant actions
+//!   - Standardized event formats for cross-platform compatibility
+//! - **SI-4**: Information System Monitoring
+//!   - Integration with enterprise monitoring infrastructure
+//!   - Real-time security event visibility
+//!   - Support for automated alerting and response
 //!
-//! - **NIST SP 800-53 AU-6**: Audit Review, Analysis, and Reporting
-//! - **NIST SP 800-53 AU-9**: Protection of Audit Information
-//! - **STIG APSC-DV-000050**: Application must produce audit records
-//! - **STIG APSC-DV-002520**: Application must protect audit information from modification
+//! # STIG Compliance
+//!
+//! - **APSC-DV-000050**: Application must produce audit records
+//! - **APSC-DV-002520**: Application must protect audit information from modification
 
 pub mod cef;
 pub mod leef;

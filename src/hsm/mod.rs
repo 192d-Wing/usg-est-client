@@ -19,6 +19,21 @@
 //! allowing EST client operations to use keys stored in Hardware Security Modules,
 //! TPMs, cloud key management services, or software-based storage.
 //!
+//! # NIST 800-53 Controls
+//!
+//! - **SC-12**: Cryptographic Key Establishment and Management
+//!   - Provider-agnostic key generation abstraction
+//!   - Support for hardware-backed key storage (HSM, TPM, smart card)
+//!   - Key lifecycle management (generation, usage, deletion)
+//!   - Zero key material exposure design pattern
+//! - **SC-13**: Cryptographic Protection
+//!   - Cryptographic operations delegated to secure providers
+//!   - Support for FIPS-validated HSM modules
+//!   - Signature generation without private key exposure
+//! - **SI-7**: Software, Firmware, and Information Integrity
+//!   - Key attestation support for verifying hardware protection
+//!   - Provider verification capabilities
+//!
 //! # Key Features
 //!
 //! - **Zero key material exposure**: Private keys never leave the secure boundary

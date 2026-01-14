@@ -19,6 +19,30 @@
 //! events, warnings, errors, and audit information. Events are logged to
 //! the Application log under the "EST Auto-Enrollment" source.
 //!
+//! # NIST 800-53 Controls
+//!
+//! - **AU-2**: Audit Events
+//!   - Defines auditable events: enrollment lifecycle, authentication, errors
+//!   - Categorized event types (Info, Warning, Error, Audit)
+//!   - Event ID ranges for different event categories (1000-4099)
+//! - **AU-3**: Content of Audit Records
+//!   - Structured event data: timestamps, certificate details, error information
+//!   - Event source identification ("EST Auto-Enrollment")
+//!   - Contextual data: thumbprints, subject names, URLs, error codes
+//! - **AU-4**: Audit Storage Capacity
+//!   - Integration with Windows Event Log retention policies
+//!   - Automatic log rotation managed by Windows
+//! - **AU-6**: Audit Review, Analysis, and Reporting
+//!   - Events accessible via Windows Event Viewer
+//!   - Machine-readable format for automated analysis
+//!   - Integration with Windows event forwarding
+//! - **AU-9**: Protection of Audit Information
+//!   - Events protected by Windows Event Log ACLs
+//!   - Tamper-evident audit trail
+//! - **AU-12**: Audit Generation
+//!   - Automatic audit event generation for all enrollment operations
+//!   - Real-time event logging at point of occurrence
+//!
 //! # Event Categories
 //!
 //! Events are organized into categories by ID range:
