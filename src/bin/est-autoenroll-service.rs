@@ -60,10 +60,10 @@
 //!    - Sets friendly name for easy identification
 //!    - Returns certificate thumbprint (SHA-1 hash)
 //!
-//! 7. **Key Storage**: Saves private key to disk (temporary workaround)
-//!    - **Limitation**: CNG integration not yet implemented (see TODO #5)
-//!    - Writes PEM-encoded private key to configured path
-//!    - Future: Will use Windows CNG to associate key with certificate
+//! 7. **Key Association**: Associates CNG private key with certificate
+//!    - Uses Windows CNG for secure key storage
+//!    - Keys stored in CNG provider (Software, TPM, or Smart Card)
+//!    - Private keys never written to disk
 //!
 //! ## Error Handling
 //!
@@ -99,7 +99,7 @@
 //! [storage]
 //! store = "LocalMachine\\My"
 //! friendly_name = "EST Auto-Enrolled Certificate"
-//! key_path = "C:\\ProgramData\\Department of War\\EST\\keys\\server.pem"
+//! cng_provider = "Microsoft Software Key Storage Provider"  # Optional, defaults to software
 //! ```
 //!
 //! # Certificate Renewal Workflow
@@ -140,10 +140,10 @@
 //!    - Maintains same friendly name and store location
 //!    - Returns new certificate thumbprint
 //!
-//! 8. **New Key Storage**: Saves new private key to disk
-//!    - **Limitation**: CNG integration not yet implemented (see TODO #5)
-//!    - Overwrites old key file with new key
-//!    - Future: Will use Windows CNG key containers
+//! 8. **New Key Association**: Associates new CNG private key with renewed certificate
+//!    - Fresh key stored securely in CNG provider
+//!    - Old key can be archived or deleted as per policy
+//!    - Keys protected by Windows DPAPI or TPM
 //!
 //! ## Renewal Triggers
 //!
@@ -398,6 +398,8 @@ mod enrollment {
     use usg_est_client::auto_enroll::config::AutoEnrollConfig;
     use usg_est_client::error::Result;
     use usg_est_client::windows::{CertStore, MachineIdentity};
+    use usg_est_client::windows::cng::CngKeyProvider;
+    use usg_est_client::hsm::{KeyAlgorithm, KeyProvider};
 
     /// Check if enrollment is needed.
     pub async fn needs_enrollment(config: &AutoEnrollConfig) -> Result<bool> {
@@ -546,8 +548,48 @@ mod enrollment {
             }
         }
 
-        // 3. Generate key pair and build CSR
-        let (csr_der, key_pair) = csr_builder.build()?;
+        // 3. Generate CNG key pair and build CSR
+        let key_algorithm = match config
+            .certificate
+            .as_ref()
+            .and_then(|c| c.key_algorithm.as_ref())
+            .map(|s| s.as_str())
+            .unwrap_or("RSA-2048")
+        {
+            "RSA-2048" => KeyAlgorithm::Rsa2048,
+            "RSA-3072" => KeyAlgorithm::Rsa3072,
+            "RSA-4096" => KeyAlgorithm::Rsa4096,
+            "ECDSA-P256" => KeyAlgorithm::EccP256,
+            "ECDSA-P384" => KeyAlgorithm::EccP384,
+            algo => {
+                return Err(usg_est_client::error::EstError::config(format!(
+                    "Unsupported key algorithm: {}",
+                    algo
+                )));
+            }
+        };
+
+        // Create CNG provider with configured storage provider
+        let cng_provider_name = config
+            .storage
+            .as_ref()
+            .and_then(|s| s.cng_provider.as_ref())
+            .map(|s| s.as_str())
+            .unwrap_or(usg_est_client::windows::cng::providers::SOFTWARE);
+
+        let cng_provider = CngKeyProvider::with_provider(cng_provider_name)?;
+        tracing::info!(
+            "Generating key pair in CNG provider: {}",
+            cng_provider_name
+        );
+
+        // Generate key pair in CNG
+        let label = format!("{}-{}", cn, chrono::Utc::now().timestamp());
+        let key_handle = cng_provider.generate_key_pair(key_algorithm, Some(&label))?;
+        tracing::debug!("Generated CNG key pair with label: {}", label);
+
+        // Build CSR using CNG-backed key
+        let (csr_der, _) = csr_builder.build_with_provider(&cng_provider, &key_handle)?;
         tracing::debug!("Generated CSR ({} bytes)", csr_der.len());
 
         // 4. Create EST client and submit enrollment
@@ -596,23 +638,17 @@ mod enrollment {
         let thumbprint = store.import_certificate(&cert_der, friendly_name)?;
         tracing::info!("Imported certificate to store with thumbprint: {}", thumbprint);
 
-        // TODO: Associate private key with certificate
-        // This requires CNG integration to:
-        // 1. Generate key in CNG provider
-        // 2. Use that key for CSR generation
-        // 3. Link certificate to CNG key container
-        // See TODO item #5 (HSM-backed CSR generation)
+        // Associate CNG private key with certificate
+        let container_name = CngKeyProvider::get_container_name(&key_handle)?;
+        let provider_name = CngKeyProvider::get_provider_name(&key_handle)?;
 
-        tracing::warn!("Note: Private key not yet associated with certificate (requires CNG integration)");
+        store.associate_cng_key(&thumbprint, &container_name, &provider_name)?;
+        tracing::info!(
+            "Associated CNG key container '{}' with certificate",
+            container_name
+        );
 
-        // Save key pair to disk as a temporary workaround
-        if let Some(key_path) = config.storage.as_ref().and_then(|s| s.key_path.as_ref()) {
-            let key_pem = key_pair.serialize_pem();
-            std::fs::write(key_path, key_pem)?;
-            tracing::info!("Saved private key to: {}", key_path.display());
-        }
-
-        tracing::info!("Enrollment complete");
+        tracing::info!("Enrollment complete - certificate ready for use");
         Ok(())
     }
 
@@ -785,8 +821,48 @@ mod enrollment {
             }
         }
 
-        // 5. Generate NEW key pair and build CSR (best practice for renewal)
-        let (csr_der, key_pair) = csr_builder.build()?;
+        // 5. Generate NEW CNG key pair and build CSR (best practice for renewal)
+        let key_algorithm = match config
+            .certificate
+            .as_ref()
+            .and_then(|c| c.key_algorithm.as_ref())
+            .map(|s| s.as_str())
+            .unwrap_or("RSA-2048")
+        {
+            "RSA-2048" => KeyAlgorithm::Rsa2048,
+            "RSA-3072" => KeyAlgorithm::Rsa3072,
+            "RSA-4096" => KeyAlgorithm::Rsa4096,
+            "ECDSA-P256" => KeyAlgorithm::EccP256,
+            "ECDSA-P384" => KeyAlgorithm::EccP384,
+            algo => {
+                return Err(usg_est_client::error::EstError::config(format!(
+                    "Unsupported key algorithm: {}",
+                    algo
+                )));
+            }
+        };
+
+        // Create CNG provider with configured storage provider
+        let cng_provider_name = config
+            .storage
+            .as_ref()
+            .and_then(|s| s.cng_provider.as_ref())
+            .map(|s| s.as_str())
+            .unwrap_or(usg_est_client::windows::cng::providers::SOFTWARE);
+
+        let cng_provider = CngKeyProvider::with_provider(cng_provider_name)?;
+        tracing::info!(
+            "Generating key pair for renewal in CNG provider: {}",
+            cng_provider_name
+        );
+
+        // Generate fresh key pair in CNG (security best practice for renewal)
+        let label = format!("{}-renewal-{}", cn, chrono::Utc::now().timestamp());
+        let key_handle = cng_provider.generate_key_pair(key_algorithm, Some(&label))?;
+        tracing::debug!("Generated new CNG key pair with label: {}", label);
+
+        // Build CSR using CNG-backed key
+        let (csr_der, _) = csr_builder.build_with_provider(&cng_provider, &key_handle)?;
         tracing::debug!("Generated renewal CSR ({} bytes)", csr_der.len());
 
         // 6. Create EST client configured to use existing certificate for authentication
@@ -829,19 +905,17 @@ mod enrollment {
         let thumbprint = store.import_certificate(&new_cert_der, friendly_name)?;
         tracing::info!("Imported renewed certificate with thumbprint: {}", thumbprint);
 
-        // TODO: Associate new private key with certificate
-        // Same limitation as enrollment - requires CNG integration
+        // Associate CNG private key with renewed certificate
+        let container_name = CngKeyProvider::get_container_name(&key_handle)?;
+        let provider_name = CngKeyProvider::get_provider_name(&key_handle)?;
 
-        tracing::warn!("Note: Private key not yet associated with renewed certificate (requires CNG integration)");
+        store.associate_cng_key(&thumbprint, &container_name, &provider_name)?;
+        tracing::info!(
+            "Associated CNG key container '{}' with renewed certificate",
+            container_name
+        );
 
-        // Save new key pair to disk as temporary workaround
-        if let Some(key_path) = config.storage.as_ref().and_then(|s| s.key_path.as_ref()) {
-            let key_pem = key_pair.serialize_pem();
-            std::fs::write(key_path, key_pem)?;
-            tracing::info!("Saved renewed private key to: {}", key_path.display());
-        }
-
-        tracing::info!("Renewal complete");
+        tracing::info!("Renewal complete - renewed certificate ready for use");
         Ok(())
     }
 

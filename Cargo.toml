@@ -168,6 +168,11 @@ name = "est-enroll"
 path = "src/bin/est-enroll.rs"
 required-features = ["cli"]
 
+[[bin]]
+name = "est-migrate-keys"
+path = "src/bin/est-migrate-keys.rs"
+required-features = ["windows-service"]
+
 [features]
 default = ["csr-gen"]
 csr-gen = ["rcgen"]

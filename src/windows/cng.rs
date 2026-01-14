@@ -215,6 +215,55 @@ impl CngKeyProvider {
         self.provider_name == providers::SMART_CARD
     }
 
+    /// Get the CNG container name from a KeyHandle.
+    ///
+    /// The container name is needed to associate the CNG key with a
+    /// certificate in the Windows Certificate Store.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key handle returned from generate_key_pair()
+    ///
+    /// # Returns
+    ///
+    /// The CNG container name (e.g., "EST-Device-1234567890")
+    ///
+    /// # Example
+    ///
+    /// ```no_run,ignore
+    /// let provider = CngKeyProvider::new()?;
+    /// let key = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some("MyKey"))?;
+    /// let container = CngKeyProvider::get_container_name(&key)?;
+    /// println!("Container: {}", container);
+    /// ```
+    pub fn get_container_name(key: &KeyHandle) -> Result<String> {
+        key.metadata()
+            .attributes
+            .get("container")
+            .cloned()
+            .ok_or_else(|| EstError::platform("Key handle missing CNG container name"))
+    }
+
+    /// Get the CNG provider name from a KeyHandle.
+    ///
+    /// Returns the storage provider used when the key was created
+    /// (e.g., "Microsoft Software Key Storage Provider").
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key handle returned from generate_key_pair()
+    ///
+    /// # Returns
+    ///
+    /// The CNG provider name
+    pub fn get_provider_name(key: &KeyHandle) -> Result<String> {
+        key.metadata()
+            .attributes
+            .get("provider")
+            .cloned()
+            .ok_or_else(|| EstError::platform("Key handle missing CNG provider name"))
+    }
+
     /// Verify a storage provider is available.
     #[cfg(windows)]
     fn verify_provider_available(provider_name: &str) -> Result<()> {

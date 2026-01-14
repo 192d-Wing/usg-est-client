@@ -725,6 +725,167 @@ impl CertStore {
         }
     }
 
+    /// Associate a CNG key container with a certificate.
+    ///
+    /// This creates the link between a private key stored in a Windows CNG
+    /// key container and a certificate in the Windows Certificate Store.
+    /// After association, the certificate will show "You have a private key"
+    /// and can be used for TLS client authentication.
+    ///
+    /// # Arguments
+    ///
+    /// * `thumbprint` - SHA-1 thumbprint of the certificate
+    /// * `container_name` - CNG key container name (e.g., "EST-Device-1234567890")
+    /// * `provider_name` - CNG storage provider name (e.g., "Microsoft Software Key Storage Provider")
+    ///
+    /// # Example
+    ///
+    /// ```no_run,ignore
+    /// use usg_est_client::windows::{CertStore, CngKeyProvider};
+    /// use usg_est_client::hsm::{KeyProvider, KeyAlgorithm};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// // Generate key in CNG
+    /// let provider = CngKeyProvider::new()?;
+    /// let key = provider.generate_key_pair(
+    ///     KeyAlgorithm::EcdsaP256,
+    ///     Some("Device")
+    /// ).await?;
+    ///
+    /// // Get container name from key handle
+    /// let container_name = CngKeyProvider::get_container_name(&key)?;
+    ///
+    /// // Associate with certificate
+    /// let store = CertStore::open_local_machine("My")?;
+    /// store.associate_cng_key(
+    ///     "A1:B2:C3:...",
+    ///     &container_name,
+    ///     "Microsoft Software Key Storage Provider"
+    /// )?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn associate_cng_key(
+        &self,
+        thumbprint: &str,
+        container_name: &str,
+        provider_name: &str,
+    ) -> Result<()> {
+        #[cfg(windows)]
+        {
+            use std::ffi::OsStr;
+            use std::os::windows::ffi::OsStrExt;
+            use windows::Win32::Security::Cryptography::{
+                CRYPT_INTEGER_BLOB, CRYPT_KEY_PROV_INFO, AT_KEYEXCHANGE,
+            };
+            use windows::core::PWSTR;
+
+            // Find certificate by thumbprint
+            let thumb_bytes: Vec<u8> = thumbprint
+                .replace([':', ' ', '-'], "")
+                .as_bytes()
+                .chunks(2)
+                .filter_map(|chunk| {
+                    std::str::from_utf8(chunk)
+                        .ok()
+                        .and_then(|s| u8::from_str_radix(s, 16).ok())
+                })
+                .collect();
+
+            if thumb_bytes.len() != 20 {
+                return Err(EstError::certificate_parsing(format!(
+                    "Invalid SHA-1 thumbprint length: expected 20 bytes, got {}",
+                    thumb_bytes.len()
+                )));
+            }
+
+            let hash_blob = CRYPT_INTEGER_BLOB {
+                cbData: thumb_bytes.len() as u32,
+                pbData: thumb_bytes.as_ptr() as *mut _,
+            };
+
+            let cert_context = unsafe {
+                CertFindCertificateInStore(
+                    self.handle,
+                    0x00000001, // X509_ASN_ENCODING
+                    0,
+                    CERT_FIND_HASH,
+                    Some(&hash_blob as *const _ as *const _),
+                    None,
+                )
+            };
+
+            if cert_context.is_null() {
+                return Err(EstError::certificate_parsing(format!(
+                    "Certificate not found with thumbprint: {}",
+                    thumbprint
+                )));
+            }
+
+            // Convert strings to wide strings for Windows API
+            let wide_container: Vec<u16> = OsStr::new(container_name)
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
+
+            let wide_provider: Vec<u16> = OsStr::new(provider_name)
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
+
+            // Create CRYPT_KEY_PROV_INFO structure
+            let key_prov_info = CRYPT_KEY_PROV_INFO {
+                pwszContainerName: PWSTR(wide_container.as_ptr() as *mut u16),
+                pwszProvName: PWSTR(wide_provider.as_ptr() as *mut u16),
+                dwProvType: 0, // 0 = CNG provider (not legacy CSP)
+                dwFlags: 0,    // No special flags
+                cProvParam: 0,
+                rgProvParam: std::ptr::null_mut(),
+                dwKeySpec: AT_KEYEXCHANGE,
+            };
+
+            // Associate key with certificate
+            let result = unsafe {
+                CertSetCertificateContextProperty(
+                    cert_context,
+                    CERT_KEY_PROV_INFO_PROP_ID,
+                    0,
+                    &key_prov_info as *const _ as *const _,
+                )
+            };
+
+            // Free certificate context
+            unsafe {
+                use windows::Win32::Security::Cryptography::CertFreeCertificateContext;
+                CertFreeCertificateContext(Some(cert_context));
+            }
+
+            if result.is_err() {
+                return Err(EstError::platform(format!(
+                    "Failed to associate CNG key with certificate: {:?}",
+                    unsafe { GetLastError() }
+                )));
+            }
+
+            tracing::info!(
+                thumbprint = thumbprint,
+                container = container_name,
+                provider = provider_name,
+                "Successfully associated CNG key with certificate"
+            );
+
+            Ok(())
+        }
+
+        #[cfg(not(windows))]
+        {
+            let _ = (thumbprint, container_name, provider_name);
+            Err(EstError::platform(
+                "CNG key association requires Windows OS",
+            ))
+        }
+    }
+
     /// Set a string property on a certificate context.
     #[cfg(windows)]
     fn set_certificate_property_string(

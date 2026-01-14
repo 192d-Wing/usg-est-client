@@ -115,10 +115,7 @@ impl AutoEnrollConfig {
             let expanded = expand_variables(&path.to_string_lossy())?;
             *path = PathBuf::from(expanded);
         }
-        if let Some(ref mut path) = self.storage.key_path {
-            let expanded = expand_variables(&path.to_string_lossy())?;
-            *path = PathBuf::from(expanded);
-        }
+        // key_path is deprecated and ignored (CNG used instead)
 
         // Expand logging section
         if let Some(ref mut path) = self.logging.path {
@@ -818,12 +815,26 @@ pub struct StorageConfig {
     #[serde(default)]
     pub friendly_name: Option<String>,
 
+    /// CNG storage provider name (Windows only).
+    /// Examples: "Microsoft Software Key Storage Provider" (default),
+    ///           "Microsoft Platform Crypto Provider" (TPM),
+    ///           "Microsoft Smart Card Key Storage Provider"
+    #[serde(default)]
+    #[cfg(windows)]
+    pub cng_provider: Option<String>,
+
     /// Path to save certificate (PEM format).
     #[serde(default)]
     pub cert_path: Option<PathBuf>,
 
     /// Path to save private key (PEM format).
+    /// DEPRECATED: Private keys are now stored in Windows CNG.
+    /// This field is ignored and will be removed in a future version.
     #[serde(default)]
+    #[deprecated(
+        since = "1.1.0",
+        note = "Private keys are now stored in Windows CNG. This field is ignored."
+    )]
     pub key_path: Option<PathBuf>,
 
     /// Path to save certificate chain (PEM format).
