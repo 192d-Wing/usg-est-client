@@ -124,6 +124,10 @@ pub fn verify_csr_signature(_csr_der: &[u8]) -> Result<bool> {
 mod tests {
     use super::*;
 
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+    // and panics in tests provide clear failure messages. See ERROR-HANDLING-PATTERNS.md
+    // Pattern 5 for justification.
+
     #[test]
     fn test_validate_empty_csr() {
         let result = validate_csr(&[]);

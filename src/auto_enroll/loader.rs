@@ -499,6 +499,10 @@ mod tests {
     use std::io::Write;
     use tempfile::NamedTempFile;
 
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+    // and panics in tests provide clear failure messages. See ERROR-HANDLING-PATTERNS.md
+    // Pattern 5 for justification.
+
     #[test]
     fn test_loader_from_string() {
         let toml = r#"
