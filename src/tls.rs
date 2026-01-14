@@ -224,6 +224,10 @@ fn parse_client_identity(
 mod tests {
     use super::*;
 
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+    // and panics in tests provide clear failure messages. See ERROR-HANDLING-PATTERNS.md
+    // Pattern 5 for justification.
+
     // Test PEM certificate (self-signed, for testing only)
     const TEST_CERT_PEM: &[u8] = b"-----BEGIN CERTIFICATE-----
 MIIBkTCB+wIJAKHBfpegGZk6MAoGCCqGSM49BAMCMBQxEjAQBgNVBAMMCWxvY2Fs
