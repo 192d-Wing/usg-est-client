@@ -267,11 +267,16 @@ impl CredentialManager {
             let username = if cred.UserName.is_null() {
                 String::new()
             } else {
+                // Fixed: Add maximum length to prevent infinite loop if string is not null-terminated
+                const MAX_USERNAME_LEN: usize = 1024; // CREDUI_MAX_USERNAME_LENGTH
                 let mut len = 0;
                 let mut ptr = cred.UserName.0;
-                while *ptr != 0 {
+                while len < MAX_USERNAME_LEN && *ptr != 0 {
                     len += 1;
                     ptr = ptr.add(1);
+                }
+                if len >= MAX_USERNAME_LEN {
+                    tracing::warn!("Username truncated at maximum length {}", MAX_USERNAME_LEN);
                 }
                 String::from_utf16_lossy(slice::from_raw_parts(cred.UserName.0, len))
             };
@@ -289,11 +294,16 @@ impl CredentialManager {
             let comment = if cred.Comment.is_null() {
                 None
             } else {
+                // Fixed: Add maximum length to prevent infinite loop if string is not null-terminated
+                const MAX_COMMENT_LEN: usize = 256; // CREDUI_MAX_GENERIC_TARGET_LENGTH
                 let mut len = 0;
                 let mut ptr = cred.Comment.0;
-                while *ptr != 0 {
+                while len < MAX_COMMENT_LEN && *ptr != 0 {
                     len += 1;
                     ptr = ptr.add(1);
+                }
+                if len >= MAX_COMMENT_LEN {
+                    tracing::warn!("Comment truncated at maximum length {}", MAX_COMMENT_LEN);
                 }
                 Some(String::from_utf16_lossy(slice::from_raw_parts(
                     cred.Comment.0,

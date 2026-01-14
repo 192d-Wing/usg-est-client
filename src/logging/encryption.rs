@@ -622,6 +622,10 @@ mod tests {
         let mut contents = fs::read_to_string(&log_path).unwrap();
         let parts: Vec<&str> = contents.trim().split(':').collect();
 
+        // Validate parts before accessing
+        assert!(parts.len() >= 4, "Expected at least 4 parts in encrypted log");
+        assert!(parts[2].len() > 4, "Ciphertext part too short to tamper");
+
         // Corrupt the ciphertext
         let tampered = format!(
             "{}:{}:AAAA{}:{}",
