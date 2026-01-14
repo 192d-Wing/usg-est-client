@@ -567,7 +567,5 @@ security:scheduled:
     paths:
       - audit-report-scheduled.json
     expire_in: 90 days
-  only:
-    - schedules
   rules:
     - if: '$SCHEDULED_JOB == "security"'
