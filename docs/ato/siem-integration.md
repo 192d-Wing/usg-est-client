@@ -361,7 +361,306 @@ facility = "local0"
 
 ---
 
-## 4. Splunk Integration
+## 4. Windows Event Log Integration
+
+### 4.1 Overview
+
+**Status:** ✅ **IMPLEMENTED** (Phase 13.1 - Complete)
+
+The EST Client integrates natively with the Windows Event Log, writing all security-relevant events to the Application log under the "EST Auto-Enrollment" event source. This enables:
+
+- **Native Windows Integration**: Events visible in Event Viewer (eventvwr.msc)
+- **Windows Event Forwarding (WEF)**: Built-in event forwarding to collectors
+- **SIEM Agent Collection**: Native support for Splunk UF, Winlogbeat, etc.
+- **Tamper Protection**: Windows-protected audit trail
+- **Centralized Logging**: Single pane of glass with other Windows events
+
+### 4.2 Event IDs and Categories
+
+Events are organized into four ranges by severity:
+
+| Range | Category | Severity | Examples |
+|-------|----------|----------|----------|
+| **1000-1099** | Informational | Information | Service started (1000), Enrollment completed (1011) |
+| **2000-2099** | Warnings | Warning | Certificate expiring (2000), Enrollment pending (2020) |
+| **3000-3099** | Errors | Error | Enrollment failed (3000), Connection error (3010) |
+| **4000-4099** | Audit | Audit Success/Failure | Certificate installed (4000), Key generated (4010) |
+
+**Complete Event Reference:** See [Phase 13.1 Completion Report](./phase-13-1-completion.md#2-event-types-reference) for all 40+ event types.
+
+### 4.3 Event Structure
+
+Each event includes:
+
+**Standard Fields:**
+- Event ID (1000-4099)
+- Event Source: "EST Auto-Enrollment"
+- Event Type: Information, Warning, Error, Audit Success, Audit Failure
+- Timestamp (UTC)
+- Computer Name
+- User/Process Context
+
+**Structured Data (when applicable):**
+- Certificate Thumbprint (SHA-1 hex)
+- Certificate Subject (DN)
+- Certificate Expiration Date
+- EST Server URL
+- Error Details
+- Additional Context
+
+**Example Event in Event Viewer:**
+```
+Log Name:      Application
+Source:        EST Auto-Enrollment
+Event ID:      1011
+Level:         Information
+Computer:      SERVER01.example.mil
+Message:       Certificate enrollment completed successfully
+
+Thumbprint: A1:B2:C3:D4:E5:F6:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB
+Subject: CN=SERVER01.example.mil, O=Department of Defense, C=US
+Expiration: 2027-01-13 23:59:59 UTC
+Server: https://est.example.mil/.well-known/est
+```
+
+### 4.4 Configuration
+
+Windows Event Log integration is enabled automatically with the `windows-service` feature:
+
+**Cargo.toml:**
+```toml
+[dependencies]
+usg-est-client = { version = "0.1", features = ["windows-service"] }
+```
+
+**Service Configuration (config.toml):**
+```toml
+[logging]
+level = "info"
+
+# Windows Event Log (automatic when windows-service feature enabled)
+event_log = true
+event_source = "EST Auto-Enrollment"  # Optional custom source
+
+# File logging (still enabled for debugging)
+file = "C:\\ProgramData\\EST\\logs\\service.log"
+```
+
+### 4.5 Event Source Registration
+
+The event source is automatically registered during service installation:
+
+**Installation:**
+```powershell
+# Install service and register event source
+& "C:\Program Files\EST Client\est-service-install.exe" install
+
+# Verify registration
+Get-EventLog -List | Where-Object {$_.Log -eq "Application"} |
+    Select-Object -ExpandProperty Entries |
+    Where-Object {$_.Source -eq "EST Auto-Enrollment"}
+```
+
+**Registry Location:**
+```
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\EventLog\Application\EST Auto-Enrollment
+```
+
+**Manual Re-registration (if needed):**
+```powershell
+& "C:\Program Files\EST Client\est-service-install.exe" register-events
+```
+
+### 4.6 Querying Events
+
+**PowerShell - Get Last 24 Hours:**
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName='Application'
+    ProviderName='EST Auto-Enrollment'
+    StartTime=(Get-Date).AddDays(-1)
+}
+```
+
+**PowerShell - Get Errors Only:**
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName='Application'
+    ProviderName='EST Auto-Enrollment'
+    Level=2  # Error
+}
+```
+
+**PowerShell - Get Specific Event IDs:**
+```powershell
+# Get all enrollment failures
+Get-WinEvent -FilterHashtable @{
+    LogName='Application'
+    ProviderName='EST Auto-Enrollment'
+    ID=3000,3001
+}
+```
+
+**Event Viewer Custom View (XML):**
+```xml
+<QueryList>
+  <Query Id="0">
+    <Select Path="Application">
+      *[System[Provider[@Name='EST Auto-Enrollment']]]
+    </Select>
+  </Query>
+</QueryList>
+```
+
+**Save as:** `%ProgramData%\Microsoft\Event Viewer\Views\EST-Events.xml`
+
+### 4.7 Windows Event Forwarding (WEF)
+
+Configure event forwarding to a central collector:
+
+**On Collector (Event Subscription):**
+```xml
+<Subscription xmlns="http://schemas.microsoft.com/2006/03/windows/events/subscription">
+  <SubscriptionId>EST-Client-Events</SubscriptionId>
+  <SubscriptionType>SourceInitiated</SubscriptionType>
+  <Description>Forward EST Client events to central collector</Description>
+  <Enabled>true</Enabled>
+  <Uri>http://schemas.microsoft.com/wbem/wsman/1/windows/EventLog</Uri>
+
+  <Query>
+    <![CDATA[
+      <QueryList>
+        <Query Id="0">
+          <Select Path="Application">
+            *[System[Provider[@Name='EST Auto-Enrollment']]]
+          </Select>
+        </Query>
+      </QueryList>
+    ]]>
+  </Query>
+
+  <ReadExistingEvents>true</ReadExistingEvents>
+  <TransportName>HTTP</TransportName>
+  <ContentFormat>RenderedText</ContentFormat>
+  <Locale Language="en-US"/>
+
+  <LogFile>ForwardedEvents</LogFile>
+
+  <AllowedSourceDomainComputers>O:NSG:NSD:(A;;GA;;;DC)(A;;GA;;;NS)</AllowedSourceDomainComputers>
+</Subscription>
+```
+
+**On Source Computers (via GPO):**
+```
+Computer Configuration
+  → Administrative Templates
+    → Windows Components
+      → Event Forwarding
+        → Configure target Subscription Manager
+
+Value: Server=http://collector.example.mil:5985/wsman/SubscriptionManager/WEC,Refresh=60
+```
+
+### 4.8 SIEM Integration via Windows Event Log
+
+Most SIEM platforms have native Windows Event Log collectors:
+
+| SIEM Platform | Collection Method | Configuration |
+|---------------|-------------------|---------------|
+| **Splunk** | Universal Forwarder (WinEventLog) | See Section 5.2 below |
+| **ELK Stack** | Winlogbeat | See Section 6.2 below |
+| **ArcSight** | SmartConnector (Windows Event Log) | See Section 7.3 |
+| **QRadar** | WinCollect Agent | See Section 8.2 |
+| **Azure Sentinel** | Log Analytics Agent (MMA) | Native Windows Event Log connector |
+
+**Advantages over File-Based Collection:**
+- **Performance**: Windows Event Log is optimized for high-volume logging
+- **Reliability**: Built-in buffering and retry logic
+- **Security**: Windows protects event log integrity
+- **Standardization**: Universal format across all Windows applications
+- **Filtering**: SIEM agents can filter events at source (reduce bandwidth)
+
+### 4.9 Event Log Retention and Archival
+
+Configure retention policies via Group Policy:
+
+**GPO Path:**
+```
+Computer Configuration
+  → Administrative Templates
+    → Windows Components
+      → Event Log Service
+        → Application
+```
+
+**Settings:**
+- Maximum Log Size: 100 MB (recommended for EST clients)
+- Log Retention: Archive when full (don't overwrite)
+- Archive Location: `\\fileserver\EventLogs\%ComputerName%\`
+
+**Manual Configuration (Registry):**
+```powershell
+# Set maximum log size (100 MB)
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Application" `
+    -Name "MaxSize" -Value 104857600 -Type DWord
+
+# Set retention (archive on full)
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Application" `
+    -Name "Retention" -Value 0 -Type DWord
+```
+
+### 4.10 Monitoring Event Log Health
+
+**Check Event Log Service:**
+```powershell
+Get-Service -Name EventLog | Select-Object Status, StartType
+```
+
+**Check Application Log Status:**
+```powershell
+$log = Get-WinEvent -ListLog Application
+Write-Host "Log Size: $($log.FileSize / 1MB) MB"
+Write-Host "Maximum Size: $($log.MaximumSizeInBytes / 1MB) MB"
+Write-Host "Is Full: $($log.IsLogFull)"
+Write-Host "Record Count: $($log.RecordCount)"
+```
+
+**Alert on Log Full:**
+```powershell
+# Create scheduled task to alert when Application log is > 90% full
+$threshold = 0.9
+$log = Get-WinEvent -ListLog Application
+if (($log.FileSize / $log.MaximumSizeInBytes) -gt $threshold) {
+    Write-EventLog -LogName Application -Source "EST Auto-Enrollment" `
+        -EntryType Warning -EventId 2030 `
+        -Message "Application Event Log is $([math]::Round(($log.FileSize / $log.MaximumSizeInBytes) * 100, 2))% full"
+}
+```
+
+### 4.11 Compliance Benefits
+
+Windows Event Log integration satisfies multiple compliance requirements:
+
+**NIST SP 800-53 Rev 5:**
+- **AU-2**: Audit Events - All security-relevant events logged
+- **AU-3**: Content of Audit Records - Structured data includes required elements
+- **AU-4**: Audit Storage Capacity - Windows manages capacity
+- **AU-9**: Protection of Audit Information - Windows protects integrity
+- **AU-12**: Audit Generation - Automatic audit record generation
+
+**DoD STIG:**
+- **V-220737**: Application must generate audit records (✅ SATISFIED)
+- **V-220738**: Audit records must contain required data elements (✅ SATISFIED)
+- **V-220750**: Application must protect audit information (✅ SATISFIED via Windows)
+
+**FedRAMP:**
+- Centralized logging requirement (✅ SATISFIED via WEF or SIEM)
+- Audit trail protection (✅ SATISFIED via Windows ACLs)
+- 90-day retention minimum (✅ CONFIGURABLE via GPO)
+
+---
+
+## 5. Splunk Integration
 
 ### 4.1 Architecture Overview
 

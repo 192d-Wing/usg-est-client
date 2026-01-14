@@ -261,13 +261,13 @@ Dependencies Audited: 100%   ✅
 
 ## POA&M Summary
 
-**Total Items:** 7
-**Total Funding:** $91,000
+**Total Items:** 7 (6 open, 1 closed)
+**Total Funding:** $91,000 ($79,000 remaining)
 **Timeline:** Q1-Q4 2026
 
 | ID | Item | Severity | Cost | Target Date | Status |
 |----|------|----------|------|-------------|--------|
-| AU-001 | Windows Event Log integration | LOW | $12,000 | Q1 2026 | Planning |
+| AU-001 | Windows Event Log integration | LOW | $12,000 | Q1 2026 | ✅ **COMPLETE** (Phase 13.1) |
 | AU-002 | SIEM integration (implementation) | LOW | $15,000 | Q2 2026 | Planning |
 | SC-001 | CNG key container integration | MEDIUM | $20,000 | Q2 2026 | Planning |
 | SC-002 | Key encryption at rest (DPAPI/TPM) | MEDIUM | $15,000 | Q2 2026 | Planning |
