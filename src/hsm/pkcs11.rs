@@ -247,7 +247,8 @@ impl Pkcs11KeyProvider {
 
     /// Find a key object by its CKA_LABEL attribute.
     fn find_object_by_label(&self, label: &str) -> Result<Option<ObjectHandle>> {
-        let session = self.session.lock().unwrap();
+        let session = self.session.lock()
+            .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
 
         let template = vec![
             Attribute::Label(label.as_bytes().to_vec()),
@@ -262,7 +263,8 @@ impl Pkcs11KeyProvider {
 
     /// Get the public key handle for a private key.
     fn get_public_key_handle(&self, private_handle: ObjectHandle) -> Result<ObjectHandle> {
-        let session = self.session.lock().unwrap();
+        let session = self.session.lock()
+            .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
 
         // Get the CKA_ID from the private key
         let id_attr = session
@@ -296,7 +298,8 @@ impl Pkcs11KeyProvider {
         pub_handle: ObjectHandle,
         curve_oid: ObjectIdentifier,
     ) -> Result<SubjectPublicKeyInfoOwned> {
-        let session = self.session.lock().unwrap();
+        let session = self.session.lock()
+            .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
 
         // Get EC_POINT attribute (contains the public key)
         let attrs = session
@@ -309,15 +312,19 @@ impl Pkcs11KeyProvider {
         };
 
         // Build the AlgorithmIdentifier for EC public key
-        let alg_params = der::asn1::OctetStringRef::new(&curve_oid.to_der().unwrap())
-            .unwrap()
+        let curve_oid_der = curve_oid.to_der()
+            .expect("well-known curve OID from RFC 5912 is always valid");
+        let alg_params = der::asn1::OctetStringRef::new(&curve_oid_der)
+            .expect("DER-encoded OID is valid OctetString")
             .to_der()
-            .unwrap();
+            .expect("OctetString DER encoding cannot fail");
 
         // The algorithm identifier needs the curve OID as parameters
         let algorithm = AlgorithmIdentifierOwned {
             oid: ID_EC_PUBLIC_KEY,
-            parameters: Some(der::asn1::AnyRef::from_der(&alg_params).unwrap().into()),
+            parameters: Some(der::asn1::AnyRef::from_der(&alg_params)
+                .expect("well-formed DER from OctetString")
+                .into()),
         };
 
         // EC_POINT is an OCTET STRING containing the point
@@ -344,7 +351,8 @@ impl Pkcs11KeyProvider {
         &self,
         pub_handle: ObjectHandle,
     ) -> Result<SubjectPublicKeyInfoOwned> {
-        let session = self.session.lock().unwrap();
+        let session = self.session.lock()
+            .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
 
         // Get RSA modulus and public exponent
         let attrs = session
@@ -436,7 +444,9 @@ impl Pkcs11KeyProvider {
         // Build the AlgorithmIdentifier for RSA (NULL parameters)
         let algorithm = AlgorithmIdentifierOwned {
             oid: const_oid::db::rfc5912::RSA_ENCRYPTION,
-            parameters: Some(der::asn1::AnyRef::from_der(&[0x05, 0x00]).unwrap().into()),
+            parameters: Some(der::asn1::AnyRef::from_der(&[0x05, 0x00])
+                .expect("DER NULL tag (0x05 0x00) is always valid")
+                .into()),
         };
 
         let subject_public_key = BitString::from_bytes(&rsa_pubkey)
@@ -451,7 +461,8 @@ impl Pkcs11KeyProvider {
     /// Convert a KeyHandle back to a PKCS#11 ObjectHandle.
     fn handle_to_object(&self, handle: &KeyHandle) -> Result<ObjectHandle> {
         // The KeyHandle.id contains the CKA_ID attribute value
-        let session = self.session.lock().unwrap();
+        let session = self.session.lock()
+            .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
 
         let template = vec![
             Attribute::Id(handle.id.clone()),
@@ -470,7 +481,8 @@ impl Pkcs11KeyProvider {
 
     /// Get key metadata from a PKCS#11 object.
     fn get_key_metadata(&self, handle: ObjectHandle) -> Result<KeyMetadata> {
-        let session = self.session.lock().unwrap();
+        let session = self.session.lock()
+            .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
 
         let attrs = session
             .get_attributes(
@@ -534,7 +546,8 @@ impl KeyProvider for Pkcs11KeyProvider {
             )));
         }
 
-        let session = self.session.lock().unwrap();
+        let session = self.session.lock()
+            .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
 
         // Generate a unique CKA_ID for this key pair
         let key_id = uuid::Uuid::new_v4().as_bytes().to_vec();
@@ -544,7 +557,8 @@ impl KeyProvider for Pkcs11KeyProvider {
         // Build key generation template based on algorithm
         let (mechanism, pub_template, priv_template) = match algorithm {
             KeyAlgorithm::EcdsaP256 => {
-                let ec_params = SECP_256_R_1.to_der().unwrap();
+                let ec_params = SECP_256_R_1.to_der()
+                    .expect("SECP256R1 OID from RFC 5912 is always valid");
                 (
                     Mechanism::EccKeyPairGen,
                     vec![
@@ -566,7 +580,8 @@ impl KeyProvider for Pkcs11KeyProvider {
                 )
             }
             KeyAlgorithm::EcdsaP384 => {
-                let ec_params = SECP_384_R_1.to_der().unwrap();
+                let ec_params = SECP_384_R_1.to_der()
+                    .expect("SECP384R1 OID from RFC 5912 is always valid");
                 (
                     Mechanism::EccKeyPairGen,
                     vec![
@@ -637,7 +652,8 @@ impl KeyProvider for Pkcs11KeyProvider {
 
     async fn sign(&self, handle: &KeyHandle, data: &[u8]) -> Result<Vec<u8>> {
         let priv_handle = self.handle_to_object(handle)?;
-        let session = self.session.lock().unwrap();
+        let session = self.session.lock()
+            .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
 
         // Select mechanism based on algorithm
         let mechanism = match handle.algorithm {
@@ -671,7 +687,8 @@ impl KeyProvider for Pkcs11KeyProvider {
     }
 
     async fn list_keys(&self) -> Result<Vec<KeyHandle>> {
-        let session = self.session.lock().unwrap();
+        let session = self.session.lock()
+            .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
 
         let template = vec![Attribute::Class(ObjectClass::PRIVATE_KEY)];
 
@@ -740,7 +757,8 @@ impl KeyProvider for Pkcs11KeyProvider {
 
     async fn find_key(&self, label: &str) -> Result<Option<KeyHandle>> {
         if let Some(handle) = self.find_object_by_label(label)? {
-            let session = self.session.lock().unwrap();
+            let session = self.session.lock()
+            .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
 
             // Get key attributes
             let attrs = session
@@ -797,7 +815,8 @@ impl KeyProvider for Pkcs11KeyProvider {
         let priv_handle = self.handle_to_object(handle)?;
         let pub_handle = self.get_public_key_handle(priv_handle)?;
 
-        let session = self.session.lock().unwrap();
+        let session = self.session.lock()
+            .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
 
         // Delete both private and public keys
         session
