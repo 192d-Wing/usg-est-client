@@ -380,6 +380,10 @@ pub fn get_domain_info() -> Result<Option<DomainInfo>> {
 mod tests {
     use super::*;
 
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+    // and panics in tests provide clear failure messages. See ERROR-HANDLING-PATTERNS.md
+    // Pattern 5 for justification.
+
     #[test]
     fn test_machine_identity_suggested_cn() {
         let identity = MachineIdentity {
