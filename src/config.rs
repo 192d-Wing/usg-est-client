@@ -154,8 +154,41 @@ impl EstClientConfigBuilder {
     }
 
     /// Set the EST server URL.
+    ///
+    /// Only HTTPS and HTTP URLs are allowed. HTTP generates a warning as it
+    /// should only be used for testing.
     pub fn server_url(mut self, url: impl AsRef<str>) -> Result<Self, url::ParseError> {
-        self.server_url = Some(Url::parse(url.as_ref())?);
+        let parsed = Url::parse(url.as_ref())?;
+
+        // Validate URL scheme for security
+        match parsed.scheme() {
+            "https" => {}, // OK - secure
+            "http" => {
+                // Allow but warn - HTTP should only be for testing
+                tracing::warn!(
+                    "Using insecure HTTP scheme for EST server. \
+                     Use HTTPS in production to prevent man-in-the-middle attacks."
+                );
+            }
+            _scheme => {
+                return Err(url::ParseError::InvalidDomainCharacter); // Best approximation
+            }
+        }
+
+        // Validate host is present
+        if parsed.host_str().is_none() {
+            return Err(url::ParseError::EmptyHost);
+        }
+
+        // Validate port if specified
+        if let Some(port) = parsed.port() {
+            if port == 0 {
+                // Port 0 is invalid for network connections
+                return Err(url::ParseError::InvalidPort);
+            }
+        }
+
+        self.server_url = Some(parsed);
         Ok(self)
     }
 

@@ -144,12 +144,33 @@ impl<'a> SimpleDerParser<'a> {
             // Long form
             let num_octets = (first & 0x7F) as usize;
             if num_octets > 4 {
-                return Err(EstError::operational("Length too large"));
+                return Err(EstError::operational("Length encoding too long (max 4 octets)"));
             }
+            if num_octets == 0 {
+                return Err(EstError::operational("Invalid length encoding (zero octets)"));
+            }
+
             let mut length = 0usize;
             for _ in 0..num_octets {
-                length = (length << 8) | (self.read_byte()? as usize);
+                // Fixed: Use checked arithmetic to prevent integer overflow
+                length = length
+                    .checked_shl(8)
+                    .and_then(|l| l.checked_add(self.read_byte()? as usize))
+                    .ok_or_else(|| {
+                        EstError::operational("Length field overflow (value too large)")
+                    })?;
             }
+
+            // Additional sanity check: reject unreasonably large lengths
+            const MAX_REASONABLE_LENGTH: usize = 100 * 1024 * 1024; // 100MB
+            if length > MAX_REASONABLE_LENGTH {
+                return Err(EstError::operational(format!(
+                    "Length field exceeds reasonable maximum: {} bytes (max {} MB)",
+                    length,
+                    MAX_REASONABLE_LENGTH / (1024 * 1024)
+                )));
+            }
+
             Ok(length)
         }
     }
@@ -1093,6 +1114,9 @@ impl RevocationChecker {
     async fn send_ocsp_request(&self, url: &str, request: &[u8]) -> Result<RevocationStatus> {
         debug!("Sending OCSP request to {}", url);
 
+        // Maximum OCSP response size to prevent memory exhaustion
+        const MAX_OCSP_RESPONSE_SIZE: usize = 100 * 1024; // 100KB
+
         // Send OCSP request via HTTP POST
         let response = self
             .http_client
@@ -1109,7 +1133,30 @@ impl RevocationChecker {
             )));
         }
 
+        // Check Content-Length header if present
+        if let Some(content_length) = response.headers().get("content-length") {
+            if let Ok(size_str) = content_length.to_str() {
+                if let Ok(size) = size_str.parse::<usize>() {
+                    if size > MAX_OCSP_RESPONSE_SIZE {
+                        return Err(EstError::protocol(format!(
+                            "OCSP response too large: {} bytes (max {})",
+                            size, MAX_OCSP_RESPONSE_SIZE
+                        )));
+                    }
+                }
+            }
+        }
+
         let response_data = response.bytes().await?;
+
+        // Verify actual size after reading
+        if response_data.len() > MAX_OCSP_RESPONSE_SIZE {
+            return Err(EstError::protocol(format!(
+                "OCSP response too large: {} bytes (max {})",
+                response_data.len(),
+                MAX_OCSP_RESPONSE_SIZE
+            )));
+        }
 
         // Parse OCSP response
         self.parse_ocsp_response(&response_data)

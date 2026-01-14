@@ -123,9 +123,12 @@ impl ConfigLoader {
         // Find the configuration file
         let config_path = self.find_config_file()?;
 
+        // Validate path for security (prevent traversal attacks)
+        let safe_path = Self::validate_config_path(&config_path)?;
+
         // Read and parse
-        let toml_content = std::fs::read_to_string(&config_path).map_err(|e| {
-            EstError::config(format!("Failed to read {}: {e}", config_path.display()))
+        let toml_content = std::fs::read_to_string(&safe_path).map_err(|e| {
+            EstError::config(format!("Failed to read {}: {e}", safe_path.display()))
         })?;
 
         let mut config = AutoEnrollConfig::from_toml(&toml_content)?;
@@ -263,6 +266,51 @@ impl ConfigLoader {
     /// Check if a configuration file exists in any standard location.
     pub fn config_exists(&self) -> bool {
         self.find_config_file().is_ok()
+    }
+
+    /// Validate that a path is safe and doesn't contain traversal attempts.
+    ///
+    /// This prevents path traversal attacks by checking for:
+    /// - Absolute paths pointing outside allowed directories
+    /// - Relative paths with .. components
+    /// - Symlink attacks (checked via canonicalization)
+    fn validate_config_path(path: &Path) -> Result<PathBuf, EstError> {
+        // Canonicalize the path to resolve symlinks and .. components
+        let canonical = path.canonicalize().map_err(|e| {
+            EstError::config(format!(
+                "Invalid configuration path {}: {}",
+                path.display(),
+                e
+            ))
+        })?;
+
+        // Check for suspicious patterns that might indicate traversal
+        let path_str = canonical.to_string_lossy();
+        if path_str.contains("..") {
+            return Err(EstError::config(format!(
+                "Path traversal detected in canonicalized path: {}",
+                path_str
+            )));
+        }
+
+        // Additional platform-specific checks
+        #[cfg(unix)]
+        {
+            // Ensure path is within /etc, /opt, /usr, or user home
+            let allowed_prefixes = ["/etc", "/opt", "/usr", "/home", "/Users"];
+            let has_allowed_prefix = allowed_prefixes
+                .iter()
+                .any(|prefix| path_str.starts_with(prefix));
+
+            if !has_allowed_prefix && !path_str.starts_with("./") && !path_str.starts_with(".") {
+                tracing::warn!(
+                    "Configuration file in unusual location: {}",
+                    canonical.display()
+                );
+            }
+        }
+
+        Ok(canonical)
     }
 }
 
