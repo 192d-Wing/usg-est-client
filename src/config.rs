@@ -181,11 +181,11 @@ impl EstClientConfigBuilder {
         }
 
         // Validate port if specified
-        if let Some(port) = parsed.port() {
-            if port == 0 {
-                // Port 0 is invalid for network connections
-                return Err(url::ParseError::InvalidPort);
-            }
+        if let Some(port) = parsed.port()
+            && port == 0
+        {
+            // Port 0 is invalid for network connections
+            return Err(url::ParseError::InvalidPort);
         }
 
         self.server_url = Some(parsed);
