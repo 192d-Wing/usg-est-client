@@ -185,6 +185,10 @@ fn get_temp_dir() -> Option<String> {
 mod tests {
     use super::*;
 
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+    // and panics in tests provide clear failure messages. See ERROR-HANDLING-PATTERNS.md
+    // Pattern 5 for justification.
+
     #[test]
     fn test_expand_no_variables() {
         let result = expand_variables("hello world").unwrap();
