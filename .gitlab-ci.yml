@@ -19,8 +19,8 @@ variables:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
   CARGO_HOME: "${CI_PROJECT_DIR}/.cargo"
-  UNWRAP_BASELINE: "339"  # Updated 2026-01-14: Post-refactoring sprint baseline
-  UNWRAP_GOAL: "339"      # Maintain current level - mostly test code now
+  UNWRAP_BASELINE: "339" # Updated 2026-01-14: Post-refactoring sprint baseline
+  UNWRAP_GOAL: "339" # Maintain current level - mostly test code now
 
 # Cache configuration for Rust builds
 .cargo_cache: &cargo_cache
@@ -170,7 +170,7 @@ unwrap-tracking:
       - report.md
     reports:
       metrics: report.md
-    expose_as: 'unwrap Dashboard'
+    expose_as: "unwrap Dashboard"
     when: always
     expire_in: 30 days
   rules:
@@ -198,7 +198,7 @@ test:stable:linux:
 test:stable:macos:
   stage: test
   tags:
-    - macos
+    - saas-macos-large-m2pro
   <<: *cargo_cache
   script:
     - cargo test --verbose
@@ -207,7 +207,7 @@ test:stable:macos:
   only:
     - main
     - merge_requests
-  allow_failure: true  # Optional if macOS runners not available
+  allow_failure: true # Optional if macOS runners not available
 
 test:stable:windows:
   stage: test
@@ -221,7 +221,7 @@ test:stable:windows:
   only:
     - main
     - merge_requests
-  allow_failure: true  # Optional if Windows runners not available
+  allow_failure: true # Optional if Windows runners not available
 
 test:beta:
   stage: test
