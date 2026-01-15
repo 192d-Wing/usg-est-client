@@ -1,9 +1,6 @@
 //! This example requires the `csr-gen` feature to be enabled.
 //! Run with: cargo run --example simple_enroll --features csr-gen
 
-#[cfg(not(feature = "csr-gen"))]
-compile_error!("This example requires the 'csr-gen' feature. Run with --features csr-gen");
-
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2025 U.S. Federal Government (in countries where recognized)
 //
@@ -28,6 +25,8 @@ compile_error!("This example requires the 'csr-gen' feature. Run with --features
 //! ```bash
 //! cargo run --example simple_enroll -- --server https://est.example.com
 //! ```
+#[cfg(not(feature = "csr-gen"))]
+compile_error!("This example requires the 'csr-gen' feature. Run with --features csr-gen");
 
 use std::env;
 use std::process::exit;
