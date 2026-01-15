@@ -124,13 +124,11 @@ mod builder {
         /// Ensure DNS names conform to RFC 1035 before calling this method.
         pub fn san_dns(mut self, dns: impl Into<String>) -> Self {
             let dns_str = dns.into();
-            let dns_name = dns_str.as_str().try_into().unwrap_or_else(|_| {
-                panic!(
-                    "Invalid DNS name for SAN: '{}'. DNS names must conform to RFC 1035. \
-                     Check for invalid characters or excessive length.",
-                    dns_str
-                )
-            });
+            let dns_name = dns_str.as_str().try_into().expect(&format!(
+                "Invalid DNS name for SAN: '{}'. DNS names must conform to RFC 1035. \
+                 Check for invalid characters or excessive length.",
+                dns_str
+            ));
             self.params
                 .subject_alt_names
                 .push(SanType::DnsName(dns_name));
@@ -151,13 +149,11 @@ mod builder {
         /// Ensure email addresses are properly formatted before calling this method.
         pub fn san_email(mut self, email: impl Into<String>) -> Self {
             let email_str = email.into();
-            let email_addr = email_str.as_str().try_into().unwrap_or_else(|_| {
-                panic!(
-                    "Invalid email address for SAN: '{}'. Email must conform to RFC 822. \
-                     Check for proper format (user@domain.com).",
-                    email_str
-                )
-            });
+            let email_addr = email_str.as_str().try_into().expect(&format!(
+                "Invalid email address for SAN: '{}'. Email must conform to RFC 822. \
+                 Check for proper format (user@domain.com).",
+                email_str
+            ));
             self.params
                 .subject_alt_names
                 .push(SanType::Rfc822Name(email_addr));
@@ -172,13 +168,11 @@ mod builder {
         /// Ensure URIs are properly formatted before calling this method.
         pub fn san_uri(mut self, uri: impl Into<String>) -> Self {
             let uri_str = uri.into();
-            let uri_value = uri_str.as_str().try_into().unwrap_or_else(|_| {
-                panic!(
-                    "Invalid URI for SAN: '{}'. URI must conform to RFC 3986. \
-                     Check for proper scheme and format (e.g., https://example.com).",
-                    uri_str
-                )
-            });
+            let uri_value = uri_str.as_str().try_into().expect(&format!(
+                "Invalid URI for SAN: '{}'. URI must conform to RFC 3986. \
+                 Check for proper scheme and format (e.g., https://example.com).",
+                uri_str
+            ));
             self.params.subject_alt_names.push(SanType::URI(uri_value));
             self
         }
@@ -438,13 +432,11 @@ mod hsm_csr {
         /// Ensure DNS names conform to RFC 1035 before calling this method.
         pub fn san_dns(mut self, dns: impl Into<String>) -> Self {
             let dns_str = dns.into();
-            let dns_name = dns_str.as_str().try_into().unwrap_or_else(|_| {
-                panic!(
-                    "Invalid DNS name for SAN: '{}'. DNS names must conform to RFC 1035. \
-                     Check for invalid characters or excessive length.",
-                    dns_str
-                )
-            });
+            let dns_name = dns_str.as_str().try_into().expect(&format!(
+                "Invalid DNS name for SAN: '{}'. DNS names must conform to RFC 1035. \
+                 Check for invalid characters or excessive length.",
+                dns_str
+            ));
             self.params
                 .subject_alt_names
                 .push(SanType::DnsName(dns_name));
@@ -465,13 +457,11 @@ mod hsm_csr {
         /// Ensure email addresses are properly formatted before calling this method.
         pub fn san_email(mut self, email: impl Into<String>) -> Self {
             let email_str = email.into();
-            let email_addr = email_str.as_str().try_into().unwrap_or_else(|_| {
-                panic!(
-                    "Invalid email address for SAN: '{}'. Email must conform to RFC 822. \
-                     Check for proper format (user@domain.com).",
-                    email_str
-                )
-            });
+            let email_addr = email_str.as_str().try_into().expect(&format!(
+                "Invalid email address for SAN: '{}'. Email must conform to RFC 822. \
+                 Check for proper format (user@domain.com).",
+                email_str
+            ));
             self.params
                 .subject_alt_names
                 .push(SanType::Rfc822Name(email_addr));
@@ -486,13 +476,11 @@ mod hsm_csr {
         /// Ensure URIs are properly formatted before calling this method.
         pub fn san_uri(mut self, uri: impl Into<String>) -> Self {
             let uri_str = uri.into();
-            let uri_value = uri_str.as_str().try_into().unwrap_or_else(|_| {
-                panic!(
-                    "Invalid URI for SAN: '{}'. URI must conform to RFC 3986. \
-                     Check for proper scheme and format (e.g., https://example.com).",
-                    uri_str
-                )
-            });
+            let uri_value = uri_str.as_str().try_into().expect(&format!(
+                "Invalid URI for SAN: '{}'. URI must conform to RFC 3986. \
+                 Check for proper scheme and format (e.g., https://example.com).",
+                uri_str
+            ));
             self.params.subject_alt_names.push(SanType::URI(uri_value));
             self
         }
