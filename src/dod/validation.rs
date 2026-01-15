@@ -60,7 +60,7 @@
 //! // Create revocation checker
 //! let revocation_config = RevocationConfig::builder()
 //!     .enable_crl(true)
-//!     .build()?;
+//!     .build();
 //! let revocation_checker = RevocationChecker::new(revocation_config);
 //!
 //! // Validate with revocation checking (async)

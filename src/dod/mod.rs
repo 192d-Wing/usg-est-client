@@ -47,13 +47,15 @@
 //!
 //! ```no_run
 //! use usg_est_client::{EstClient, EstClientConfig};
-//! use usg_est_client::dod::load_dod_root_cas;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! // Create EST client with DoD PKI preset
+//! // Load DoD Root CAs from a PEM file
+//! let ca_pem = std::fs::read("dod_root_cas.pem")?;
+//!
+//! // Create EST client with DoD PKI trust anchors
 //! let config = EstClientConfig::builder()
 //!     .server_url("https://est.example.mil")?
-//!     .dod_pki_preset()? // Auto-loads DoD Root CAs
+//!     .trust_explicit(vec![ca_pem])
 //!     .build()?;
 //!
 //! let client = EstClient::new(config).await?;
