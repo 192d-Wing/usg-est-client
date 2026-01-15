@@ -21,14 +21,26 @@
 //!
 //! See docs/fips-compliance.md for detailed setup instructions.
 
-#![cfg(all(feature = "fips", feature = "csr-gen"))]
+// Provide helpful error when features are missing
+#[cfg(not(all(feature = "fips", feature = "csr-gen")))]
+fn main() {
+    eprintln!("ERROR: This example requires both 'fips' and 'csr-gen' features.");
+    eprintln!("Run with: cargo run --example fips_enroll --features fips,csr-gen -- --server <URL>");
+    std::process::exit(1);
+}
 
+#[cfg(all(feature = "fips", feature = "csr-gen"))]
 use der::Encode;
+#[cfg(all(feature = "fips", feature = "csr-gen"))]
 use std::process;
+#[cfg(all(feature = "fips", feature = "csr-gen"))]
 use usg_est_client::csr::CsrBuilder;
+#[cfg(all(feature = "fips", feature = "csr-gen"))]
 use usg_est_client::fips::{FipsConfig, enable_fips_mode, fips_module_info};
+#[cfg(all(feature = "fips", feature = "csr-gen"))]
 use usg_est_client::{EnrollmentResponse, EstClient, EstClientConfig};
 
+#[cfg(all(feature = "fips", feature = "csr-gen"))]
 #[tokio::main]
 async fn main() {
     // Parse command-line arguments
