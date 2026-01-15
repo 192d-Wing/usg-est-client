@@ -413,7 +413,7 @@ impl AutoEnrollConfig {
 
     /// Non-Windows stub for credential manager.
     #[cfg(not(windows))]
-    fn read_credential_manager(&self, target_name: &str) -> Result<String, EstError> {
+    fn read_credential_manager(&self, _target_name: &str) -> Result<String, EstError> {
         Err(EstError::config(
             "Windows Credential Manager is only available on Windows",
         ))

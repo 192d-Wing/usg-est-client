@@ -75,7 +75,7 @@ use aes_gcm::{
     aead::{Aead, KeyInit, OsRng},
 };
 use base64::Engine;
-use sha2::{Digest, Sha256};
+use sha2::Sha256;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -347,18 +347,26 @@ impl EncryptedLogger {
         // Write to log writer
         use std::io::Write;
         match &mut *writer {
-            crate::logging::LogWriter::File { writer: file_writer, current_size, .. } => {
-                file_writer.write_all(line_bytes)
+            crate::logging::LogWriter::File {
+                writer: file_writer,
+                current_size,
+                ..
+            } => {
+                file_writer
+                    .write_all(line_bytes)
                     .and_then(|_| file_writer.flush())
-                    .map_err(|e| EstError::operational(format!("Failed to write encrypted log: {}", e)))?;
+                    .map_err(|e| {
+                        EstError::operational(format!("Failed to write encrypted log: {}", e))
+                    })?;
                 *current_size += line_bytes.len() as u64;
                 Ok(())
             }
-            crate::logging::LogWriter::Stdout(stdout) => {
-                stdout.write_all(line_bytes)
-                    .and_then(|_| stdout.flush())
-                    .map_err(|e| EstError::operational(format!("Failed to write encrypted log: {}", e)))
-            }
+            crate::logging::LogWriter::Stdout(stdout) => stdout
+                .write_all(line_bytes)
+                .and_then(|_| stdout.flush())
+                .map_err(|e| {
+                    EstError::operational(format!("Failed to write encrypted log: {}", e))
+                }),
         }
     }
 
@@ -465,10 +473,11 @@ impl EncryptedLogger {
             mac.update(&ciphertext);
 
             // verify_slice performs constant-time comparison
-            mac.verify_slice(&mac_received)
-                .map_err(|_| EstError::operational(
+            mac.verify_slice(&mac_received).map_err(|_| {
+                EstError::operational(
                     "MAC verification failed: log entry may have been tampered with",
-                ))?;
+                )
+            })?;
         }
 
         // Decrypt
@@ -635,7 +644,7 @@ mod tests {
         logger.log(&LogEntry::new(LogLevel::Info, "Test")).unwrap();
 
         // Read and tamper with log
-        let mut contents = fs::read_to_string(&log_path).unwrap();
+        let contents = fs::read_to_string(&log_path).unwrap();
         let parts: Vec<&str> = contents.trim().split(':').collect();
 
         // Validate parts before accessing

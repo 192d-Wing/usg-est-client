@@ -25,7 +25,9 @@
 #[cfg(not(all(feature = "fips", feature = "csr-gen")))]
 fn main() {
     eprintln!("ERROR: This example requires both 'fips' and 'csr-gen' features.");
-    eprintln!("Run with: cargo run --example fips_enroll --features fips,csr-gen -- --server <URL>");
+    eprintln!(
+        "Run with: cargo run --example fips_enroll --features fips,csr-gen -- --server <URL>"
+    );
     std::process::exit(1);
 }
 

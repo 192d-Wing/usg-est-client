@@ -51,6 +51,7 @@ use crate::error::{EstError, Result};
 use base64::Engine;
 use der::{Decode, Encode, Sequence, asn1::OctetString};
 use sha2::{Digest, Sha256};
+use signature::Verifier;
 use spki::AlgorithmIdentifierOwned;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -777,11 +778,9 @@ impl RevocationChecker {
         use const_oid::ObjectIdentifier;
         use p256::ecdsa::{
             Signature as P256Signature, VerifyingKey as P256VerifyingKey,
-            signature::Verifier as P256Verifier,
         };
         use p384::ecdsa::{
             Signature as P384Signature, VerifyingKey as P384VerifyingKey,
-            signature::Verifier as P384Verifier,
         };
         use sha2::{Digest, Sha256, Sha384, Sha512};
 

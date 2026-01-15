@@ -500,7 +500,6 @@ impl DodChainValidator {
     /// Check validity periods for all certificates in chain
     fn check_validity_periods(&self, chain: &[Certificate]) -> Result<()> {
         use std::time::SystemTime;
-        use x509_cert::time::Time;
 
         let now = SystemTime::now();
 
