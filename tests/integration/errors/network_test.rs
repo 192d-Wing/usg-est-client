@@ -16,9 +16,12 @@
 //! Integration tests for network error handling
 
 use std::time::Duration;
-use usg_est_client::{EstClient, EstClientConfig, csr::CsrBuilder};
+use usg_est_client::{EstClient, EstClientConfig};
+#[cfg(feature = "csr-gen")]
+use usg_est_client::csr::CsrBuilder;
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_connection_timeout() {
     // Use a non-routable IP address to trigger timeout
     // 192.0.2.0/24 is reserved for documentation (TEST-NET-1)
@@ -56,6 +59,7 @@ async fn test_connection_timeout() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_connection_refused() {
     // Use localhost with a port that's likely not listening
     let config = EstClientConfig::builder()
@@ -84,6 +88,7 @@ async fn test_connection_refused() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_dns_resolution_failure() {
     // Use an invalid domain name that should fail DNS resolution
     let config = EstClientConfig::builder()
@@ -112,6 +117,7 @@ async fn test_dns_resolution_failure() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_tls_handshake_failure() {
     // This test would verify TLS handshake failures
     // In practice, this is difficult to test without a real server
@@ -159,6 +165,7 @@ async fn test_network_interruption_during_request() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_slow_server_response() {
     use tokio::time::timeout;
 

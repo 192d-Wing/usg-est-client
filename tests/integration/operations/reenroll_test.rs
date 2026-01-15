@@ -18,10 +18,13 @@
 use crate::integration::MockEstServer;
 use std::fs;
 use usg_est_client::{
-    ClientIdentity, EnrollmentResponse, EstClient, EstClientConfig, csr::CsrBuilder,
+    ClientIdentity, EnrollmentResponse, EstClient, EstClientConfig,
 };
+#[cfg(feature = "csr-gen")]
+use usg_est_client::csr::CsrBuilder;
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_successful_reenrollment() {
     // Start mock server
     let mock = MockEstServer::start().await;
@@ -84,6 +87,7 @@ async fn test_successful_reenrollment() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_missing_client_certificate() {
     // Start mock server
     let mock = MockEstServer::start().await;
@@ -120,6 +124,7 @@ async fn test_missing_client_certificate() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_expired_certificate_handling() {
     // Start mock server
     let mock = MockEstServer::start().await;

@@ -16,9 +16,12 @@
 //! Integration tests for retry logic
 
 use crate::integration::MockEstServer;
-use usg_est_client::{EstClient, EstClientConfig, EstError, csr::CsrBuilder};
+use usg_est_client::{EstClient, EstClientConfig, EstError};
+#[cfg(feature = "csr-gen")]
+use usg_est_client::csr::CsrBuilder;
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_retry_after_header_parsing() {
     // Start mock server
     let mock = MockEstServer::start().await;
@@ -87,6 +90,7 @@ async fn test_error_is_retryable() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_retry_after_zero_seconds() {
     // Test handling of Retry-After: 0 (retry immediately)
 
@@ -127,6 +131,7 @@ async fn test_retry_after_zero_seconds() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_retry_after_large_value() {
     // Test handling of very large Retry-After values
 
@@ -169,6 +174,7 @@ async fn test_retry_after_large_value() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_malformed_retry_after_header() {
     // Test handling of invalid Retry-After values
 
@@ -208,6 +214,7 @@ async fn test_malformed_retry_after_header() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_http_date_retry_after() {
     // RFC 7231 allows Retry-After to be an HTTP-date instead of seconds
     // e.g., "Retry-After: Fri, 31 Dec 2024 23:59:59 GMT"

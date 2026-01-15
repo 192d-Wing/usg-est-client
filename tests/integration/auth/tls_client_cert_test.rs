@@ -17,9 +17,12 @@
 
 use crate::integration::MockEstServer;
 use std::fs;
-use usg_est_client::{ClientIdentity, EstClient, EstClientConfig, csr::CsrBuilder};
+use usg_est_client::{ClientIdentity, EstClient, EstClientConfig};
+#[cfg(feature = "csr-gen")]
+use usg_est_client::csr::CsrBuilder;
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_successful_tls_client_cert_auth() {
     // Start mock server
     let mock = MockEstServer::start().await;
@@ -65,6 +68,7 @@ async fn test_successful_tls_client_cert_auth() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_missing_client_certificate() {
     // Start mock server
     let mock = MockEstServer::start().await;

@@ -16,7 +16,9 @@
 //! Integration tests for protocol error handling
 
 use crate::integration::MockEstServer;
-use usg_est_client::{EstClient, EstClientConfig, csr::CsrBuilder};
+use usg_est_client::{EstClient, EstClientConfig};
+#[cfg(feature = "csr-gen")]
+use usg_est_client::csr::CsrBuilder;
 
 #[tokio::test]
 async fn test_invalid_content_type() {
@@ -56,6 +58,7 @@ async fn test_invalid_content_type() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_missing_required_headers() {
     // Start mock server
     let mock = MockEstServer::start().await;
@@ -135,6 +138,7 @@ async fn test_unexpected_http_methods() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_http_status_code_handling() {
     use wiremock::{
         Mock, ResponseTemplate,

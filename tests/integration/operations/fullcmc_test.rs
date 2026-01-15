@@ -18,11 +18,13 @@
 use crate::integration::MockEstServer;
 use usg_est_client::{
     CmcRequest, EstClient, EstClientConfig,
-    csr::CsrBuilder,
     types::cmc_full::{PkiDataBuilder, PkiResponse},
 };
+#[cfg(feature = "csr-gen")]
+use usg_est_client::csr::CsrBuilder;
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_basic_cmc_request_response() {
     // Start mock server
     let mock = MockEstServer::start().await;
@@ -159,6 +161,7 @@ async fn test_cmc_status_codes() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_cmc_error_conditions() {
     // Start mock server
     let mock = MockEstServer::start().await;

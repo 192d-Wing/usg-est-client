@@ -17,9 +17,12 @@
 
 use crate::integration::MockEstServer;
 use std::fs;
-use usg_est_client::{EstClient, EstClientConfig, csr::CsrBuilder};
+use usg_est_client::{EstClient, EstClientConfig};
+#[cfg(feature = "csr-gen")]
+use usg_est_client::csr::CsrBuilder;
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_successful_serverkeygen() {
     // Start mock server
     let mock = MockEstServer::start().await;
@@ -161,6 +164,7 @@ async fn test_encrypted_vs_unencrypted_keys() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_malformed_multipart_response() {
     // Start mock server
     let mock = MockEstServer::start().await;

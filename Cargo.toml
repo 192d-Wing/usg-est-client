@@ -156,6 +156,18 @@ required-features = ["revocation"]
 name = "dod_enroll"
 required-features = ["dod-pki", "csr-gen"]
 
+[[example]]
+name = "simple_enroll"
+required-features = ["csr-gen"]
+
+[[example]]
+name = "cmc_advanced"
+required-features = ["csr-gen"]
+
+[[example]]
+name = "reenroll"
+required-features = ["csr-gen"]
+
 [[bin]]
 name = "est-autoenroll-service"
 path = "src/bin/est-autoenroll-service.rs"

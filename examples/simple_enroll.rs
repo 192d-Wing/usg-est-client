@@ -31,7 +31,9 @@ compile_error!("This example requires the 'csr-gen' feature. Run with --features
 use std::env;
 use std::process::exit;
 
-use usg_est_client::{EnrollmentResponse, EstClient, EstClientConfig, csr::CsrBuilder};
+use usg_est_client::{EnrollmentResponse, EstClient, EstClientConfig};
+#[cfg(feature = "csr-gen")]
+use usg_est_client::csr::CsrBuilder;
 
 #[tokio::main]
 async fn main() {

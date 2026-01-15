@@ -17,9 +17,12 @@
 
 use crate::integration::MockEstServer;
 use std::fs;
-use usg_est_client::{EnrollmentResponse, EstClient, EstClientConfig, csr::CsrBuilder};
+use usg_est_client::{EnrollmentResponse, EstClient, EstClientConfig};
+#[cfg(feature = "csr-gen")]
+use usg_est_client::csr::CsrBuilder;
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_successful_enrollment() {
     // Start mock server
     let mock = MockEstServer::start().await;
@@ -73,6 +76,7 @@ async fn test_successful_enrollment() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_pending_enrollment() {
     // Start mock server
     let mock = MockEstServer::start().await;
@@ -115,6 +119,7 @@ async fn test_pending_enrollment() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_authentication_required() {
     // Start mock server
     let mock = MockEstServer::start().await;
@@ -154,6 +159,7 @@ async fn test_authentication_required() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_server_error() {
     // Start mock server
     let mock = MockEstServer::start().await;
@@ -193,6 +199,7 @@ async fn test_server_error() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_csr_validation() {
     // Start mock server
     let mock = MockEstServer::start().await;

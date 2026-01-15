@@ -17,9 +17,12 @@
 
 use crate::integration::MockEstServer;
 use std::fs;
-use usg_est_client::{EstClient, EstClientConfig, csr::CsrBuilder};
+use usg_est_client::{EstClient, EstClientConfig};
+#[cfg(feature = "csr-gen")]
+use usg_est_client::csr::CsrBuilder;
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_successful_http_basic_auth() {
     // Start mock server
     let mock = MockEstServer::start().await;
@@ -59,6 +62,7 @@ async fn test_successful_http_basic_auth() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_invalid_credentials() {
     // Start mock server
     let mock = MockEstServer::start().await;
@@ -99,6 +103,7 @@ async fn test_invalid_credentials() {
 }
 
 #[tokio::test]
+#[cfg(feature = "csr-gen")]
 async fn test_missing_authorization_header() {
     // Start mock server
     let mock = MockEstServer::start().await;

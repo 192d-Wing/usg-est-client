@@ -35,11 +35,13 @@
 //! cargo run --example cmc_advanced -- --server https://est.example.com
 //! ```
 
+#[cfg(not(feature = "csr-gen"))]
+compile_error!("This example requires the 'csr-gen' feature. Run with --features csr-gen");
+
 use std::env;
 
 use usg_est_client::{
     EstClient, EstClientConfig,
-    csr::CsrBuilder,
     types::{
         CmcRequest,
         cmc_full::{
@@ -48,6 +50,8 @@ use usg_est_client::{
         },
     },
 };
+#[cfg(feature = "csr-gen")]
+use usg_est_client::csr::CsrBuilder;
 
 #[tokio::main]
 async fn main() {

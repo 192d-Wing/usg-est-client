@@ -27,13 +27,18 @@
 //!     --key /path/to/client-key.pem
 //! ```
 
+#[cfg(not(feature = "csr-gen"))]
+compile_error!("This example requires the 'csr-gen' feature. Run with --features csr-gen");
+
 use std::env;
 use std::fs;
 use std::process::exit;
 
 use usg_est_client::{
-    ClientIdentity, EnrollmentResponse, EstClient, EstClientConfig, csr::CsrBuilder,
+    ClientIdentity, EnrollmentResponse, EstClient, EstClientConfig,
 };
+#[cfg(feature = "csr-gen")]
+use usg_est_client::csr::CsrBuilder;
 
 #[tokio::main]
 async fn main() {
