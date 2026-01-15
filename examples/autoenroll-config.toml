@@ -137,10 +137,10 @@ store = "LocalMachine\\My"
 # Makes it easy to identify in Windows Certificate Manager (certmgr.msc)
 friendly_name = "EST Auto-Enrolled Certificate"
 
-# Private Key Storage Path (temporary workaround)
-# LIMITATION: CNG integration not yet implemented
-# The service will save the private key to this file in PEM format
-# TODO: Replace with Windows CNG key container when implemented
+# Private Key Storage Path (legacy/testing only)
+# DEPRECATED: Private keys are now stored in Windows CNG by default.
+# This field is only used for testing or non-Windows environments.
+# On Windows, keys are automatically stored in CNG key containers.
 key_path = "C:\\ProgramData\\Department of War\\EST\\keys\\server.pem"
 
 # Archive Old Certificate on Renewal

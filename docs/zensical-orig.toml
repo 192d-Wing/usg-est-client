@@ -156,7 +156,8 @@ features = [
     # https://zensical.org/docs/authoring/content-tabs/#linked-content-tabs
     "content.tabs.link",
 
-    # TODO: not sure I understand this one? Is there a demo of this in the docs?
+    # Enables enhanced tooltip functionality for documentation
+    # Allows adding interactive tooltips to terms and abbreviations
     # https://zensical.org/docs/authoring/tooltips/#improved-tooltips
     "content.tooltips",
 

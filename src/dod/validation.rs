@@ -91,6 +91,10 @@ pub struct ValidationOptions {
     /// Check certificate revocation status
     pub check_revocation: bool,
 
+    /// Fail validation if revocation status is unknown (strict mode)
+    /// If false, unknown revocation status will log a warning but not fail validation
+    pub fail_on_unknown_revocation: bool,
+
     /// Required minimum assurance level (1-3)
     pub min_assurance_level: u8,
 
@@ -108,6 +112,7 @@ impl Default for ValidationOptions {
     fn default() -> Self {
         Self {
             check_revocation: false, // Disabled by default (requires network)
+            fail_on_unknown_revocation: false, // Soft-fail mode by default
             min_assurance_level: 0,  // No minimum by default
             required_policies: Vec::new(),
             allow_expired: false,
@@ -127,6 +132,7 @@ impl ValidationOptions {
 #[derive(Debug, Default)]
 pub struct ValidationOptionsBuilder {
     check_revocation: bool,
+    fail_on_unknown_revocation: bool,
     min_assurance_level: u8,
     required_policies: Vec<DodCertificatePolicy>,
     allow_expired: bool,
@@ -137,6 +143,12 @@ impl ValidationOptionsBuilder {
     /// Enable/disable revocation checking
     pub fn check_revocation(mut self, check: bool) -> Self {
         self.check_revocation = check;
+        self
+    }
+
+    /// Fail validation if revocation status is unknown (strict mode)
+    pub fn fail_on_unknown_revocation(mut self, fail: bool) -> Self {
+        self.fail_on_unknown_revocation = fail;
         self
     }
 
@@ -168,6 +180,7 @@ impl ValidationOptionsBuilder {
     pub fn build(self) -> ValidationOptions {
         ValidationOptions {
             check_revocation: self.check_revocation,
+            fail_on_unknown_revocation: self.fail_on_unknown_revocation,
             min_assurance_level: self.min_assurance_level,
             required_policies: self.required_policies,
             allow_expired: self.allow_expired,
@@ -628,7 +641,7 @@ impl DodChainValidator {
                     debug!("Certificate at position {} passed revocation check", i);
                 }
                 RevocationStatus::Unknown => {
-                    // Log warnings but don't fail validation
+                    // Log warnings
                     warn!(
                         "Could not determine revocation status for certificate at position {}",
                         i
@@ -637,9 +650,14 @@ impl DodChainValidator {
                         warn!("Revocation check errors: {:?}", result.errors);
                     }
 
-                    // For DoD PKI, we might want to be strict about this
-                    // For now, log but continue (soft-fail mode)
-                    // TODO: Make this configurable via ValidationOptions
+                    // Fail if strict mode is enabled
+                    if self.options.fail_on_unknown_revocation {
+                        return Err(EstError::validation(format!(
+                            "Certificate at position {} has unknown revocation status (strict mode enabled)",
+                            i
+                        )));
+                    }
+                    // Otherwise, log but continue (soft-fail mode)
                 }
             }
         }
