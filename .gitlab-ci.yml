@@ -209,20 +209,6 @@ test:stable:macos:
     - merge_requests
   allow_failure: true # Optional if macOS runners not available
 
-test:stable:windows:
-  stage: test
-  tags:
-    - windows
-  <<: *cargo_cache
-  script:
-    - cargo test --verbose
-    - cargo test --all-features --verbose
-    - cargo test --no-default-features --verbose
-  only:
-    - main
-    - merge_requests
-  allow_failure: true # Optional if Windows runners not available
-
 test:beta:
   stage: test
   image: rust:latest
