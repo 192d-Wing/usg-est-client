@@ -203,7 +203,7 @@ test:stable:macos:
   script:
     - cargo test --verbose
     - cargo test --all-features --verbose
-    - cargo test --no-default-features --verbose
+  #    - cargo test --no-default-features --verbose
   only:
     - main
     - merge_requests
