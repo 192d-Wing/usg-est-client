@@ -16,12 +16,12 @@
 //! Integration tests for POST /fullcmc operation
 
 use crate::integration::MockEstServer;
+#[cfg(feature = "csr-gen")]
+use usg_est_client::csr::CsrBuilder;
 use usg_est_client::{
     CmcRequest, EstClient, EstClientConfig,
     types::cmc_full::{PkiDataBuilder, PkiResponse},
 };
-#[cfg(feature = "csr-gen")]
-use usg_est_client::csr::CsrBuilder;
 
 #[tokio::test]
 #[cfg(feature = "csr-gen")]

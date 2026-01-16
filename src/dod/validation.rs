@@ -111,9 +111,9 @@ pub struct ValidationOptions {
 impl Default for ValidationOptions {
     fn default() -> Self {
         Self {
-            check_revocation: false, // Disabled by default (requires network)
+            check_revocation: false,           // Disabled by default (requires network)
             fail_on_unknown_revocation: false, // Soft-fail mode by default
-            min_assurance_level: 0,  // No minimum by default
+            min_assurance_level: 0,            // No minimum by default
             required_policies: Vec::new(),
             allow_expired: false,
             trust_anchors: Vec::new(),
