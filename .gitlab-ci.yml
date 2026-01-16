@@ -1,7 +1,10 @@
 # GitLab CI/CD configuration for USG EST Client
 # Migrated from GitHub Actions workflows
 
-# Include GitLab Security Scanning templates
+# Include GitLab SAST (Static Application Security Testing) template
+# Note: This template is provided by GitLab and requires GitLab Ultimate or GitLab.com
+# If you see "template not found" errors, your GitLab instance may not have access to this template
+# You can safely comment this out if SAST is not available in your GitLab tier
 include:
   - template: Security/SAST.gitlab-ci.yml
   - template: Security/Dependency-Scanning.gitlab-ci.yml
@@ -635,7 +638,7 @@ release:macos-x86_64:
     - rustup target add x86_64-apple-darwin
   variables:
     TARGET: "x86_64-apple-darwin"
-  allow_failure: true  # Allow failure if macOS runners are unavailable
+  allow_failure: true # Allow failure if macOS runners are unavailable
 
 # macOS aarch64 (Apple Silicon)
 release:macos-aarch64:
@@ -646,7 +649,7 @@ release:macos-aarch64:
     - rustup target add aarch64-apple-darwin
   variables:
     TARGET: "aarch64-apple-darwin"
-  allow_failure: true  # Allow failure if macOS runners are unavailable
+  allow_failure: true # Allow failure if macOS runners are unavailable
 
 # Windows x86_64 (MSVC)
 release:windows-x86_64:
@@ -657,7 +660,7 @@ release:windows-x86_64:
     - rustup target add x86_64-pc-windows-msvc
   variables:
     TARGET: "x86_64-pc-windows-msvc"
-  allow_failure: true  # Allow failure if Windows runners are unavailable
+  allow_failure: true # Allow failure if Windows runners are unavailable
 
 # Create GitLab Release with all artifacts
 release:publish:
@@ -739,15 +742,15 @@ release:publish:
       echo "=== Release Notes ==="
       cat release_notes.md
   release:
-    name: 'Release $CI_COMMIT_TAG'
-    description: './release_notes.md'
-    tag_name: '$CI_COMMIT_TAG'
+    name: "Release $CI_COMMIT_TAG"
+    description: "./release_notes.md"
+    tag_name: "$CI_COMMIT_TAG"
     assets:
       links:
-        - name: 'Installation Guide'
-          url: '${CI_PROJECT_URL}/-/blob/${CI_COMMIT_TAG}/CONFIGURATION.md'
-        - name: 'Documentation'
-          url: 'https://${CI_PROJECT_NAMESPACE}.gitlab.io/${CI_PROJECT_NAME}/'
+        - name: "Installation Guide"
+          url: "${CI_PROJECT_URL}/-/blob/${CI_COMMIT_TAG}/CONFIGURATION.md"
+        - name: "Documentation"
+          url: "https://${CI_PROJECT_NAMESPACE}.gitlab.io/${CI_PROJECT_NAME}/"
   artifacts:
     name: "release-${CI_COMMIT_TAG}"
     paths:
