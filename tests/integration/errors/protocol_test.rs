@@ -16,9 +16,9 @@
 //! Integration tests for protocol error handling
 
 use crate::integration::MockEstServer;
-use usg_est_client::{EstClient, EstClientConfig};
 #[cfg(feature = "csr-gen")]
 use usg_est_client::csr::CsrBuilder;
+use usg_est_client::{EstClient, EstClientConfig};
 
 #[tokio::test]
 async fn test_invalid_content_type() {

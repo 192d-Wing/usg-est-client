@@ -16,9 +16,9 @@
 //! Integration tests for retry logic
 
 use crate::integration::MockEstServer;
-use usg_est_client::{EstClient, EstClientConfig, EstError};
 #[cfg(feature = "csr-gen")]
 use usg_est_client::csr::CsrBuilder;
+use usg_est_client::{EstClient, EstClientConfig, EstError};
 
 #[tokio::test]
 #[cfg(feature = "csr-gen")]

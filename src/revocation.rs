@@ -776,12 +776,8 @@ impl RevocationChecker {
         issuer_spki: &spki::SubjectPublicKeyInfoOwned,
     ) -> Result<()> {
         use const_oid::ObjectIdentifier;
-        use p256::ecdsa::{
-            Signature as P256Signature, VerifyingKey as P256VerifyingKey,
-        };
-        use p384::ecdsa::{
-            Signature as P384Signature, VerifyingKey as P384VerifyingKey,
-        };
+        use p256::ecdsa::{Signature as P256Signature, VerifyingKey as P256VerifyingKey};
+        use p384::ecdsa::{Signature as P384Signature, VerifyingKey as P384VerifyingKey};
         use sha2::{Digest, Sha256, Sha384, Sha512};
 
         const ECDSA_SHA256: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.2");

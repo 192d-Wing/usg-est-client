@@ -92,12 +92,12 @@ use std::sync::Arc;
 use windows::Win32::Security::Cryptography::{
     BCRYPT_ALG_HANDLE, BCRYPT_ECCPUBLIC_BLOB, BCRYPT_ECDSA_P256_ALGORITHM,
     BCRYPT_ECDSA_P384_ALGORITHM, BCRYPT_HASH_HANDLE, BCRYPT_KEY_HANDLE, BCRYPT_RSA_ALGORITHM,
-    BCRYPT_RSAPUBLIC_BLOB, BCRYPT_SHA256_ALGORITHM, BCryptCloseAlgorithmProvider,
-    BCryptCreateHash, BCryptDestroyHash, BCryptDestroyKey, BCryptExportKey, BCryptFinishHash,
-    BCryptGenerateKeyPair, BCryptHashData, BCryptOpenAlgorithmProvider, BCryptSignHash,
-    NCRYPT_FLAGS, NCRYPT_KEY_HANDLE, NCRYPT_PROV_HANDLE, NCryptCreatePersistedKey,
-    NCryptDeleteKey, NCryptExportKey, NCryptFinalizeKey, NCryptFreeObject, NCryptGetProperty,
-    NCryptOpenKey, NCryptOpenStorageProvider, NCryptSetProperty, NCryptSignHash,
+    BCRYPT_RSAPUBLIC_BLOB, BCRYPT_SHA256_ALGORITHM, BCryptCloseAlgorithmProvider, BCryptCreateHash,
+    BCryptDestroyHash, BCryptDestroyKey, BCryptExportKey, BCryptFinishHash, BCryptGenerateKeyPair,
+    BCryptHashData, BCryptOpenAlgorithmProvider, BCryptSignHash, NCRYPT_FLAGS, NCRYPT_KEY_HANDLE,
+    NCRYPT_PROV_HANDLE, NCryptCreatePersistedKey, NCryptDeleteKey, NCryptExportKey,
+    NCryptFinalizeKey, NCryptFreeObject, NCryptGetProperty, NCryptOpenKey,
+    NCryptOpenStorageProvider, NCryptSetProperty, NCryptSignHash,
 };
 
 /// Well-known CNG key storage provider names.
@@ -344,8 +344,10 @@ impl CngKeyProvider {
     /// Convert CNG public key blob to SPKI format.
     #[cfg(windows)]
     fn blob_to_spki(blob: &[u8], algorithm: KeyAlgorithm) -> Result<SubjectPublicKeyInfoOwned> {
+        use const_oid::db::rfc5912::{
+            ID_EC_PUBLIC_KEY, RSA_ENCRYPTION, SECP_256_R_1, SECP_384_R_1,
+        };
         use der::{Encode, asn1::BitString};
-        use const_oid::db::rfc5912::{ID_EC_PUBLIC_KEY, SECP_256_R_1, SECP_384_R_1, RSA_ENCRYPTION};
 
         match algorithm {
             KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384 => {
@@ -364,16 +366,16 @@ impl CngKeyProvider {
 
                 // Use checked arithmetic to prevent integer overflow
                 let expected_size = 8_usize
-                    .checked_add(
-                        cb_key
-                            .checked_mul(2)
-                            .ok_or_else(|| EstError::platform(
-                                "Integer overflow calculating ECC blob size (cb_key * 2)"
-                            ))?,
-                    )
-                    .ok_or_else(|| EstError::platform(
-                        "Integer overflow calculating ECC blob size (8 + cb_key * 2)"
-                    ))?;
+                    .checked_add(cb_key.checked_mul(2).ok_or_else(|| {
+                        EstError::platform(
+                            "Integer overflow calculating ECC blob size (cb_key * 2)",
+                        )
+                    })?)
+                    .ok_or_else(|| {
+                        EstError::platform(
+                            "Integer overflow calculating ECC blob size (8 + cb_key * 2)",
+                        )
+                    })?;
 
                 if blob.len() < expected_size {
                     return Err(EstError::platform(format!(
@@ -412,15 +414,20 @@ impl CngKeyProvider {
                 let parameters = der::asn1::ObjectIdentifier::new_unwrap(curve_oid.as_bytes());
                 let algorithm_id = spki::AlgorithmIdentifierOwned {
                     oid: ID_EC_PUBLIC_KEY,
-                    parameters: Some(der::Any::from_der(&parameters.to_der().map_err(|e| {
-                        EstError::platform(format!("Failed to encode curve OID: {}", e))
-                    })?)
-                    .map_err(|e| EstError::platform(format!("Failed to parse curve OID: {}", e)))?),
+                    parameters: Some(
+                        der::Any::from_der(&parameters.to_der().map_err(|e| {
+                            EstError::platform(format!("Failed to encode curve OID: {}", e))
+                        })?)
+                        .map_err(|e| {
+                            EstError::platform(format!("Failed to parse curve OID: {}", e))
+                        })?,
+                    ),
                 };
 
                 // Build SubjectPublicKeyInfo
-                let subject_public_key = BitString::from_bytes(&point)
-                    .map_err(|e| EstError::platform(format!("Failed to create bit string: {}", e)))?;
+                let subject_public_key = BitString::from_bytes(&point).map_err(|e| {
+                    EstError::platform(format!("Failed to create bit string: {}", e))
+                })?;
 
                 Ok(SubjectPublicKeyInfoOwned {
                     algorithm: algorithm_id,
@@ -443,8 +450,10 @@ impl CngKeyProvider {
                     return Err(EstError::platform("Invalid RSA public key blob size"));
                 }
 
-                let cb_public_exp = u32::from_le_bytes([blob[8], blob[9], blob[10], blob[11]]) as usize;
-                let cb_modulus = u32::from_le_bytes([blob[12], blob[13], blob[14], blob[15]]) as usize;
+                let cb_public_exp =
+                    u32::from_le_bytes([blob[8], blob[9], blob[10], blob[11]]) as usize;
+                let cb_modulus =
+                    u32::from_le_bytes([blob[12], blob[13], blob[14], blob[15]]) as usize;
 
                 // Validate sizes are reasonable for RSA keys
                 const MAX_RSA_EXPONENT_SIZE: usize = 8; // Typically 3-4 bytes
@@ -464,12 +473,12 @@ impl CngKeyProvider {
 
                 // Use checked arithmetic to prevent integer overflow
                 let exp_start = 24_usize;
-                let mod_start = exp_start
-                    .checked_add(cb_public_exp)
-                    .ok_or_else(|| EstError::platform("Integer overflow calculating RSA exponent offset"))?;
-                let total_size = mod_start
-                    .checked_add(cb_modulus)
-                    .ok_or_else(|| EstError::platform("Integer overflow calculating RSA blob size"))?;
+                let mod_start = exp_start.checked_add(cb_public_exp).ok_or_else(|| {
+                    EstError::platform("Integer overflow calculating RSA exponent offset")
+                })?;
+                let total_size = mod_start.checked_add(cb_modulus).ok_or_else(|| {
+                    EstError::platform("Integer overflow calculating RSA blob size")
+                })?;
 
                 if blob.len() < total_size {
                     return Err(EstError::platform(format!(
@@ -497,10 +506,13 @@ impl CngKeyProvider {
 
                 // Encode the RSAPublicKey sequence
                 let rsa_public_key = der::asn1::SequenceOf::<UintRef, 2>::try_from([n, e])
-                    .map_err(|e| EstError::platform(format!("Failed to create RSA key sequence: {}", e)))?;
+                    .map_err(|e| {
+                        EstError::platform(format!("Failed to create RSA key sequence: {}", e))
+                    })?;
 
-                let rsa_public_key_der = rsa_public_key.to_der()
-                    .map_err(|e| EstError::platform(format!("Failed to encode RSA public key: {}", e)))?;
+                let rsa_public_key_der = rsa_public_key.to_der().map_err(|e| {
+                    EstError::platform(format!("Failed to encode RSA public key: {}", e))
+                })?;
 
                 // Build AlgorithmIdentifier for RSA
                 let algorithm_id = spki::AlgorithmIdentifierOwned {
@@ -509,8 +521,10 @@ impl CngKeyProvider {
                 };
 
                 // Build SubjectPublicKeyInfo
-                let subject_public_key = BitString::from_bytes(&rsa_public_key_der)
-                    .map_err(|e| EstError::platform(format!("Failed to create bit string: {}", e)))?;
+                let subject_public_key =
+                    BitString::from_bytes(&rsa_public_key_der).map_err(|e| {
+                        EstError::platform(format!("Failed to create bit string: {}", e))
+                    })?;
 
                 Ok(SubjectPublicKeyInfoOwned {
                     algorithm: algorithm_id,
@@ -541,10 +555,13 @@ impl CngKeyProvider {
         let s_uint = UintRef::new(s)
             .map_err(|e| EstError::platform(format!("Failed to encode s: {}", e)))?;
 
-        let sig_seq = der::asn1::SequenceOf::<UintRef, 2>::try_from([r_uint, s_uint])
-            .map_err(|e| EstError::platform(format!("Failed to create signature sequence: {}", e)))?;
+        let sig_seq =
+            der::asn1::SequenceOf::<UintRef, 2>::try_from([r_uint, s_uint]).map_err(|e| {
+                EstError::platform(format!("Failed to create signature sequence: {}", e))
+            })?;
 
-        sig_seq.to_der()
+        sig_seq
+            .to_der()
             .map_err(|e| EstError::platform(format!("Failed to encode signature: {}", e)).into())
     }
 }
@@ -798,7 +815,7 @@ impl KeyProvider for CngKeyProvider {
             };
             if validation_result.is_err() {
                 return Err(EstError::platform(
-                    "Key handle is invalid or has been freed. The key may have been deleted."
+                    "Key handle is invalid or has been freed. The key may have been deleted.",
                 ));
             }
 
@@ -909,7 +926,7 @@ impl KeyProvider for CngKeyProvider {
             };
             if validation_result.is_err() {
                 return Err(EstError::platform(
-                    "Key handle is invalid or has been freed. The key may have been deleted."
+                    "Key handle is invalid or has been freed. The key may have been deleted.",
                 ));
             }
 
@@ -985,7 +1002,8 @@ impl KeyProvider for CngKeyProvider {
             let _hash_guard = HashGuard(hash_handle);
 
             // Hash the data
-            let result = unsafe { BCryptHashData(hash_handle, data.as_ptr(), data.len() as u32, 0) };
+            let result =
+                unsafe { BCryptHashData(hash_handle, data.as_ptr(), data.len() as u32, 0) };
 
             if result.is_err() {
                 return Err(EstError::platform(format!(
@@ -997,11 +1015,12 @@ impl KeyProvider for CngKeyProvider {
             // Get hash size
             let hash_size = match handle.algorithm() {
                 KeyAlgorithm::EcdsaP256 | KeyAlgorithm::Rsa { .. } => 32, // SHA-256
-                KeyAlgorithm::EcdsaP384 => 48,                              // SHA-384
+                KeyAlgorithm::EcdsaP384 => 48,                            // SHA-384
             };
 
             let mut hash = vec![0u8; hash_size];
-            let result = unsafe { BCryptFinishHash(hash_handle, hash.as_mut_ptr(), hash_size as u32, 0) };
+            let result =
+                unsafe { BCryptFinishHash(hash_handle, hash.as_mut_ptr(), hash_size as u32, 0) };
 
             if result.is_err() {
                 return Err(EstError::platform(format!(

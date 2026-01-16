@@ -16,9 +16,9 @@
 //! Integration tests for network error handling
 
 use std::time::Duration;
-use usg_est_client::{EstClient, EstClientConfig};
 #[cfg(feature = "csr-gen")]
 use usg_est_client::csr::CsrBuilder;
+use usg_est_client::{EstClient, EstClientConfig};
 
 #[tokio::test]
 #[cfg(feature = "csr-gen")]
