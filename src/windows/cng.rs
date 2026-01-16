@@ -91,13 +91,13 @@ use std::sync::Arc;
 #[cfg(windows)]
 use windows::Win32::Security::Cryptography::{
     BCRYPT_ALG_HANDLE, BCRYPT_ECCPUBLIC_BLOB, BCRYPT_ECDSA_P256_ALGORITHM,
-    BCRYPT_ECDSA_P384_ALGORITHM, BCRYPT_KEY_HANDLE, BCRYPT_RSA_ALGORITHM, BCRYPT_RSAPUBLIC_BLOB,
-    BCRYPT_SHA256_ALGORITHM, BCryptCloseAlgorithmProvider, BCryptCreateHash, BCryptDestroyHash,
-    BCryptDestroyKey, BCryptExportKey, BCryptFinishHash, BCryptGenerateKeyPair, BCryptHashData,
-    BCryptOpenAlgorithmProvider, BCryptSignHash, NCRYPT_FLAGS, NCRYPT_KEY_HANDLE,
-    NCRYPT_PROV_HANDLE, NCryptCreatePersistedKey, NCryptDeleteKey, NCryptExportKey,
-    NCryptFinalizeKey, NCryptFreeObject, NCryptGetProperty, NCryptOpenKey,
-    NCryptOpenStorageProvider, NCryptSetProperty, NCryptSignHash,
+    BCRYPT_ECDSA_P384_ALGORITHM, BCRYPT_HASH_HANDLE, BCRYPT_KEY_HANDLE, BCRYPT_RSA_ALGORITHM,
+    BCRYPT_RSAPUBLIC_BLOB, BCRYPT_SHA256_ALGORITHM, BCryptCloseAlgorithmProvider,
+    BCryptCreateHash, BCryptDestroyHash, BCryptDestroyKey, BCryptExportKey, BCryptFinishHash,
+    BCryptGenerateKeyPair, BCryptHashData, BCryptOpenAlgorithmProvider, BCryptSignHash,
+    NCRYPT_FLAGS, NCRYPT_KEY_HANDLE, NCRYPT_PROV_HANDLE, NCryptCreatePersistedKey,
+    NCryptDeleteKey, NCryptExportKey, NCryptFinalizeKey, NCryptFreeObject, NCryptGetProperty,
+    NCryptOpenKey, NCryptOpenStorageProvider, NCryptSetProperty, NCryptSignHash,
 };
 
 /// Well-known CNG key storage provider names.
@@ -340,6 +340,213 @@ impl CngKeyProvider {
             None => format!("EST-Key-{}", timestamp),
         }
     }
+
+    /// Convert CNG public key blob to SPKI format.
+    #[cfg(windows)]
+    fn blob_to_spki(blob: &[u8], algorithm: KeyAlgorithm) -> Result<SubjectPublicKeyInfoOwned> {
+        use der::{Encode, asn1::BitString};
+        use const_oid::db::rfc5912::{ID_EC_PUBLIC_KEY, SECP_256_R_1, SECP_384_R_1, RSA_ENCRYPTION};
+
+        match algorithm {
+            KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384 => {
+                // BCRYPT_ECCKEY_BLOB structure:
+                // typedef struct _BCRYPT_ECCKEY_BLOB {
+                //   ULONG dwMagic;      // 4 bytes
+                //   ULONG cbKey;        // 4 bytes - size of each coordinate
+                // } BCRYPT_ECCKEY_BLOB;
+                // Followed by: X coordinate (cbKey bytes), Y coordinate (cbKey bytes)
+
+                if blob.len() < 8 {
+                    return Err(EstError::platform("Invalid ECC public key blob size"));
+                }
+
+                let cb_key = u32::from_le_bytes([blob[4], blob[5], blob[6], blob[7]]) as usize;
+
+                // Use checked arithmetic to prevent integer overflow
+                let expected_size = 8_usize
+                    .checked_add(
+                        cb_key
+                            .checked_mul(2)
+                            .ok_or_else(|| EstError::platform(
+                                "Integer overflow calculating ECC blob size (cb_key * 2)"
+                            ))?,
+                    )
+                    .ok_or_else(|| EstError::platform(
+                        "Integer overflow calculating ECC blob size (8 + cb_key * 2)"
+                    ))?;
+
+                if blob.len() < expected_size {
+                    return Err(EstError::platform(format!(
+                        "ECC blob too small: got {} bytes, expected {}",
+                        blob.len(),
+                        expected_size
+                    )));
+                }
+
+                // Validate cb_key is reasonable for known curves
+                const MAX_ECC_COORDINATE_SIZE: usize = 66; // P-521 is 66 bytes
+                if cb_key > MAX_ECC_COORDINATE_SIZE {
+                    return Err(EstError::platform(format!(
+                        "ECC coordinate size {} exceeds maximum {}",
+                        cb_key, MAX_ECC_COORDINATE_SIZE
+                    )));
+                }
+
+                // Extract X and Y coordinates (big-endian in CNG)
+                let x = &blob[8..8 + cb_key];
+                let y = &blob[8 + cb_key..8 + cb_key * 2];
+
+                // Build uncompressed point: 0x04 || X || Y
+                let mut point = vec![0x04];
+                point.extend_from_slice(x);
+                point.extend_from_slice(y);
+
+                // Determine curve OID
+                let curve_oid = match algorithm {
+                    KeyAlgorithm::EcdsaP256 => SECP_256_R_1,
+                    KeyAlgorithm::EcdsaP384 => SECP_384_R_1,
+                    _ => unreachable!(),
+                };
+
+                // Build AlgorithmIdentifier with curve OID as parameter
+                let parameters = der::asn1::ObjectIdentifier::new_unwrap(curve_oid.as_bytes());
+                let algorithm_id = spki::AlgorithmIdentifierOwned {
+                    oid: ID_EC_PUBLIC_KEY,
+                    parameters: Some(der::Any::from_der(&parameters.to_der().map_err(|e| {
+                        EstError::platform(format!("Failed to encode curve OID: {}", e))
+                    })?)
+                    .map_err(|e| EstError::platform(format!("Failed to parse curve OID: {}", e)))?),
+                };
+
+                // Build SubjectPublicKeyInfo
+                let subject_public_key = BitString::from_bytes(&point)
+                    .map_err(|e| EstError::platform(format!("Failed to create bit string: {}", e)))?;
+
+                Ok(SubjectPublicKeyInfoOwned {
+                    algorithm: algorithm_id,
+                    subject_public_key,
+                })
+            }
+            KeyAlgorithm::Rsa { .. } => {
+                // BCRYPT_RSAKEY_BLOB structure:
+                // typedef struct _BCRYPT_RSAKEY_BLOB {
+                //   ULONG Magic;           // 4 bytes
+                //   ULONG BitLength;       // 4 bytes
+                //   ULONG cbPublicExp;     // 4 bytes
+                //   ULONG cbModulus;       // 4 bytes
+                //   ULONG cbPrime1;        // 4 bytes (0 for public key)
+                //   ULONG cbPrime2;        // 4 bytes (0 for public key)
+                // } BCRYPT_RSAKEY_BLOB;
+                // Followed by: PublicExponent, Modulus
+
+                if blob.len() < 24 {
+                    return Err(EstError::platform("Invalid RSA public key blob size"));
+                }
+
+                let cb_public_exp = u32::from_le_bytes([blob[8], blob[9], blob[10], blob[11]]) as usize;
+                let cb_modulus = u32::from_le_bytes([blob[12], blob[13], blob[14], blob[15]]) as usize;
+
+                // Validate sizes are reasonable for RSA keys
+                const MAX_RSA_EXPONENT_SIZE: usize = 8; // Typically 3-4 bytes
+                const MAX_RSA_MODULUS_SIZE: usize = 512; // 4096-bit RSA = 512 bytes
+                if cb_public_exp > MAX_RSA_EXPONENT_SIZE {
+                    return Err(EstError::platform(format!(
+                        "RSA public exponent size {} exceeds maximum {}",
+                        cb_public_exp, MAX_RSA_EXPONENT_SIZE
+                    )));
+                }
+                if cb_modulus > MAX_RSA_MODULUS_SIZE {
+                    return Err(EstError::platform(format!(
+                        "RSA modulus size {} exceeds maximum {}",
+                        cb_modulus, MAX_RSA_MODULUS_SIZE
+                    )));
+                }
+
+                // Use checked arithmetic to prevent integer overflow
+                let exp_start = 24_usize;
+                let mod_start = exp_start
+                    .checked_add(cb_public_exp)
+                    .ok_or_else(|| EstError::platform("Integer overflow calculating RSA exponent offset"))?;
+                let total_size = mod_start
+                    .checked_add(cb_modulus)
+                    .ok_or_else(|| EstError::platform("Integer overflow calculating RSA blob size"))?;
+
+                if blob.len() < total_size {
+                    return Err(EstError::platform(format!(
+                        "RSA blob too small: got {} bytes, expected {}",
+                        blob.len(),
+                        total_size
+                    )));
+                }
+
+                // Extract public exponent and modulus (big-endian in CNG)
+                let public_exp = &blob[exp_start..exp_start + cb_public_exp];
+                let modulus = &blob[mod_start..mod_start + cb_modulus];
+
+                // Build RSA public key in DER format
+                // RSAPublicKey ::= SEQUENCE {
+                //     modulus           INTEGER,  -- n
+                //     publicExponent    INTEGER   -- e
+                // }
+                use der::asn1::UintRef;
+
+                let n = UintRef::new(modulus)
+                    .map_err(|e| EstError::platform(format!("Failed to encode modulus: {}", e)))?;
+                let e = UintRef::new(public_exp)
+                    .map_err(|e| EstError::platform(format!("Failed to encode exponent: {}", e)))?;
+
+                // Encode the RSAPublicKey sequence
+                let rsa_public_key = der::asn1::SequenceOf::<UintRef, 2>::try_from([n, e])
+                    .map_err(|e| EstError::platform(format!("Failed to create RSA key sequence: {}", e)))?;
+
+                let rsa_public_key_der = rsa_public_key.to_der()
+                    .map_err(|e| EstError::platform(format!("Failed to encode RSA public key: {}", e)))?;
+
+                // Build AlgorithmIdentifier for RSA
+                let algorithm_id = spki::AlgorithmIdentifierOwned {
+                    oid: RSA_ENCRYPTION,
+                    parameters: Some(der::Any::null()),
+                };
+
+                // Build SubjectPublicKeyInfo
+                let subject_public_key = BitString::from_bytes(&rsa_public_key_der)
+                    .map_err(|e| EstError::platform(format!("Failed to create bit string: {}", e)))?;
+
+                Ok(SubjectPublicKeyInfoOwned {
+                    algorithm: algorithm_id,
+                    subject_public_key,
+                })
+            }
+        }
+    }
+
+    /// Convert ECDSA raw (r,s) signature to DER format.
+    #[cfg(windows)]
+    fn ecdsa_raw_to_der(raw_sig: &[u8]) -> Result<Vec<u8>> {
+        use der::{Encode, asn1::UintRef};
+
+        // CNG ECDSA signatures are in raw format: r || s
+        // Each component is the same size (32 bytes for P-256, 48 bytes for P-384)
+        if raw_sig.len() % 2 != 0 {
+            return Err(EstError::platform("Invalid ECDSA signature length"));
+        }
+
+        let component_len = raw_sig.len() / 2;
+        let r = &raw_sig[0..component_len];
+        let s = &raw_sig[component_len..];
+
+        // Build DER SEQUENCE { r INTEGER, s INTEGER }
+        let r_uint = UintRef::new(r)
+            .map_err(|e| EstError::platform(format!("Failed to encode r: {}", e)))?;
+        let s_uint = UintRef::new(s)
+            .map_err(|e| EstError::platform(format!("Failed to encode s: {}", e)))?;
+
+        let sig_seq = der::asn1::SequenceOf::<UintRef, 2>::try_from([r_uint, s_uint])
+            .map_err(|e| EstError::platform(format!("Failed to create signature sequence: {}", e)))?;
+
+        sig_seq.to_der()
+            .map_err(|e| EstError::platform(format!("Failed to encode signature: {}", e)).into())
+    }
 }
 
 #[async_trait]
@@ -371,6 +578,31 @@ impl KeyProvider for CngKeyProvider {
                 .chain(std::iter::once(0))
                 .collect();
 
+            // RAII guard for provider handle cleanup
+            struct ProviderGuard(NCRYPT_PROV_HANDLE);
+            impl Drop for ProviderGuard {
+                fn drop(&mut self) {
+                    unsafe {
+                        let _ = NCryptFreeObject(self.0.0);
+                    }
+                }
+            }
+
+            // RAII guard for key handle cleanup on error
+            struct KeyGuard {
+                handle: NCRYPT_KEY_HANDLE,
+                should_delete: bool,
+            }
+            impl Drop for KeyGuard {
+                fn drop(&mut self) {
+                    if self.should_delete {
+                        unsafe {
+                            let _ = NCryptDeleteKey(self.handle, 0);
+                        }
+                    }
+                }
+            }
+
             // Open storage provider
             let mut prov_handle = NCRYPT_PROV_HANDLE::default();
             let result = unsafe {
@@ -388,6 +620,9 @@ impl KeyProvider for CngKeyProvider {
                 )));
             }
 
+            // Guard ensures provider handle is freed on error or success
+            let _prov_guard = ProviderGuard(prov_handle);
+
             // Create key
             let mut key_handle = NCRYPT_KEY_HANDLE::default();
             let result = unsafe {
@@ -402,12 +637,17 @@ impl KeyProvider for CngKeyProvider {
             };
 
             if result.is_err() {
-                unsafe { NCryptFreeObject(prov_handle.0) };
                 return Err(EstError::platform(format!(
                     "Failed to create CNG key: {:?}",
                     result
                 )));
             }
+
+            // Guard ensures key is deleted on error
+            let mut key_guard = KeyGuard {
+                handle: key_handle,
+                should_delete: true,
+            };
 
             // Set key size for RSA
             if let KeyAlgorithm::Rsa { bits } = algorithm {
@@ -417,7 +657,7 @@ impl KeyProvider for CngKeyProvider {
                     .chain(std::iter::once(0))
                     .collect();
 
-                let _ = unsafe {
+                let result = unsafe {
                     NCryptSetProperty(
                         key_handle,
                         windows::core::PCWSTR(wide_length.as_ptr()),
@@ -425,6 +665,13 @@ impl KeyProvider for CngKeyProvider {
                         NCRYPT_FLAGS(0),
                     )
                 };
+
+                if result.is_err() {
+                    return Err(EstError::platform(format!(
+                        "Failed to set RSA key length: {:?}",
+                        result
+                    )));
+                }
             }
 
             // Set export policy if non-exportable
@@ -436,7 +683,7 @@ impl KeyProvider for CngKeyProvider {
                     .chain(std::iter::once(0))
                     .collect();
 
-                let _ = unsafe {
+                let result = unsafe {
                     NCryptSetProperty(
                         key_handle,
                         windows::core::PCWSTR(wide_policy.as_ptr()),
@@ -444,27 +691,30 @@ impl KeyProvider for CngKeyProvider {
                         NCRYPT_FLAGS(0),
                     )
                 };
+
+                if result.is_err() {
+                    return Err(EstError::platform(format!(
+                        "Failed to set export policy: {:?}",
+                        result
+                    )));
+                }
             }
 
             // Finalize the key
             let result = unsafe { NCryptFinalizeKey(key_handle, NCRYPT_FLAGS(0)) };
 
             if result.is_err() {
-                unsafe {
-                    NCryptDeleteKey(key_handle, 0);
-                    NCryptFreeObject(prov_handle.0);
-                }
                 return Err(EstError::platform(format!(
                     "Failed to finalize CNG key: {:?}",
                     result
                 )));
             }
 
+            // Success - don't delete the key on drop
+            key_guard.should_delete = false;
+
             // Store the key handle value as the ID
             let key_id = key_handle.0.to_le_bytes().to_vec();
-
-            // Clean up provider handle (key handle stays open)
-            unsafe { NCryptFreeObject(prov_handle.0) };
 
             let metadata = KeyMetadata {
                 label: label.map(|s| s.to_string()),
@@ -510,11 +760,105 @@ impl KeyProvider for CngKeyProvider {
     async fn public_key(&self, handle: &KeyHandle) -> Result<SubjectPublicKeyInfoOwned> {
         #[cfg(windows)]
         {
-            // Implementation would export the public key blob and convert to SPKI
-            // For now, return a placeholder error
-            Err(EstError::platform(
-                "CNG public key export not yet implemented",
-            ))
+            use std::ffi::OsStr;
+            use std::os::windows::ffi::OsStrExt;
+
+            // Validate handle ID size
+            if handle.id().len() < std::mem::size_of::<usize>() {
+                return Err(EstError::platform(format!(
+                    "Invalid key handle ID size: expected at least {}, got {}",
+                    std::mem::size_of::<usize>(),
+                    handle.id().len()
+                )));
+            }
+
+            // Reconstruct the NCRYPT_KEY_HANDLE from the stored ID
+            let key_handle_value = usize::from_le_bytes(
+                handle.id()[..std::mem::size_of::<usize>()]
+                    .try_into()
+                    .map_err(|_| EstError::platform("Invalid key handle ID"))?,
+            );
+            let key_handle = NCRYPT_KEY_HANDLE(key_handle_value);
+
+            // Validate the handle is still valid by attempting to read a property
+            let wide_algorithm: Vec<u16> = OsStr::new("Algorithm Name")
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
+            let mut prop_size: u32 = 0;
+            let validation_result = unsafe {
+                NCryptGetProperty(
+                    key_handle,
+                    windows::core::PCWSTR(wide_algorithm.as_ptr()),
+                    std::ptr::null_mut(),
+                    0,
+                    &mut prop_size,
+                    NCRYPT_FLAGS(0),
+                )
+            };
+            if validation_result.is_err() {
+                return Err(EstError::platform(
+                    "Key handle is invalid or has been freed. The key may have been deleted."
+                ));
+            }
+
+            // Export the public key blob
+            let blob_type = match handle.algorithm() {
+                KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384 => BCRYPT_ECCPUBLIC_BLOB,
+                KeyAlgorithm::Rsa { .. } => BCRYPT_RSAPUBLIC_BLOB,
+            };
+
+            let wide_blob_type: Vec<u16> = OsStr::new(blob_type.to_string().as_str())
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
+
+            // First call to get the size
+            let mut blob_size: u32 = 0;
+            let result = unsafe {
+                NCryptExportKey(
+                    key_handle,
+                    NCRYPT_KEY_HANDLE::default(),
+                    windows::core::PCWSTR(wide_blob_type.as_ptr()),
+                    std::ptr::null(),
+                    std::ptr::null_mut(),
+                    0,
+                    &mut blob_size,
+                    NCRYPT_FLAGS(0),
+                )
+            };
+
+            if result.is_err() {
+                return Err(EstError::platform(format!(
+                    "Failed to get public key blob size: {:?}",
+                    result
+                )));
+            }
+
+            // Second call to get the actual blob
+            let mut blob = vec![0u8; blob_size as usize];
+            let result = unsafe {
+                NCryptExportKey(
+                    key_handle,
+                    NCRYPT_KEY_HANDLE::default(),
+                    windows::core::PCWSTR(wide_blob_type.as_ptr()),
+                    std::ptr::null(),
+                    blob.as_mut_ptr(),
+                    blob_size,
+                    &mut blob_size,
+                    NCRYPT_FLAGS(0),
+                )
+            };
+
+            if result.is_err() {
+                return Err(EstError::platform(format!(
+                    "Failed to export public key: {:?}",
+                    result
+                )));
+            }
+
+            // Convert blob to SPKI format
+            Self::blob_to_spki(&blob, handle.algorithm())
         }
 
         #[cfg(not(windows))]
@@ -527,10 +871,195 @@ impl KeyProvider for CngKeyProvider {
     async fn sign(&self, handle: &KeyHandle, data: &[u8]) -> Result<Vec<u8>> {
         #[cfg(windows)]
         {
-            // Implementation would use NCryptSignHash
-            // For now, return a placeholder error
-            let _ = (handle, data);
-            Err(EstError::platform("CNG signing not yet implemented"))
+            use std::ffi::OsStr;
+            use std::os::windows::ffi::OsStrExt;
+
+            // Validate handle ID size
+            if handle.id().len() < std::mem::size_of::<usize>() {
+                return Err(EstError::platform(format!(
+                    "Invalid key handle ID size: expected at least {}, got {}",
+                    std::mem::size_of::<usize>(),
+                    handle.id().len()
+                )));
+            }
+
+            // Reconstruct the NCRYPT_KEY_HANDLE from the stored ID
+            let key_handle_value = usize::from_le_bytes(
+                handle.id()[..std::mem::size_of::<usize>()]
+                    .try_into()
+                    .map_err(|_| EstError::platform("Invalid key handle ID"))?,
+            );
+            let key_handle = NCRYPT_KEY_HANDLE(key_handle_value);
+
+            // Validate the handle is still valid
+            let wide_algorithm: Vec<u16> = OsStr::new("Algorithm Name")
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
+            let mut prop_size: u32 = 0;
+            let validation_result = unsafe {
+                NCryptGetProperty(
+                    key_handle,
+                    windows::core::PCWSTR(wide_algorithm.as_ptr()),
+                    std::ptr::null_mut(),
+                    0,
+                    &mut prop_size,
+                    NCRYPT_FLAGS(0),
+                )
+            };
+            if validation_result.is_err() {
+                return Err(EstError::platform(
+                    "Key handle is invalid or has been freed. The key may have been deleted."
+                ));
+            }
+
+            // RAII guards for hash cleanup
+            struct HashAlgGuard(BCRYPT_ALG_HANDLE);
+            impl Drop for HashAlgGuard {
+                fn drop(&mut self) {
+                    unsafe {
+                        let _ = BCryptCloseAlgorithmProvider(self.0, 0);
+                    }
+                }
+            }
+
+            struct HashGuard(BCRYPT_HASH_HANDLE);
+            impl Drop for HashGuard {
+                fn drop(&mut self) {
+                    unsafe {
+                        let _ = BCryptDestroyHash(self.0);
+                    }
+                }
+            }
+
+            // Hash the data first (CNG signing requires pre-hashed data)
+            let hash_algorithm = match handle.algorithm() {
+                KeyAlgorithm::EcdsaP256 | KeyAlgorithm::Rsa { .. } => BCRYPT_SHA256_ALGORITHM,
+                KeyAlgorithm::EcdsaP384 => {
+                    // For P-384, we need SHA-384
+                    windows::core::w!("SHA384")
+                }
+            };
+
+            // Open hash algorithm
+            let mut hash_alg_handle = BCRYPT_ALG_HANDLE::default();
+            let result = unsafe {
+                BCryptOpenAlgorithmProvider(
+                    &mut hash_alg_handle,
+                    hash_algorithm,
+                    std::ptr::null(),
+                    0,
+                )
+            };
+
+            if result.is_err() {
+                return Err(EstError::platform(format!(
+                    "Failed to open hash algorithm: {:?}",
+                    result
+                )));
+            }
+
+            let _hash_alg_guard = HashAlgGuard(hash_alg_handle);
+
+            // Create hash object
+            let mut hash_handle = BCRYPT_HASH_HANDLE::default();
+            let result = unsafe {
+                BCryptCreateHash(
+                    hash_alg_handle,
+                    &mut hash_handle,
+                    std::ptr::null_mut(),
+                    0,
+                    std::ptr::null(),
+                    0,
+                    0,
+                )
+            };
+
+            if result.is_err() {
+                return Err(EstError::platform(format!(
+                    "Failed to create hash: {:?}",
+                    result
+                )));
+            }
+
+            let _hash_guard = HashGuard(hash_handle);
+
+            // Hash the data
+            let result = unsafe { BCryptHashData(hash_handle, data.as_ptr(), data.len() as u32, 0) };
+
+            if result.is_err() {
+                return Err(EstError::platform(format!(
+                    "Failed to hash data: {:?}",
+                    result
+                )));
+            }
+
+            // Get hash size
+            let hash_size = match handle.algorithm() {
+                KeyAlgorithm::EcdsaP256 | KeyAlgorithm::Rsa { .. } => 32, // SHA-256
+                KeyAlgorithm::EcdsaP384 => 48,                              // SHA-384
+            };
+
+            let mut hash = vec![0u8; hash_size];
+            let result = unsafe { BCryptFinishHash(hash_handle, hash.as_mut_ptr(), hash_size as u32, 0) };
+
+            if result.is_err() {
+                return Err(EstError::platform(format!(
+                    "Failed to finish hash: {:?}",
+                    result
+                )));
+            }
+
+            // Sign the hash
+            let mut signature_size: u32 = 0;
+            let result = unsafe {
+                NCryptSignHash(
+                    key_handle,
+                    std::ptr::null(),
+                    hash.as_ptr(),
+                    hash.len() as u32,
+                    std::ptr::null_mut(),
+                    0,
+                    &mut signature_size,
+                    0,
+                )
+            };
+
+            if result.is_err() {
+                return Err(EstError::platform(format!(
+                    "Failed to get signature size: {:?}",
+                    result
+                )));
+            }
+
+            let mut signature = vec![0u8; signature_size as usize];
+            let result = unsafe {
+                NCryptSignHash(
+                    key_handle,
+                    std::ptr::null(),
+                    hash.as_ptr(),
+                    hash.len() as u32,
+                    signature.as_mut_ptr(),
+                    signature_size,
+                    &mut signature_size,
+                    0,
+                )
+            };
+
+            if result.is_err() {
+                return Err(EstError::platform(format!(
+                    "Failed to sign hash: {:?}",
+                    result
+                )));
+            }
+
+            // For ECDSA, CNG returns raw (r,s) format - convert to DER
+            match handle.algorithm() {
+                KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384 => {
+                    Self::ecdsa_raw_to_der(&signature)
+                }
+                KeyAlgorithm::Rsa { .. } => Ok(signature),
+            }
         }
 
         #[cfg(not(windows))]
@@ -626,9 +1155,74 @@ impl KeyProvider for CngKeyProvider {
     async fn delete_key(&self, handle: &KeyHandle) -> Result<()> {
         #[cfg(windows)]
         {
-            // Implementation would use NCryptDeleteKey
-            let _ = handle;
-            Err(EstError::platform("CNG key deletion not yet implemented"))
+            use std::ffi::OsStr;
+            use std::os::windows::ffi::OsStrExt;
+
+            // Get the container name from the key handle metadata
+            let container_name = Self::get_container_name(handle)?;
+            let provider_name = Self::get_provider_name(handle)?;
+
+            // Open the storage provider
+            let wide_provider: Vec<u16> = OsStr::new(&provider_name)
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
+
+            let mut prov_handle = NCRYPT_PROV_HANDLE::default();
+            let result = unsafe {
+                NCryptOpenStorageProvider(
+                    &mut prov_handle,
+                    windows::core::PCWSTR(wide_provider.as_ptr()),
+                    0,
+                )
+            };
+
+            if result.is_err() {
+                return Err(EstError::platform(format!(
+                    "Failed to open CNG provider for deletion: {:?}",
+                    result
+                )));
+            }
+
+            // Open the key
+            let wide_container: Vec<u16> = OsStr::new(&container_name)
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
+
+            let mut key_handle = NCRYPT_KEY_HANDLE::default();
+            let result = unsafe {
+                NCryptOpenKey(
+                    prov_handle,
+                    &mut key_handle,
+                    windows::core::PCWSTR(wide_container.as_ptr()),
+                    0,
+                    NCRYPT_FLAGS(0),
+                )
+            };
+
+            if result.is_err() {
+                unsafe { NCryptFreeObject(prov_handle.0) };
+                return Err(EstError::platform(format!(
+                    "Failed to open key for deletion: {:?}",
+                    result
+                )));
+            }
+
+            // Delete the key
+            let result = unsafe { NCryptDeleteKey(key_handle, 0) };
+
+            // Clean up provider handle
+            unsafe { NCryptFreeObject(prov_handle.0) };
+
+            if result.is_err() {
+                return Err(EstError::platform(format!(
+                    "Failed to delete key: {:?}",
+                    result
+                )));
+            }
+
+            Ok(())
         }
 
         #[cfg(not(windows))]
