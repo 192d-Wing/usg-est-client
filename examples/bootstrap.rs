@@ -37,12 +37,13 @@ async fn main() {
 
     // Parse command line arguments
     let args: Vec<String> = env::args().collect();
+    let env_url = env::var("EST_SERVER_URL").ok();
     let server_url = args
         .iter()
         .position(|a| a == "--server")
         .and_then(|i| args.get(i + 1))
         .map(|s| s.as_str())
-        .or_else(|| env::var("EST_SERVER_URL").ok().as_deref())
+        .or_else(|| env_url.as_deref())
         .unwrap_or("https://testrfc7030.com:8443");
 
     println!("EST Bootstrap Example");

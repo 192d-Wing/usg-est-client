@@ -46,8 +46,9 @@ async fn main() {
     // Parse command line arguments
     let args: Vec<String> = env::args().collect();
 
+    let env_url = env::var("EST_SERVER_URL").ok();
     let server_url = get_arg(&args, "--server")
-        .or_else(|| env::var("EST_SERVER_URL").ok().as_deref())
+        .or_else(|| env_url.as_deref())
         .unwrap_or("https://testrfc7030.com:8443");
     let cert_path = get_arg(&args, "--cert");
     let key_path = get_arg(&args, "--key");
