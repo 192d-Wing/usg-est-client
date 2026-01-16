@@ -251,6 +251,30 @@ test_image() {
         exit 1
     fi
 
+    echo -n "Testing x86_64-pc-windows-gnu target... "
+    if docker run --rm "${FULL_IMAGE}" rustup target list --installed | grep -q "x86_64-pc-windows-gnu"; then
+        print_success "Installed"
+    else
+        print_error "Not installed"
+        exit 1
+    fi
+
+    echo -n "Testing x86_64-apple-darwin target... "
+    if docker run --rm "${FULL_IMAGE}" rustup target list --installed | grep -q "x86_64-apple-darwin"; then
+        print_success "Installed"
+    else
+        print_error "Not installed"
+        exit 1
+    fi
+
+    echo -n "Testing aarch64-apple-darwin target... "
+    if docker run --rm "${FULL_IMAGE}" rustup target list --installed | grep -q "aarch64-apple-darwin"; then
+        print_success "Installed"
+    else
+        print_error "Not installed"
+        exit 1
+    fi
+
     print_success "All tests passed!"
     echo ""
 }

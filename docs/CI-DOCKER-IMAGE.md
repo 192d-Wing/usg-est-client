@@ -21,8 +21,16 @@ The custom CI image (`registry.gitlab.com/192d-wing/usg-est-client/ci:latest`) i
 
 ### Rust Toolchains
 - Rust 1.92 (stable)
-- x86_64-unknown-linux-gnu target
-- x86_64-unknown-linux-musl target
+- **Linux targets:**
+  - x86_64-unknown-linux-gnu (standard GNU)
+  - x86_64-unknown-linux-musl (static builds)
+- **Windows targets:**
+  - x86_64-pc-windows-gnu (MinGW cross-compilation)
+- **macOS targets:**
+  - x86_64-apple-darwin (Intel Macs)
+  - aarch64-apple-darwin (Apple Silicon)
+  - **Note:** macOS cross-compilation from Linux requires macOS SDK (not included)
+  - For production macOS builds, use native macOS runners in CI
 
 ### Cargo Tools
 - cargo-audit 0.20.1
