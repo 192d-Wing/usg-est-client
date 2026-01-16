@@ -47,6 +47,23 @@ pub fn protect(data: &[u8], description: &str) -> Result<Vec<u8>> {
         return Err(EstError::platform("Failed to protect data with DPAPI"));
     }
 
+    // Validate output before dereferencing
+    if data_out.pbData.is_null() {
+        return Err(EstError::platform("DPAPI returned null data pointer"));
+    }
+
+    // Validate size is reasonable (prevent excessive allocation)
+    const MAX_DPAPI_SIZE: u32 = 1024 * 1024; // 1MB max
+    if data_out.cbData > MAX_DPAPI_SIZE {
+        unsafe {
+            windows::Win32::System::Memory::LocalFree(data_out.pbData as isize);
+        }
+        return Err(EstError::platform(format!(
+            "DPAPI output size {} exceeds maximum allowed {}",
+            data_out.cbData, MAX_DPAPI_SIZE
+        )));
+    }
+
     // Copy protected data
     let protected =
         unsafe { std::slice::from_raw_parts(data_out.pbData, data_out.cbData as usize).to_vec() };
@@ -87,6 +104,23 @@ pub fn unprotect(protected: &[u8]) -> Result<Vec<u8>> {
 
     if result.is_err() {
         return Err(EstError::platform("Failed to unprotect data with DPAPI"));
+    }
+
+    // Validate output before dereferencing
+    if data_out.pbData.is_null() {
+        return Err(EstError::platform("DPAPI returned null data pointer"));
+    }
+
+    // Validate size is reasonable (prevent excessive allocation)
+    const MAX_DPAPI_SIZE: u32 = 1024 * 1024; // 1MB max
+    if data_out.cbData > MAX_DPAPI_SIZE {
+        unsafe {
+            windows::Win32::System::Memory::LocalFree(data_out.pbData as isize);
+        }
+        return Err(EstError::platform(format!(
+            "DPAPI output size {} exceeds maximum allowed {}",
+            data_out.cbData, MAX_DPAPI_SIZE
+        )));
     }
 
     // Copy unprotected data

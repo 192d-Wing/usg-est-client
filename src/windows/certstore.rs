@@ -940,6 +940,34 @@ impl CertStore {
         unsafe {
             let ctx = &*context;
 
+            // Validate certificate encoding pointer and size
+            if ctx.pbCertEncoded.is_null() {
+                tracing::warn!("Certificate context has null encoded data pointer");
+                return None;
+            }
+
+            // Validate size is reasonable (prevent excessive allocation)
+            const MAX_CERT_SIZE: u32 = 1024 * 1024; // 1MB max for a certificate
+            if ctx.cbCertEncoded > MAX_CERT_SIZE {
+                tracing::warn!(
+                    "Certificate size {} exceeds maximum allowed {}",
+                    ctx.cbCertEncoded,
+                    MAX_CERT_SIZE
+                );
+                return None;
+            }
+
+            if ctx.cbCertEncoded == 0 {
+                tracing::warn!("Certificate has zero length");
+                return None;
+            }
+
+            // Validate pCertInfo pointer before dereferencing
+            if ctx.pCertInfo.is_null() {
+                tracing::warn!("Certificate context has null pCertInfo pointer");
+                return None;
+            }
+
             // Get the DER bytes
             let der_bytes =
                 std::slice::from_raw_parts(ctx.pbCertEncoded, ctx.cbCertEncoded as usize).to_vec();
@@ -958,7 +986,7 @@ impl CertStore {
                 .join(":");
 
             // Get subject and issuer (simplified - real impl would decode the cert)
-            let cert_info = &*ctx.pCertInfo;
+            let _cert_info = &*ctx.pCertInfo;
 
             Some(StoredCertificate {
                 subject: format!("(encoded subject)"),
@@ -1016,15 +1044,15 @@ pub fn format_thumbprint(bytes: &[u8]) -> String {
 }
 
 /// Parse a thumbprint string to bytes.
-pub fn parse_thumbprint(s: &str) -> Result<Vec<u8>> {
-    let clean = s.replace([':', ' ', '-'], "");
+pub fn parse_thumbprint(thumbprint: &str) -> Result<Vec<u8>> {
+    let clean = thumbprint.replace([':', ' ', '-'], "");
     let bytes: Vec<u8> = clean
         .as_bytes()
         .chunks(2)
         .filter_map(|chunk| {
             std::str::from_utf8(chunk)
                 .ok()
-                .and_then(|s| u8::from_str_radix(s, 16).ok())
+                .and_then(|thumbprint| u8::from_str_radix(thumbprint, 16).ok())
         })
         .collect();
 
