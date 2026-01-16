@@ -415,10 +415,14 @@ impl EstClient {
             ("Secret=", "[credential redacted]"),
             ("key=", "[credential redacted]"),
             ("Key=", "[credential redacted]"),
+            ("api_key=", "[credential redacted]"),
+            ("apikey=", "[credential redacted]"),
+            ("session=", "[credential redacted]"),
         ];
 
         for (keyword, replacement) in sensitive_keywords {
-            if let Some(pos) = sanitized.find(keyword) {
+            // Use while loop to redact ALL occurrences, not just the first
+            while let Some(pos) = sanitized.find(keyword) {
                 // Redact from keyword to next whitespace or end of string
                 let redact_start = pos;
                 let redact_end = sanitized[pos..]
@@ -634,5 +638,59 @@ mod tests {
             config_with_label.build_url("simpleenroll").as_str(),
             "https://est.example.com/.well-known/est/myca/simpleenroll"
         );
+    }
+
+    #[test]
+    fn test_sanitize_error_message_single_occurrence() {
+        use super::EstClient;
+
+        let message = "Authentication failed: password=secret123";
+        let sanitized = EstClient::sanitize_error_message(message);
+
+        assert!(sanitized.contains("[credential redacted]"));
+        assert!(!sanitized.contains("secret123"));
+    }
+
+    #[test]
+    fn test_sanitize_error_message_multiple_occurrences() {
+        use super::EstClient;
+
+        // Test that ALL occurrences are redacted, not just the first
+        let message = "Failed: password=secret1 and backup_password=secret2 and token=abc123";
+        let sanitized = EstClient::sanitize_error_message(message);
+
+        // All sensitive values should be redacted
+        assert!(!sanitized.contains("secret1"));
+        assert!(!sanitized.contains("secret2"));
+        assert!(!sanitized.contains("abc123"));
+
+        // Should contain multiple redaction markers
+        let redaction_count = sanitized.matches("[credential redacted]").count();
+        assert_eq!(redaction_count, 3, "Should redact all 3 sensitive values");
+    }
+
+    #[test]
+    fn test_sanitize_error_message_truncation() {
+        use super::EstClient;
+
+        // Test that long messages are truncated
+        let long_message = "Error: ".to_string() + &"x".repeat(300);
+        let sanitized = EstClient::sanitize_error_message(&long_message);
+
+        assert!(sanitized.contains("(truncated)"));
+        assert!(sanitized.len() < long_message.len());
+    }
+
+    #[test]
+    fn test_sanitize_error_message_case_sensitivity() {
+        use super::EstClient;
+
+        // Test that both lowercase and uppercase are redacted
+        let message = "Error: password=lower and Password=UPPER";
+        let sanitized = EstClient::sanitize_error_message(message);
+
+        assert!(!sanitized.contains("lower"));
+        assert!(!sanitized.contains("UPPER"));
+        assert_eq!(sanitized.matches("[credential redacted]").count(), 2);
     }
 }
