@@ -126,9 +126,17 @@ impl EstClient {
     /// succeeds immediately, or `EnrollmentResponse::Pending` if manual approval
     /// is required.
     ///
+    /// # Channel Binding
+    ///
+    /// If channel binding is enabled in the client configuration, the CSR should
+    /// include the channel binding value in its challengePassword attribute.
+    /// Use [`crate::tls::generate_channel_binding_challenge`] to create a challenge
+    /// and include it in the CSR during generation.
+    ///
     /// # RFC Reference
     ///
     /// RFC 7030 Section 4.2: Client Certificate Request Functions
+    /// RFC 7030 Section 3.5: Channel Binding
     pub async fn simple_enroll(&self, csr_der: &[u8]) -> Result<EnrollmentResponse> {
         self.enroll_request(operations::SIMPLE_ENROLL, csr_der)
             .await
@@ -276,6 +284,13 @@ impl EstClient {
     async fn enroll_request(&self, operation: &str, csr_der: &[u8]) -> Result<EnrollmentResponse> {
         let url = self.config.build_url(operation);
         tracing::debug!("POST {}", url);
+
+        // Log channel binding status
+        if self.config.channel_binding {
+            tracing::debug!(
+                "Channel binding enabled - CSR should include challengePassword with channel binding value"
+            );
+        }
 
         // Base64 encode the CSR with size validation
         let body = encode_csr(csr_der)?;

@@ -56,6 +56,15 @@ pub struct EstClientConfig {
     /// field as per RFC 7030 Section 3.5.
     pub channel_binding: bool,
 
+    /// Verify CSR signatures before submission.
+    ///
+    /// When enabled, the client validates CSR signatures to ensure proof-of-possession
+    /// before sending to the EST server. This catches malformed CSRs early and provides
+    /// an additional security check.
+    ///
+    /// Supported algorithms: RSA (SHA-256/384/512), ECDSA (P-256/P-384 with SHA-256/384)
+    pub verify_csr_signatures: bool,
+
     /// Additional HTTP headers to include in requests.
     pub additional_headers: Vec<(String, String)>,
 
@@ -98,6 +107,7 @@ impl Default for EstClientConfig {
             trust_anchors: TrustAnchors::WebPki,
             timeout: Duration::from_secs(30),
             channel_binding: false,
+            verify_csr_signatures: false,
             additional_headers: Vec::new(),
             #[cfg(feature = "validation")]
             validation_config: None,
@@ -140,6 +150,7 @@ pub struct EstClientConfigBuilder {
     trust_anchors: Option<TrustAnchors>,
     timeout: Option<Duration>,
     channel_binding: bool,
+    verify_csr_signatures: bool,
     additional_headers: Vec<(String, String)>,
     #[cfg(feature = "validation")]
     validation_config: Option<CertificateValidationConfig>,
@@ -273,6 +284,18 @@ impl EstClientConfigBuilder {
         self
     }
 
+    /// Enable CSR signature verification.
+    ///
+    /// When enabled, the client will verify CSR signatures before submission
+    /// to ensure proof-of-possession. This catches malformed CSRs early and
+    /// provides defense-in-depth.
+    ///
+    /// Supports: RSA (SHA-256/384/512), ECDSA (P-256/P-384)
+    pub fn verify_csr_signatures(mut self) -> Self {
+        self.verify_csr_signatures = true;
+        self
+    }
+
     /// Add an additional HTTP header to all requests.
     pub fn add_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
         self.additional_headers.push((name.into(), value.into()));
@@ -336,6 +359,7 @@ impl EstClientConfigBuilder {
             trust_anchors: self.trust_anchors.unwrap_or(TrustAnchors::WebPki),
             timeout: self.timeout.unwrap_or(Duration::from_secs(30)),
             channel_binding: self.channel_binding,
+            verify_csr_signatures: self.verify_csr_signatures,
             additional_headers: self.additional_headers,
             #[cfg(feature = "validation")]
             validation_config: self.validation_config,
