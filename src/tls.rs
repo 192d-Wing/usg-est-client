@@ -278,46 +278,24 @@ pub fn compute_channel_binding(session_data: &[u8]) -> String {
 ///
 /// # Security
 ///
-/// Uses SHA-256 of timestamp + process data for randomness. For production
-/// use with full RFC compliance, consider using a CSPRNG library.
+/// Uses P-256 ECDSA scalar generation which internally uses a cryptographically
+/// secure random number generator. This provides proper cryptographic randomness
+/// suitable for security-critical operations.
 ///
 /// # Returns
 ///
-/// 32 bytes of pseudorandom data
-///
-/// # Implementation Note
-///
-/// This is a simplified implementation. For full RFC 7030 channel binding
-/// compliance, implement TLS exporter mechanism or use a dedicated CSPRNG.
+/// 32 bytes of cryptographically secure random data
 pub fn generate_channel_binding_challenge() -> [u8; 32] {
-    use sha2::{Digest, Sha256};
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use p256::ecdsa::SigningKey;
+    use p256::elliptic_curve::rand_core::OsRng;
 
-    let mut hasher = Sha256::new();
+    // Generate a random ECDSA signing key - this uses the OS's CSPRNG
+    // We don't actually need the key itself, just the secure random bytes
+    let signing_key = SigningKey::random(&mut OsRng);
 
-    // Add timestamp for uniqueness
-    if let Ok(duration) = SystemTime::now().duration_since(UNIX_EPOCH) {
-        hasher.update(duration.as_nanos().to_le_bytes());
-    }
-
-    // Add process ID if available
-    #[cfg(unix)]
-    {
-        use std::process;
-        hasher.update(process::id().to_le_bytes());
-    }
-
-    // Add some entropy from thread name
-    if let Some(name) = std::thread::current().name() {
-        hasher.update(name.as_bytes());
-    }
-
-    // Add current address (stack pointer) for additional entropy
-    let stack_var = 0u8;
-    let addr = &stack_var as *const u8 as usize;
-    hasher.update(addr.to_le_bytes());
-
-    hasher.finalize().into()
+    // Extract the scalar (secret key) as bytes
+    // This is 32 bytes of cryptographically secure random data
+    signing_key.to_bytes().into()
 }
 
 #[cfg(test)]
