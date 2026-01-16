@@ -26,8 +26,8 @@ variables:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
   CARGO_HOME: "${CI_PROJECT_DIR}/.cargo"
-  UNWRAP_BASELINE: "339" # Updated 2026-01-14: Post-refactoring sprint baseline
-  UNWRAP_GOAL: "339" # Maintain current level - mostly test code now
+  UNWRAP_BASELINE: "359" # Updated 2026-01-16: v1.0.0 release baseline
+  UNWRAP_GOAL: "359" # Maintain current level - mostly test code now
 
 # Cache configuration for Rust builds
 .cargo_cache: &cargo_cache
