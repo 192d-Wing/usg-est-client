@@ -1,0 +1,56 @@
+# CI/CD Docker Image for USG EST Client
+# Pre-installs all build dependencies and Rust toolchains to speed up pipeline execution
+#
+# Build and push:
+#   docker build -f Dockerfile.ci -t registry.gitlab.com/192d-wing/usg-est-client/ci:latest .
+#   docker push registry.gitlab.com/192d-wing/usg-est-client/ci:latest
+
+FROM rust:1.92-bookworm
+
+LABEL maintainer="usg-est-client"
+LABEL description="CI/CD image for USG EST Client with pre-installed dependencies"
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    # Build essentials
+    pkg-config \
+    libssl-dev \
+    # musl for static builds
+    musl-tools \
+    # Additional utilities
+    git \
+    curl \
+    jq \
+    # Cleanup
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust toolchains for cross-compilation
+RUN rustup target add \
+    x86_64-unknown-linux-gnu \
+    x86_64-unknown-linux-musl
+
+# Pre-install commonly used cargo tools
+# This significantly speeds up CI jobs that need these tools
+RUN cargo install --locked cargo-audit --version 0.20.1 && \
+    cargo install --locked cargo-tarpaulin --version 0.31.2 && \
+    cargo install --locked cargo-deny --version 0.16.3 && \
+    rm -rf /usr/local/cargo/registry
+
+# Set default working directory
+WORKDIR /builds
+
+# Set environment variables for CI
+ENV CARGO_HOME=/usr/local/cargo
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_TERM_COLOR=always
+ENV RUST_BACKTRACE=1
+
+# Verify installation
+RUN rustc --version && \
+    cargo --version && \
+    cargo audit --version && \
+    cargo tarpaulin --version && \
+    cargo deny --version
+
+# Default command
+CMD ["/bin/bash"]

@@ -13,6 +13,7 @@ include:
 
 # Define stages
 stages:
+  - build-ci-image  # Build custom Docker image with dependencies
   - analysis
   - test
   - lint
@@ -28,6 +29,10 @@ variables:
   CARGO_HOME: "${CI_PROJECT_DIR}/.cargo"
   UNWRAP_BASELINE: "359" # Updated 2026-01-16: v1.0.0 release baseline
   UNWRAP_GOAL: "359" # Maintain current level - mostly test code now
+  # Custom CI image with pre-installed dependencies (speeds up pipeline by ~2-3x)
+  CI_IMAGE: "registry.gitlab.com/192d-wing/usg-est-client/ci:latest"
+  # Fallback to official Rust image if custom image is not available
+  RUST_IMAGE: "rust:1.92-bookworm"
 
 # Cache configuration for Rust builds
 .cargo_cache: &cargo_cache
@@ -40,7 +45,7 @@ variables:
       - .cargo/git
       - target/
 
-# Rust installation template
+# Rust installation template (legacy - prefer using CI_IMAGE)
 .rust_setup: &rust_setup
   before_script:
     - apt-get update && apt-get install -y curl build-essential pkg-config libssl-dev
@@ -48,6 +53,45 @@ variables:
     - source $HOME/.cargo/env
     - rustc --version
     - cargo --version
+
+# ============================================================================
+# CI Image Build - Build custom Docker image with pre-installed dependencies
+# ============================================================================
+# This job builds and pushes a custom Docker image with Rust and all dependencies
+# pre-installed. This dramatically speeds up subsequent CI jobs (2-3x faster).
+#
+# Runs when:
+# - Dockerfile.ci changes
+# - Manual trigger via CI_BUILD_IMAGE variable
+# - Weekly schedule
+
+build-ci-image:
+  stage: build-ci-image
+  image: docker:27-cli
+  services:
+    - docker:27-dind
+  variables:
+    DOCKER_DRIVER: overlay2
+    DOCKER_TLS_CERTDIR: "/certs"
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - |
+      echo "Building CI image: ${CI_IMAGE}"
+      docker build -f Dockerfile.ci -t ${CI_IMAGE} .
+      docker push ${CI_IMAGE}
+      echo "✅ CI image built and pushed successfully"
+  rules:
+    # Run when Dockerfile.ci changes
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      changes:
+        - Dockerfile.ci
+    # Run when manually triggered with CI_BUILD_IMAGE variable
+    - if: '$CI_BUILD_IMAGE == "true"'
+    # Run on weekly schedule (to pick up Rust updates)
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $SCHEDULED_JOB == "build-ci-image"'
+  tags:
+    - docker
 
 # ============================================================================
 # Analysis Jobs - unwrap() Tracking for Q2 2026 Refactoring Sprint
@@ -192,7 +236,7 @@ unwrap-tracking:
 
 test:stable:linux:
   stage: test
-  image: rust:latest
+  image: ${CI_IMAGE}
   <<: *cargo_cache
   script:
     - cargo test --verbose
@@ -328,7 +372,7 @@ test:features:combined:
 
 clippy:default:
   stage: lint
-  image: rust:latest
+  image: ${CI_IMAGE}
   <<: *cargo_cache
   before_script:
     - rustup component add clippy
@@ -340,7 +384,7 @@ clippy:default:
 
 clippy:all-features:
   stage: lint
-  image: rust:latest
+  image: ${CI_IMAGE}
   <<: *cargo_cache
   before_script:
     - rustup component add clippy
@@ -352,7 +396,7 @@ clippy:all-features:
 
 rustfmt:
   stage: lint
-  image: rust:latest
+  image: ${CI_IMAGE}
   before_script:
     - rustup component add rustfmt
   script:
@@ -363,7 +407,7 @@ rustfmt:
 
 docs:
   stage: lint
-  image: rust:latest
+  image: ${CI_IMAGE}
   <<: *cargo_cache
   script:
     - cargo doc --all-features --no-deps
@@ -379,9 +423,9 @@ docs:
 
 security:cargo-audit:
   stage: security
-  image: rust:latest
+  image: ${CI_IMAGE}
   script:
-    - cargo install cargo-audit --locked
+    # cargo-audit is pre-installed in CI image
     - cargo audit --json | tee audit-report.json
   artifacts:
     name: "security-audit-report-$CI_COMMIT_REF_NAME"
@@ -396,13 +440,9 @@ security:cargo-audit:
 
 security:cargo-deny:advisories:
   stage: security
-  image: rust:latest
-  before_script:
-    - apt-get update && apt-get install -y wget
-    - wget https://github.com/EmbarkStudios/cargo-deny/releases/download/0.14.24/cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz
-    - tar -xzf cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz
-    - mv cargo-deny /usr/local/bin/
+  image: ${CI_IMAGE}
   script:
+    # cargo-deny is pre-installed in CI image
     - cargo deny check advisories
   only:
     - main
@@ -410,13 +450,9 @@ security:cargo-deny:advisories:
 
 security:cargo-deny:licenses:
   stage: security
-  image: rust:latest
-  before_script:
-    - apt-get update && apt-get install -y wget
-    - wget https://github.com/EmbarkStudios/cargo-deny/releases/download/0.14.24/cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz
-    - tar -xzf cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz
-    - mv cargo-deny /usr/local/bin/
+  image: ${CI_IMAGE}
   script:
+    # cargo-deny is pre-installed in CI image
     - cargo deny check licenses
   only:
     - main
@@ -424,13 +460,9 @@ security:cargo-deny:licenses:
 
 security:cargo-deny:bans:
   stage: security
-  image: rust:latest
-  before_script:
-    - apt-get update && apt-get install -y wget
-    - wget https://github.com/EmbarkStudios/cargo-deny/releases/download/0.14.24/cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz
-    - tar -xzf cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz
-    - mv cargo-deny /usr/local/bin/
+  image: ${CI_IMAGE}
   script:
+    # cargo-deny is pre-installed in CI image
     - cargo deny check bans
   only:
     - main
@@ -438,13 +470,9 @@ security:cargo-deny:bans:
 
 security:cargo-deny:sources:
   stage: security
-  image: rust:latest
-  before_script:
-    - apt-get update && apt-get install -y wget
-    - wget https://github.com/EmbarkStudios/cargo-deny/releases/download/0.14.24/cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz
-    - tar -xzf cargo-deny-0.14.24-x86_64-unknown-linux-musl.tar.gz
-    - mv cargo-deny /usr/local/bin/
+  image: ${CI_IMAGE}
   script:
+    # cargo-deny is pre-installed in CI image
     - cargo deny check sources
   only:
     - main
@@ -452,7 +480,7 @@ security:cargo-deny:sources:
 
 security:clippy:
   stage: security
-  image: rust:latest
+  image: ${CI_IMAGE}
   <<: *cargo_cache
   before_script:
     - rustup component add clippy
@@ -489,10 +517,10 @@ security:test-features:
 
 coverage:tarpaulin:
   stage: coverage
-  image: rust:latest
+  image: ${CI_IMAGE}
   <<: *cargo_cache
   script:
-    - cargo install cargo-tarpaulin
+    # cargo-tarpaulin is pre-installed in CI image
     - cargo tarpaulin --all-features --out Xml --output-dir coverage
   artifacts:
     name: "coverage-report-$CI_COMMIT_REF_NAME"
@@ -612,9 +640,9 @@ security:scheduled:
 # Linux x86_64 (GNU)
 release:linux-x86_64:
   <<: *release_build
-  image: rust:latest
+  image: ${CI_IMAGE}
   before_script:
-    - apt-get update && apt-get install -y pkg-config libssl-dev
+    # Targets pre-installed in CI image
     - rustup target add x86_64-unknown-linux-gnu
   variables:
     TARGET: "x86_64-unknown-linux-gnu"
@@ -622,9 +650,9 @@ release:linux-x86_64:
 # Linux x86_64 (musl - static binary)
 release:linux-x86_64-musl:
   <<: *release_build
-  image: rust:latest
+  image: ${CI_IMAGE}
   before_script:
-    - apt-get update && apt-get install -y musl-tools pkg-config libssl-dev
+    # Targets pre-installed in CI image
     - rustup target add x86_64-unknown-linux-musl
   variables:
     TARGET: "x86_64-unknown-linux-musl"

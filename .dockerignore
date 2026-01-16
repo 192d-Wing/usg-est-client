@@ -1,0 +1,67 @@
+# Git and version control
+.git/
+.gitignore
+.gitlab-ci.yml
+.github/
+
+# Build artifacts
+target/
+**/*.rs.bk
+*.pdb
+
+# Cargo cache
+.cargo/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test and coverage
+coverage/
+*.profraw
+
+# Documentation build
+docs/_build/
+docs/book/
+site/
+
+# CI/CD artifacts
+audit-report*.json
+*.md.bak
+
+# Release artifacts
+*.tar.gz
+*.zip
+*.sha256
+
+# Temporary files
+*.tmp
+*.log
+/tmp/
+
+# Package lock files (keep Cargo.lock for reproducible builds)
+# Cargo.lock
+
+# Examples and tests (not needed for CI image)
+examples/
+tests/
+benches/
+
+# Documentation source (not needed for builds)
+*.md
+!README.md
+!LICENSE
+docs/
+schema/
+
+# GitHub specific
+.github/
+
+# Local development
+.env
+.env.local
+*.local

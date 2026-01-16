@@ -1,0 +1,66 @@
+# Multi-stage Dockerfile for building release binaries
+# This uses cargo-chef for optimal layer caching
+#
+# Build:
+#   docker build -f Dockerfile.release --build-arg TARGET=x86_64-unknown-linux-gnu -t est-enroll:latest .
+
+ARG RUST_VERSION=1.92
+FROM rust:${RUST_VERSION}-bookworm AS chef
+
+# Install cargo-chef for dependency caching
+RUN cargo install cargo-chef --locked
+WORKDIR /app
+
+# Planner stage - generates recipe for dependencies
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Builder stage - builds dependencies and application
+FROM chef AS builder
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    musl-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# Accept target architecture as build arg
+ARG TARGET=x86_64-unknown-linux-gnu
+RUN rustup target add ${TARGET}
+
+# Build dependencies (cached layer)
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --target ${TARGET} --recipe-path recipe.json
+
+# Build application
+COPY . .
+RUN cargo build --release --target ${TARGET} --bin est-enroll --features cli
+
+# Extract binary to known location
+RUN cp target/${TARGET}/release/est-enroll /app/est-enroll
+
+# Runtime stage - minimal image with just the binary
+FROM debian:bookworm-slim AS runtime
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -m -u 1000 estclient
+
+# Copy binary from builder
+COPY --from=builder /app/est-enroll /usr/local/bin/est-enroll
+RUN chmod +x /usr/local/bin/est-enroll
+
+# Switch to non-root user
+USER estclient
+WORKDIR /home/estclient
+
+# Set entrypoint
+ENTRYPOINT ["/usr/local/bin/est-enroll"]
+CMD ["--help"]
