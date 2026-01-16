@@ -1,9 +1,12 @@
 # GitLab CI/CD configuration for USG EST Client
 # Migrated from GitHub Actions workflows
 
-# Include GitLab SAST (Static Application Security Testing) template
+# Include GitLab Security Scanning templates
 include:
   - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Dependency-Scanning.gitlab-ci.yml
+  - template: Security/Secret-Detection.gitlab-ci.yml
+  - template: Security/License-Scanning.gitlab-ci.yml
 
 # Define stages
 stages:
