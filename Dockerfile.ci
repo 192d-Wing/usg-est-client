@@ -17,17 +17,40 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     # musl for static builds
     musl-tools \
+    # Cross-compilation tools for Windows (MinGW)
+    mingw-w64 \
+    # Cross-compilation tools for macOS (requires osxcross - see note below)
+    clang \
+    lld \
+    llvm \
     # Additional utilities
     git \
     curl \
     jq \
+    zip \
     # Cleanup
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust toolchains for cross-compilation
+# Note: macOS cross-compilation requires macOS SDK which cannot be legally redistributed
+# For production macOS builds, use native macOS runners in GitLab CI
 RUN rustup target add \
     x86_64-unknown-linux-gnu \
-    x86_64-unknown-linux-musl
+    x86_64-unknown-linux-musl \
+    x86_64-pc-windows-gnu \
+    x86_64-apple-darwin \
+    aarch64-apple-darwin
+
+# Configure cross-compilation for Windows (MinGW)
+ENV CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc \
+    CC_x86_64_pc_windows_gnu=x86_64-w64-mingw32-gcc \
+    AR_x86_64_pc_windows_gnu=x86_64-w64-mingw32-ar
+
+# Note: macOS cross-compilation from Linux is complex and requires:
+# 1. macOS SDK (not legally redistributable)
+# 2. osxcross toolchain setup
+# For production macOS builds, CI pipeline uses native macOS runners
+# The targets are added here for flexibility but may not work without additional setup
 
 # Pre-install commonly used cargo tools
 # This significantly speeds up CI jobs that need these tools
@@ -50,7 +73,9 @@ RUN rustc --version && \
     cargo --version && \
     cargo audit --version && \
     cargo tarpaulin --version && \
-    cargo deny --version
+    cargo deny --version && \
+    echo "Installed targets:" && \
+    rustup target list --installed
 
 # Default command
 CMD ["/bin/bash"]
