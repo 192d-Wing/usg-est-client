@@ -2,6 +2,9 @@
 # Migrated from GitHub Actions workflows
 
 # Include GitLab SAST (Static Application Security Testing) template
+# Note: This template is provided by GitLab and requires GitLab Ultimate or GitLab.com
+# If you see "template not found" errors, your GitLab instance may not have access to this template
+# You can safely comment this out if SAST is not available in your GitLab tier
 include:
   - template: Security/SAST.gitlab-ci.yml
 
