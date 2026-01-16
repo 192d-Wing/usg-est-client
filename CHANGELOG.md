@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Windows CNG Integration (2026-01-15)
+
+- **Complete Windows CNG KeyProvider Implementation** (`windows-service` feature)
+  - `CngKeyProvider::public_key()` - Export public keys from CNG to SPKI format
+    - Supports BCRYPT_ECCPUBLIC_BLOB → SPKI conversion for ECDSA keys
+    - Supports BCRYPT_RSAPUBLIC_BLOB → SPKI conversion for RSA keys
+    - Proper ASN.1 DER encoding with algorithm identifiers
+  - `CngKeyProvider::sign()` - Sign data using CNG keys
+    - BCrypt hash APIs for SHA-256 and SHA-384
+    - NCryptSignHash for signing operations
+    - ECDSA raw (r,s) to DER format conversion
+    - RSA PKCS#1 v1.5 signature support
+  - `CngKeyProvider::delete_key()` - Clean up CNG key containers
+    - Proper key container deletion using NCryptDeleteKey
+    - Resource cleanup and error handling
+  - Helper functions for blob conversion and signature formatting
+  - See [src/windows/cng.rs](src/windows/cng.rs)
+  - **Impact**: Enables full Windows enrollment workflow with CNG-backed keys
+  - **Unblocks**: Auto-enrollment service, Windows Certificate Store integration
+
 #### Auto-Enrollment Configuration System (Phase 11.1)
 
 - **TOML Configuration File System** (`auto-enroll` feature)
