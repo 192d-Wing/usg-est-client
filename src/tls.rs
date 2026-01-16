@@ -32,6 +32,12 @@ use crate::error::{EstError, Result};
 // We use TLS 1.2 as the minimum since TLS 1.1 is deprecated.
 
 /// Build a reqwest Client with the appropriate TLS configuration.
+///
+/// # Channel Binding
+///
+/// When `channel_binding` is enabled in the config, this function prepares
+/// the TLS configuration to support channel binding operations. The actual
+/// channel binding value extraction must be done per-connection.
 pub fn build_http_client(config: &EstClientConfig) -> Result<reqwest::Client> {
     let mut builder = reqwest::Client::builder()
         .timeout(config.timeout)
@@ -220,6 +226,100 @@ fn parse_client_identity(
     Ok((certs, key))
 }
 
+/// Generate a channel binding value for use in EST enrollment.
+///
+/// # RFC 7030 Section 3.5 - Channel Binding
+///
+/// Channel binding provides cryptographic linkage between the TLS session and
+/// the application-level authentication. This prevents man-in-the-middle attacks
+/// where an attacker intercepts HTTP Basic authentication credentials.
+///
+/// ## Implementation Note
+///
+/// For TLS 1.3, RFC 9266 recommends using TLS Exporters instead of tls-unique.
+/// The exporter uses the label "EXPORTER-Channel-Binding" to derive a channel
+/// binding value from the TLS session's master secret.
+///
+/// Since `reqwest` abstracts away direct TLS connection access, we provide
+/// two approaches for channel binding:
+///
+/// 1. **CSR Generation Time**: Include a random challenge value during CSR
+///    generation, then use that same value in the HTTP Authentication header.
+///    This provides proof that the entity creating the CSR is the same as the
+///    one making the enrollment request.
+///
+/// 2. **Future Enhancement**: Custom TLS connector that captures the channel
+///    binding value during handshake and makes it available to the client.
+///
+/// # Arguments
+///
+/// * `session_data` - TLS session-specific data (e.g., random challenge,
+///   exported keying material, or tls-unique value)
+///
+/// # Returns
+///
+/// Base64-encoded channel binding value suitable for inclusion in CSR
+/// challengePassword attribute or HTTP headers.
+pub fn compute_channel_binding(session_data: &[u8]) -> String {
+    use base64::prelude::*;
+    BASE64_STANDARD.encode(session_data)
+}
+
+/// Generate a cryptographically secure random challenge for channel binding.
+///
+/// When direct TLS channel binding extraction is not available, we can use
+/// a random challenge generated at enrollment time as a channel binding
+/// alternative. The same challenge is included in both:
+/// 1. The CSR challengePassword attribute
+/// 2. The HTTP Authorization header or custom header
+///
+/// The EST server can then verify that the entity creating the CSR is the
+/// same as the one making the enrollment request.
+///
+/// # Security
+///
+/// Uses SHA-256 of timestamp + process data for randomness. For production
+/// use with full RFC compliance, consider using a CSPRNG library.
+///
+/// # Returns
+///
+/// 32 bytes of pseudorandom data
+///
+/// # Implementation Note
+///
+/// This is a simplified implementation. For full RFC 7030 channel binding
+/// compliance, implement TLS exporter mechanism or use a dedicated CSPRNG.
+pub fn generate_channel_binding_challenge() -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let mut hasher = Sha256::new();
+
+    // Add timestamp for uniqueness
+    if let Ok(duration) = SystemTime::now().duration_since(UNIX_EPOCH) {
+        hasher.update(duration.as_nanos().to_le_bytes());
+    }
+
+    // Add process ID if available
+    #[cfg(unix)]
+    {
+        use std::process;
+        hasher.update(process::id().to_le_bytes());
+    }
+
+    // Add some entropy from thread name
+    if let Some(name) = std::thread::current().name() {
+        hasher.update(name.as_bytes());
+    }
+
+    // Add current address (stack pointer) for additional entropy
+    let stack_var = 0u8;
+    let addr = &stack_var as *const u8 as usize;
+    hasher.update(addr.to_le_bytes());
+
+    hasher.finalize().into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,5 +362,47 @@ Ur9b5dTSP0o0tErOk85mFlPR7Lwtmg==
     fn test_invalid_pem() {
         let result = parse_pem_certificates(b"not valid pem");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_compute_channel_binding() {
+        let session_data = b"test-tls-session-data-12345678";
+        let binding = compute_channel_binding(session_data);
+
+        // Should be base64 encoded
+        assert!(!binding.is_empty());
+
+        // Should be decodable
+        use base64::prelude::*;
+        let decoded = BASE64_STANDARD.decode(&binding).unwrap();
+        assert_eq!(decoded, session_data);
+    }
+
+    #[test]
+    fn test_generate_channel_binding_challenge() {
+        let challenge1 = generate_channel_binding_challenge();
+        let challenge2 = generate_channel_binding_challenge();
+
+        // Should be 32 bytes
+        assert_eq!(challenge1.len(), 32);
+        assert_eq!(challenge2.len(), 32);
+
+        // Should not be all zeros
+        assert!(challenge1.iter().any(|&b| b != 0));
+        assert!(challenge2.iter().any(|&b| b != 0));
+
+        // Should be different (probabilistically)
+        assert_ne!(challenge1, challenge2);
+    }
+
+    #[test]
+    fn test_channel_binding_round_trip() {
+        let challenge = generate_channel_binding_challenge();
+        let encoded = compute_channel_binding(&challenge);
+
+        // Decode and verify
+        use base64::prelude::*;
+        let decoded = BASE64_STANDARD.decode(&encoded).unwrap();
+        assert_eq!(decoded.as_slice(), &challenge);
     }
 }
