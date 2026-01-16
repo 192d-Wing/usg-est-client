@@ -652,7 +652,7 @@ impl DodChainValidator {
 
                     // Fail if strict mode is enabled
                     if self.options.fail_on_unknown_revocation {
-                        return Err(EstError::validation(format!(
+                        return Err(EstError::CertificateValidation(format!(
                             "Certificate at position {} has unknown revocation status (strict mode enabled)",
                             i
                         )));
