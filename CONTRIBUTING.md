@@ -6,8 +6,6 @@ Thanks for thinking about using or contributing to this software ("Project") and
 
 - [Policy & Legal Info](#policy)
 - [Getting Started](#getting-started)
-- [Submitting an Issue](#submitting-an-issue)
-- [Submitting Code](#submitting-code)
 
 ## Policy
 
