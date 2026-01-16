@@ -34,11 +34,9 @@ use std::env;
 use std::fs;
 use std::process::exit;
 
-use usg_est_client::{
-    ClientIdentity, EnrollmentResponse, EstClient, EstClientConfig,
-};
 #[cfg(feature = "csr-gen")]
 use usg_est_client::csr::CsrBuilder;
+use usg_est_client::{ClientIdentity, EnrollmentResponse, EstClient, EstClientConfig};
 
 #[tokio::main]
 async fn main() {
