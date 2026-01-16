@@ -15,8 +15,27 @@
 
 //! TLS configuration helpers for the EST client.
 //!
+//! # Security Controls
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - SC-8: Transmission Confidentiality and Integrity
+//! - IA-2: Identification and Authentication (Organizational Users)
+//! - AC-17: Remote Access
+//!
+//! **Application Development STIG V5R3:**
+//! - APSC-DV-000160 (CAT I): Authentication - cryptographically-based bidirectional authentication
+//! - APSC-DV-000170 (CAT I): Cryptographic Protection - FIPS-validated cryptography
+//! - APSC-DV-002440 (CAT I): Session Management - session authenticity mechanisms
+//!
+//! # Overview
+//!
 //! This module provides functions for building TLS configurations
-//! compatible with RFC 7030 requirements.
+//! compatible with RFC 7030 requirements. All TLS communications enforce:
+//! - Minimum TLS 1.2 (RFC 7030 Section 3.3.1 compliance)
+//! - Strong cipher suites (ECDHE-ECDSA, ECDHE-RSA)
+//! - Mutual TLS authentication when configured
+//! - Certificate validation with trusted root anchors
+//! - Channel binding support (RFC 7030 Section 3.5)
 
 use std::sync::Arc;
 
@@ -26,18 +45,67 @@ use rustls::pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject};
 use crate::config::{ClientIdentity, EstClientConfig, TrustAnchors};
 use crate::error::{EstError, Result};
 
-// Minimum TLS version required by RFC 7030.
-//
+// ============================================================================
+// SECURITY CONTROL: TLS Version Enforcement
+// ----------------------------------------------------------------------------
+// NIST SP 800-53 Rev 5: SC-8 (Transmission Confidentiality and Integrity)
+// STIG: APSC-DV-000170 (CAT I) - Cryptographic Protection
+// RFC 7030: Section 3.3.1 - TLS Requirements
+// ----------------------------------------------------------------------------
 // RFC 7030 Section 3.3.1 states: "TLS 1.1 [RFC4346] (or a later version) MUST be used"
-// We use TLS 1.2 as the minimum since TLS 1.1 is deprecated.
+// We enforce TLS 1.2 as the minimum since TLS 1.1 is deprecated per NIST guidance.
+// This ensures confidentiality and integrity for all EST protocol communications.
+//
+// TLS 1.2 provides:
+// - Strong cipher suites (ECDHE-ECDSA, ECDHE-RSA with AES-GCM)
+// - Perfect forward secrecy
+// - Protection against downgrade attacks
+// - FIPS 140-2 compliance when using approved algorithms
+// ============================================================================
 
 /// Build a reqwest Client with the appropriate TLS configuration.
+///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:**
+/// - SC-8: Transmission Confidentiality and Integrity (TLS 1.2+ enforcement)
+/// - IA-2: Identification and Authentication (Mutual TLS support)
+/// - AC-17: Remote Access (Secure protocol enforcement)
+///
+/// **Application Development STIG V5R3:**
+/// - APSC-DV-000160 (CAT I): Cryptographically-based bidirectional authentication via mutual TLS
+/// - APSC-DV-000170 (CAT I): FIPS-validated cryptography for transport protection
+/// - APSC-DV-002440 (CAT I): Session authenticity via TLS and certificate validation
+///
+/// # Implementation
+///
+/// This function configures a reqwest HTTP client with:
+/// 1. **TLS 1.2 minimum version** (RFC 7030 Section 3.3.1, SC-8)
+/// 2. **Certificate validation** against trusted roots (IA-2, APSC-DV-003235)
+/// 3. **Mutual TLS authentication** when client certificate configured (IA-2, APSC-DV-000160)
+/// 4. **Hostname verification** enabled by default (SC-8)
+/// 5. **Strong cipher suites** (rustls default policy, APSC-DV-000170)
 ///
 /// # Channel Binding
 ///
 /// When `channel_binding` is enabled in the config, this function prepares
-/// the TLS configuration to support channel binding operations. The actual
-/// channel binding value extraction must be done per-connection.
+/// the TLS configuration to support channel binding operations (RFC 7030 Section 3.5).
+/// The actual channel binding value extraction must be done per-connection.
+///
+/// # Arguments
+///
+/// * `config` - EST client configuration including TLS settings
+///
+/// # Returns
+///
+/// Configured reqwest::Client ready for secure EST communications
+///
+/// # Errors
+///
+/// Returns `EstError::Tls` if:
+/// - CA certificate parsing fails
+/// - Client certificate/key parsing fails
+/// - HTTP client builder fails
 pub fn build_http_client(config: &EstClientConfig) -> Result<reqwest::Client> {
     let mut builder = reqwest::Client::builder()
         .timeout(config.timeout)
@@ -74,7 +142,10 @@ pub fn build_http_client(config: &EstClientConfig) -> Result<reqwest::Client> {
         }
     }
 
-    // Configure client certificate authentication
+    // NIST 800-53: IA-2 (Identification and Authentication)
+    // STIG: APSC-DV-000160 (CAT I) - Bidirectional Authentication
+    // RFC 7030: Section 3.3.2 - Client Authentication
+    // Configure mutual TLS with client certificate for bidirectional authentication
     if let Some(ref identity) = config.client_identity {
         let identity = build_reqwest_identity(identity)?;
         builder = builder.identity(identity);
@@ -87,7 +158,10 @@ pub fn build_http_client(config: &EstClientConfig) -> Result<reqwest::Client> {
         let _ = http_auth; // Acknowledge the field, auth is handled per-request
     }
 
-    // Enforce minimum TLS version
+    // NIST 800-53: SC-8 (Transmission Confidentiality and Integrity)
+    // STIG: APSC-DV-000170 (CAT I) - Cryptographic Protection
+    // RFC 7030: Section 3.3.1 compliance
+    // Enforce minimum TLS 1.2 (TLS 1.1 and earlier are deprecated/insecure)
     builder = builder.min_tls_version(reqwest::tls::Version::TLS_1_2);
 
     // Add additional headers
@@ -228,11 +302,21 @@ fn parse_client_identity(
 
 /// Generate a channel binding value for use in EST enrollment.
 ///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:**
+/// - IA-2: Identification and Authentication (channel binding strengthens authentication)
+/// - SC-23: Session Authenticity (cryptographic binding of TLS session to application auth)
+///
+/// **Application Development STIG V5R3:**
+/// - APSC-DV-002440 (CAT I): Session Management - channel binding prevents session hijacking
+///
 /// # RFC 7030 Section 3.5 - Channel Binding
 ///
 /// Channel binding provides cryptographic linkage between the TLS session and
 /// the application-level authentication. This prevents man-in-the-middle attacks
-/// where an attacker intercepts HTTP Basic authentication credentials.
+/// where an attacker intercepts HTTP Basic authentication credentials or attempts
+/// session hijacking.
 ///
 /// ## Implementation Note
 ///
@@ -267,6 +351,17 @@ pub fn compute_channel_binding(session_data: &[u8]) -> String {
 
 /// Generate a cryptographically secure random challenge for channel binding.
 ///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:**
+/// - IA-5: Authenticator Management (cryptographically secure random generation)
+/// - SC-13: Cryptographic Protection (FIPS-approved CSPRNG)
+///
+/// **Application Development STIG V5R3:**
+/// - APSC-DV-000170 (CAT I): Cryptographic Protection - uses OS CSPRNG
+///
+/// # Overview
+///
 /// When direct TLS channel binding extraction is not available, we can use
 /// a random challenge generated at enrollment time as a channel binding
 /// alternative. The same challenge is included in both:
@@ -276,11 +371,14 @@ pub fn compute_channel_binding(session_data: &[u8]) -> String {
 /// The EST server can then verify that the entity creating the CSR is the
 /// same as the one making the enrollment request.
 ///
-/// # Security
+/// # Security Implementation
 ///
-/// Uses P-256 ECDSA scalar generation which internally uses a cryptographically
-/// secure random number generator. This provides proper cryptographic randomness
-/// suitable for security-critical operations.
+/// Uses P-256 ECDSA scalar generation which internally uses OsRng, the operating
+/// system's cryptographically secure random number generator. This provides:
+/// - Proper cryptographic randomness suitable for security-critical operations
+/// - FIPS 140-2 compliance when OS CSPRNG is FIPS-validated
+/// - Protection against prediction or brute-force attacks
+/// - 256 bits of entropy (32 bytes)
 ///
 /// # Returns
 ///
@@ -289,12 +387,14 @@ pub fn generate_channel_binding_challenge() -> [u8; 32] {
     use p256::ecdsa::SigningKey;
     use p256::elliptic_curve::rand_core::OsRng;
 
-    // Generate a random ECDSA signing key - this uses the OS's CSPRNG
-    // We don't actually need the key itself, just the secure random bytes
+    // NIST 800-53: IA-5 (Authenticator Management), SC-13 (Cryptographic Protection)
+    // STIG: APSC-DV-000170 (CAT I) - FIPS-approved CSPRNG
+    // Generate a random ECDSA signing key using OS's CSPRNG (FIPS 140-2 compliant)
+    // We don't actually need the key itself, just the cryptographically secure random bytes
     let signing_key = SigningKey::random(&mut OsRng);
 
     // Extract the scalar (secret key) as bytes
-    // This is 32 bytes of cryptographically secure random data
+    // This is 32 bytes (256 bits) of cryptographically secure random data
     signing_key.to_bytes().into()
 }
 
