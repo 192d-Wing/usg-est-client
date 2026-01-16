@@ -14,7 +14,8 @@
 [est]
 # EST server URL (must include .well-known/est path)
 # Supports both HTTP Basic Auth and TLS client certificate authentication
-server = "https://est.example.mil/.well-known/est"
+# Configure via environment variable EST_SERVER_URL or set directly below
+server = "${EST_SERVER_URL:https://est.example.mil/.well-known/est}"
 
 # HTTP Basic Authentication (Option 1)
 # Use for initial enrollment when no client certificate exists

@@ -152,6 +152,10 @@ enum Commands {
         /// Timeout in seconds
         #[arg(long, default_value = "30")]
         timeout: u64,
+
+        /// Skip TLS certificate verification (insecure, for testing only)
+        #[arg(long)]
+        insecure: bool,
     },
 
     /// Export certificate to file
@@ -188,6 +192,10 @@ enum Commands {
         /// Skip authentication test
         #[arg(long)]
         skip_auth: bool,
+
+        /// Skip TLS certificate verification (insecure, for testing only)
+        #[arg(long)]
+        insecure: bool,
     },
 
     /// Display CA certificate information
@@ -341,7 +349,11 @@ async fn run_command(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Renew { force, new_key } => cmd_renew(&cli, *force, *new_key).await,
         Commands::Status { detailed, format } => cmd_status(&cli, *detailed, *format).await,
-        Commands::Check { test_auth, timeout } => cmd_check(&cli, *test_auth, *timeout).await,
+        Commands::Check {
+            test_auth,
+            timeout,
+            insecure,
+        } => cmd_check(&cli, *test_auth, *timeout, *insecure).await,
         Commands::Export {
             output,
             format,
@@ -361,7 +373,8 @@ async fn run_command(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Commands::Diagnose {
             tls_details,
             skip_auth,
-        } => cmd_diagnose(&cli, *tls_details, *skip_auth).await,
+            insecure,
+        } => cmd_diagnose(&cli, *tls_details, *skip_auth, *insecure).await,
         Commands::CaInfo { full_chain, format } => cmd_ca_info(&cli, *full_chain, *format).await,
         Commands::CertInfo { thumbprint, format } => {
             cmd_cert_info(&cli, thumbprint.clone(), *format).await
@@ -637,6 +650,7 @@ async fn cmd_check(
     cli: &Cli,
     test_auth: bool,
     timeout: u64,
+    insecure: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use usg_est_client::auto_enroll::ConfigLoader;
 
@@ -663,6 +677,12 @@ async fn cmd_check(
 
     println!("Server: {}", server_url);
     println!("Timeout: {} seconds", timeout);
+
+    // Validate insecure flag usage
+    if insecure {
+        validate_insecure_usage(&server_url).await?;
+        println!("WARNING: TLS certificate verification disabled (insecure mode)");
+    }
     println!();
 
     // Parse URL
@@ -711,9 +731,13 @@ async fn cmd_check(
     print!("EST Server... ");
 
     // Build minimal config for testing
-    let est_config = usg_est_client::EstClientConfig::builder()
-        .server_url(&server_url)?
-        .build()?;
+    let mut builder = usg_est_client::EstClientConfig::builder().server_url(&server_url)?;
+
+    if insecure {
+        builder = builder.trust_any_insecure();
+    }
+
+    let est_config = builder.build()?;
 
     let client = usg_est_client::EstClient::new(est_config).await?;
 
@@ -893,6 +917,7 @@ async fn cmd_diagnose(
     cli: &Cli,
     tls_details: bool,
     skip_auth: bool,
+    insecure: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use usg_est_client::auto_enroll::ConfigLoader;
 
@@ -932,6 +957,15 @@ async fn cmd_diagnose(
     };
     println!();
     println!("Target Server: {}", server_url);
+
+    // Validate insecure flag usage
+    if insecure {
+        if let Err(e) = validate_insecure_usage(&server_url).await {
+            println!("[ERROR] {}", e);
+            return Err(e);
+        }
+        println!("WARNING: TLS certificate verification disabled (insecure mode)");
+    }
     println!();
 
     // Parse URL
@@ -963,9 +997,13 @@ async fn cmd_diagnose(
 
     // 3. TLS Handshake
     print!("3. TLS Handshake... ");
-    let est_config = usg_est_client::EstClientConfig::builder()
-        .server_url(server_url)?
-        .build()?;
+    let mut builder = usg_est_client::EstClientConfig::builder().server_url(server_url)?;
+
+    if insecure {
+        builder = builder.trust_any_insecure();
+    }
+
+    let est_config = builder.build()?;
 
     match usg_est_client::EstClient::new(est_config).await {
         Ok(client) => {
@@ -1249,4 +1287,86 @@ fn get_certificate_cn(cert: &x509_cert::Certificate) -> Option<String> {
         }
     }
     None
+}
+
+/// Validate that --insecure flag is only used with the official RFC 7030 test server.
+///
+/// This prevents accidental use of --insecure with production servers.
+/// Only allows: https://testrfc7030.com (resolves to 54.70.32.33)
+async fn validate_insecure_usage(server_url: &str) -> Result<(), Box<dyn std::error::Error>> {
+    const ALLOWED_TEST_SERVER: &str = "testrfc7030.com";
+    const ALLOWED_TEST_IP: &str = "54.70.32.33";
+
+    // Parse URL to extract hostname
+    let url = url::Url::parse(server_url)?;
+    let host = url
+        .host_str()
+        .ok_or("Invalid URL: no host specified")?
+        .to_lowercase();
+
+    // Check if it's the allowed test server hostname
+    if host == ALLOWED_TEST_SERVER {
+        // Verify it resolves to the expected IP
+        match tokio::net::lookup_host(format!("{}:{}", host, url.port().unwrap_or(443))).await {
+            Ok(addrs) => {
+                let resolved_ips: Vec<String> = addrs.map(|addr| addr.ip().to_string()).collect();
+
+                if resolved_ips.iter().any(|ip| ip == ALLOWED_TEST_IP) {
+                    // Valid: hostname matches and resolves to expected IP
+                    return Ok(());
+                } else {
+                    return Err(format!(
+                        "Security Error: --insecure flag can only be used with the official RFC 7030 test server.\n\
+                         Server '{}' resolves to {:?}, but expected {}.\n\
+                         \n\
+                         For testing with other servers, use one of these options:\n\
+                         1. Configure explicit trust: Add your CA certificate to the trust store\n\
+                         2. Use bootstrap mode: See 'cargo run --example bootstrap'\n\
+                         3. Contact your administrator for proper CA certificates",
+                        host, resolved_ips, ALLOWED_TEST_IP
+                    )
+                    .into());
+                }
+            }
+            Err(e) => {
+                return Err(format!(
+                    "Security Error: Failed to verify server identity: {}\n\
+                     --insecure flag can only be used with verified test servers.",
+                    e
+                )
+                .into());
+            }
+        }
+    }
+
+    // Check if it's the IP address directly
+    if host == ALLOWED_TEST_IP {
+        return Ok(());
+    }
+
+    // Not an allowed server
+    Err(format!(
+        "Security Error: --insecure flag is restricted to the official RFC 7030 test server only.\n\
+         \n\
+         Allowed server: https://{}\n\
+         Your server:    {}\n\
+         \n\
+         The --insecure flag bypasses critical TLS security checks and is restricted\n\
+         to prevent accidental use in production environments.\n\
+         \n\
+         For testing with '{}', use one of these secure alternatives:\n\
+         1. Configure explicit trust with your CA certificate:\n\
+            [trust]\n\
+            mode = \"explicit\"\n\
+            ca_bundle_path = \"/path/to/ca-bundle.pem\"\n\
+         \n\
+         2. Use bootstrap/TOFU mode for initial CA discovery:\n\
+            cargo run --example bootstrap -- --server {}\n\
+         \n\
+         3. Add your CA to the system trust store\n\
+         \n\
+         For more information, see CONFIGURATION.md",
+        ALLOWED_TEST_SERVER, server_url, host, server_url
+    )
+    .into())
 }

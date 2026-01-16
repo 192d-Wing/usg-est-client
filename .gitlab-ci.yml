@@ -13,6 +13,7 @@ stages:
   - security
   - docs
   - coverage
+  - release
 
 # Global variables
 variables:
@@ -555,3 +556,202 @@ security:scheduled:
     expire_in: 90 days
   rules:
     - if: '$SCHEDULED_JOB == "security"'
+
+# ============================================================================
+# Release Jobs - Build for Multiple Platforms
+# ============================================================================
+# These jobs run when a tag matching v*.*.* is pushed
+# Example: git tag v1.0.0 && git push origin v1.0.0
+
+.release_build_template: &release_build
+  stage: release
+  <<: *cargo_cache
+  script:
+    - |
+      # Build the release binary
+      cargo build --release --target ${TARGET} --bin est-enroll --features cli
+
+      # Prepare artifacts
+      cd target/${TARGET}/release
+      VERSION=${CI_COMMIT_TAG#v}
+
+      # Package binary
+      if [[ "$TARGET" == *"windows"* ]]; then
+        BINARY_NAME="est-enroll-${VERSION}-${TARGET}.exe"
+        mv est-enroll.exe "$BINARY_NAME"
+        echo "Built: $BINARY_NAME"
+        sha256sum "$BINARY_NAME" > "$BINARY_NAME.sha256"
+        zip "${BINARY_NAME}.zip" "$BINARY_NAME"
+        mv "${BINARY_NAME}.zip" ../../..
+        mv "$BINARY_NAME.sha256" ../../..
+      else
+        BINARY_NAME="est-enroll-${VERSION}-${TARGET}"
+        mv est-enroll "$BINARY_NAME"
+        echo "Built: $BINARY_NAME"
+        sha256sum "$BINARY_NAME" > "$BINARY_NAME.sha256"
+        tar -czf "${BINARY_NAME}.tar.gz" "$BINARY_NAME"
+        mv "${BINARY_NAME}.tar.gz" ../../..
+        mv "$BINARY_NAME.sha256" ../../..
+      fi
+  artifacts:
+    name: "est-enroll-${CI_COMMIT_TAG}-${TARGET}"
+    paths:
+      - "*.tar.gz"
+      - "*.zip"
+      - "*.sha256"
+    expire_in: never
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+(-.*)?$/'
+
+# Linux x86_64 (GNU)
+release:linux-x86_64:
+  <<: *release_build
+  image: rust:latest
+  before_script:
+    - apt-get update && apt-get install -y pkg-config libssl-dev
+    - rustup target add x86_64-unknown-linux-gnu
+  variables:
+    TARGET: "x86_64-unknown-linux-gnu"
+
+# Linux x86_64 (musl - static binary)
+release:linux-x86_64-musl:
+  <<: *release_build
+  image: rust:latest
+  before_script:
+    - apt-get update && apt-get install -y musl-tools pkg-config libssl-dev
+    - rustup target add x86_64-unknown-linux-musl
+  variables:
+    TARGET: "x86_64-unknown-linux-musl"
+
+# macOS x86_64 (Intel)
+release:macos-x86_64:
+  <<: *release_build
+  tags:
+    - saas-macos-large-m2pro
+  before_script:
+    - rustup target add x86_64-apple-darwin
+  variables:
+    TARGET: "x86_64-apple-darwin"
+  allow_failure: true  # Allow failure if macOS runners are unavailable
+
+# macOS aarch64 (Apple Silicon)
+release:macos-aarch64:
+  <<: *release_build
+  tags:
+    - saas-macos-large-m2pro
+  before_script:
+    - rustup target add aarch64-apple-darwin
+  variables:
+    TARGET: "aarch64-apple-darwin"
+  allow_failure: true  # Allow failure if macOS runners are unavailable
+
+# Windows x86_64 (MSVC)
+release:windows-x86_64:
+  <<: *release_build
+  tags:
+    - saas-windows-medium-amd64
+  before_script:
+    - rustup target add x86_64-pc-windows-msvc
+  variables:
+    TARGET: "x86_64-pc-windows-msvc"
+  allow_failure: true  # Allow failure if Windows runners are unavailable
+
+# Create GitLab Release with all artifacts
+release:publish:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  needs:
+    - job: release:linux-x86_64
+      artifacts: true
+    - job: release:linux-x86_64-musl
+      artifacts: true
+    - job: release:macos-x86_64
+      artifacts: true
+      optional: true
+    - job: release:macos-aarch64
+      artifacts: true
+      optional: true
+    - job: release:windows-x86_64
+      artifacts: true
+      optional: true
+  script:
+    - |
+      # Generate checksums file
+      echo "# SHA256 Checksums for ${CI_COMMIT_TAG}" > checksums.txt
+      echo "" >> checksums.txt
+      cat *.sha256 >> checksums.txt
+
+      # Generate release notes
+      VERSION=${CI_COMMIT_TAG#v}
+      cat > release_notes.md << EOF
+      ## EST Client Release ${VERSION}
+
+      ### Downloads
+
+      Choose the appropriate binary for your platform:
+
+      #### Linux
+      - **x86_64 (GNU)**: \`est-enroll-${VERSION}-x86_64-unknown-linux-gnu.tar.gz\`
+      - **x86_64 (musl, static)**: \`est-enroll-${VERSION}-x86_64-unknown-linux-musl.tar.gz\`
+
+      #### macOS
+      - **Intel (x86_64)**: \`est-enroll-${VERSION}-x86_64-apple-darwin.tar.gz\`
+      - **Apple Silicon (aarch64)**: \`est-enroll-${VERSION}-aarch64-apple-darwin.tar.gz\`
+
+      #### Windows
+      - **x86_64**: \`est-enroll-${VERSION}-x86_64-pc-windows-msvc.exe.zip\`
+
+      ### Installation
+
+      **Linux/macOS:**
+      \`\`\`bash
+      tar -xzf est-enroll-*.tar.gz
+      chmod +x est-enroll-*
+      sudo mv est-enroll-* /usr/local/bin/est-enroll
+      \`\`\`
+
+      **Windows:**
+      1. Extract the ZIP file
+      2. Place \`est-enroll.exe\` in a directory on your PATH
+
+      ### Checksums
+
+      See the \`checksums.txt\` file for SHA256 checksums of all binaries.
+
+      ### Documentation
+
+      - [Configuration Guide](${CI_PROJECT_URL}/-/blob/${CI_COMMIT_TAG}/CONFIGURATION.md)
+      - [Security Documentation](${CI_PROJECT_URL}/-/blob/${CI_COMMIT_TAG}/docs/INSECURE-FLAG-SECURITY.md)
+      - [Examples](${CI_PROJECT_URL}/-/tree/${CI_COMMIT_TAG}/examples)
+
+      ### Changelog
+
+      See [CHANGELOG.md](${CI_PROJECT_URL}/-/blob/${CI_COMMIT_TAG}/CHANGELOG.md) for details.
+      EOF
+
+      # Display what we're releasing
+      echo "=== Release Artifacts ==="
+      ls -lh *.tar.gz *.zip *.sha256 2>/dev/null || true
+      echo ""
+      echo "=== Release Notes ==="
+      cat release_notes.md
+  release:
+    name: 'Release $CI_COMMIT_TAG'
+    description: './release_notes.md'
+    tag_name: '$CI_COMMIT_TAG'
+    assets:
+      links:
+        - name: 'Installation Guide'
+          url: '${CI_PROJECT_URL}/-/blob/${CI_COMMIT_TAG}/CONFIGURATION.md'
+        - name: 'Documentation'
+          url: 'https://${CI_PROJECT_NAMESPACE}.gitlab.io/${CI_PROJECT_NAME}/'
+  artifacts:
+    name: "release-${CI_COMMIT_TAG}"
+    paths:
+      - "*.tar.gz"
+      - "*.zip"
+      - "checksums.txt"
+      - "release_notes.md"
+    expire_in: never
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+(-.*)?$/'

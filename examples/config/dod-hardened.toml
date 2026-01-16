@@ -20,7 +20,8 @@
 [server]
 # EST server URL (HTTPS required per STIG APSC-DV-002440)
 # Must be DoD-approved EST server
-url = "https://est.example.mil/.well-known/est"
+# Configure via environment variable EST_SERVER_URL or set directly below
+url = "${EST_SERVER_URL:https://est.example.mil/.well-known/est}"
 
 # Connection timeout (seconds)
 # STIG APSC-DV-002400: Network connections timeout after inactivity
