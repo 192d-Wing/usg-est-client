@@ -67,6 +67,7 @@ async fn main() {
             .position(|a| a == "--server")
             .and_then(|i| args.get(i + 1))
             .map(|s| s.as_str())
+            .or_else(|| env::var("EST_SERVER_URL").ok().as_deref())
             .unwrap_or("https://testrfc7030.com:8443");
 
         println!("Server: {}", server_url);

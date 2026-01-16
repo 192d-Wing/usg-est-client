@@ -6,7 +6,8 @@
 # devices that need basic certificate enrollment.
 
 [server]
-url = "https://est.example.com"
+# Configure via environment variable EST_SERVER_URL or set directly below
+url = "${EST_SERVER_URL:https://est.example.com}"
 timeout_seconds = 30
 
 [trust]

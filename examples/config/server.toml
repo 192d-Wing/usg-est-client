@@ -6,7 +6,8 @@
 # with multiple DNS names and IP addresses.
 
 [server]
-url = "https://est.example.com"
+# Configure via environment variable EST_SERVER_URL or set directly below
+url = "${EST_SERVER_URL:https://est.example.com}"
 ca_label = "servers"
 timeout_seconds = 180
 

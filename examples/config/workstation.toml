@@ -8,7 +8,8 @@
 # Place this file at: C:\ProgramData\Department of War\EST\config.toml
 
 [server]
-url = "https://est.contoso.com"
+# Configure via environment variable EST_SERVER_URL or set directly below
+url = "${EST_SERVER_URL:https://est.contoso.com}"
 ca_label = "workstations"
 timeout_seconds = 120
 

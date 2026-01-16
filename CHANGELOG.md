@@ -7,7 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-01-16
+
 ### Added
+
+#### Environment Variable Configuration (v1.0.0)
+
+- **EST_SERVER_URL Environment Variable Support**
+  - All example files now check `EST_SERVER_URL` environment variable before using defaults
+  - Priority order: CLI argument → ENV variable → Default value
+  - Updated examples: simple_enroll, reenroll, bootstrap, cmc_advanced, hsm_enroll, auto_renewal
+  - Updated TOML configs with `${EST_SERVER_URL:default}` syntax for variable expansion
+  - See [CONFIGURATION.md](CONFIGURATION.md) for deployment patterns
+
+- **--insecure CLI Flag for Testing**
+  - Added `--insecure` flag to `est-enroll check` and `est-enroll diagnose` commands
+  - Bypasses TLS certificate verification for testing purposes
+  - **Security Restriction**: Only works with <https://testrfc7030.com> (54.70.32.33)
+  - Validates both hostname and resolved IP address before allowing bypass
+  - See [docs/INSECURE-FLAG-SECURITY.md](docs/INSECURE-FLAG-SECURITY.md) for security implementation
+
+#### CI/CD Release Automation (v1.0.0)
+
+- **GitHub Actions Release Pipeline**
+  - Automated multi-platform builds on tag push (v*.*.*)
+  - Platforms: Linux (gnu, musl), macOS (Intel, Apple Silicon), Windows
+  - Automatic SHA256 checksum generation
+  - Release creation with all binaries and checksums
+  - See [.github/workflows/release.yml](.github/workflows/release.yml)
+
+- **GitLab CI Release Stage**
+  - Parallel builds for all platforms
+  - GitLab Release and Package Registry integration
+  - Template-based builds with graceful fallbacks
+  - See [.gitlab-ci.yml](.gitlab-ci.yml) release stage
+
+- **Release Documentation**
+  - Comprehensive release process guide: [docs/RELEASE-PROCESS.md](docs/RELEASE-PROCESS.md)
+  - Quick reference guide: [RELEASING.md](RELEASING.md)
+  - Platform matrix, troubleshooting, security considerations
 
 #### RFC 7030 Compliance Audit and Roadmap (2026-01-15)
 
@@ -270,5 +308,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/johnwillman/usg-est-client/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/johnwillman/usg-est-client/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/johnwillman/usg-est-client/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/johnwillman/usg-est-client/releases/tag/v0.1.0
