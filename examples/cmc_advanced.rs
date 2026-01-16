@@ -40,6 +40,8 @@ compile_error!("This example requires the 'csr-gen' feature. Run with --features
 
 use std::env;
 
+#[cfg(feature = "csr-gen")]
+use usg_est_client::csr::CsrBuilder;
 use usg_est_client::{
     EstClient, EstClientConfig,
     types::{
@@ -50,8 +52,6 @@ use usg_est_client::{
         },
     },
 };
-#[cfg(feature = "csr-gen")]
-use usg_est_client::csr::CsrBuilder;
 
 #[tokio::main]
 async fn main() {
