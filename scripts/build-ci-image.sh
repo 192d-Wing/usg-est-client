@@ -61,6 +61,11 @@ Examples:
   $0 --version v1.2.3          # Build with custom tag
   $0 --no-cache --scan         # Full rebuild with security scan
 
+Multi-Platform Support:
+  If Docker buildx is available, the image will be built for linux/amd64
+  and pushed as a multi-platform manifest. This ensures compatibility
+  across different architectures.
+
 Environment Variables:
   DOCKER_BUILDKIT=1            Enable BuildKit for faster builds
   CI_REGISTRY_USER             GitLab registry username
@@ -68,6 +73,7 @@ Environment Variables:
 
 Prerequisites:
   - Docker installed and running
+  - Docker buildx installed (for multi-platform support)
   - Logged in to GitLab Container Registry
   - Execute from project root directory
 
@@ -151,17 +157,42 @@ build_image() {
         print_warning "Building without cache (will take longer)"
     fi
 
+    # Check if buildx is available for multi-platform builds
+    USE_BUILDX=false
+    if docker buildx version &> /dev/null; then
+        USE_BUILDX=true
+        print_success "Docker buildx detected - will build multi-platform image (linux/amd64)"
+    else
+        print_warning "Docker buildx not available - building for current platform only"
+    fi
+
     echo "Image: ${FULL_IMAGE}"
     echo "Dockerfile: Dockerfile.ci"
+    if [ "$USE_BUILDX" = true ]; then
+        echo "Platforms: linux/amd64"
+    fi
     echo ""
 
     # Build the image
-    set -x
-    docker build $BUILD_ARGS \
-        -f Dockerfile.ci \
-        -t "${FULL_IMAGE}" \
-        .
-    set +x
+    if [ "$USE_BUILDX" = true ]; then
+        # Multi-platform build with buildx
+        set -x
+        docker buildx build $BUILD_ARGS \
+            --platform linux/amd64 \
+            -f Dockerfile.ci \
+            -t "${FULL_IMAGE}" \
+            --load \
+            .
+        set +x
+    else
+        # Standard build for current platform
+        set -x
+        docker build $BUILD_ARGS \
+            -f Dockerfile.ci \
+            -t "${FULL_IMAGE}" \
+            .
+        set +x
+    fi
 
     if [ $? -eq 0 ]; then
         print_success "Image built successfully"
@@ -305,7 +336,21 @@ push_image() {
     echo "Pushing: ${FULL_IMAGE}"
     echo ""
 
-    docker push "${FULL_IMAGE}"
+    # Check if we should use buildx for multi-platform push
+    if docker buildx version &> /dev/null; then
+        print_success "Using buildx to push multi-platform image"
+
+        # Build and push multi-platform image directly
+        docker buildx build \
+            --platform linux/amd64 \
+            -f Dockerfile.ci \
+            -t "${FULL_IMAGE}" \
+            --push \
+            .
+    else
+        # Standard push
+        docker push "${FULL_IMAGE}"
+    fi
 
     if [ $? -eq 0 ]; then
         print_success "Image pushed successfully"
