@@ -18,6 +18,22 @@
 //! This example demonstrates how to renew an existing certificate
 //! using the EST simplereenroll operation.
 //!
+//! # Security Controls Demonstrated
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - IA-2: Identification and Authentication (mutual TLS with existing certificate)
+//! - SC-8: Transmission Confidentiality (TLS 1.2+ with client cert authentication)
+//! - IA-5: Authenticator Management (certificate lifecycle management)
+//!
+//! **Application Development STIG V5R3:**
+//! - APSC-DV-000160 (CAT I): Cryptographically-based bidirectional authentication
+//! - APSC-DV-000170 (CAT I): FIPS-validated cryptography for re-enrollment
+//!
+//! # RFC 7030 Compliance
+//!
+//! - Section 4.2.2: `/simplereenroll` operation for certificate renewal
+//! - Section 3.3.2: TLS client certificate authentication
+//!
 //! # Usage
 //!
 //! ```bash

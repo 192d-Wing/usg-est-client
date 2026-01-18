@@ -18,16 +18,28 @@
 //! This example demonstrates certificate revocation checking using
 //! CRL (Certificate Revocation Lists) and OCSP (Online Certificate Status Protocol).
 //!
+//! # Security Controls Demonstrated
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - IA-2: Identification and Authentication (revocation checking)
+//! - SI-4: System Monitoring (certificate status monitoring)
+//! - AU-2: Audit Events (revocation status changes)
+//!
+//! **Application Development STIG V5R3:**
+//! - APSC-DV-003235 (CAT I): Certificate Validation (includes revocation checking)
+//! - APSC-DV-000160 (CAT I): Authentication (reject revoked certificates)
+//!
 //! # Revocation Methods
 //!
-//! - **CRL**: Download and parse certificate revocation lists
-//! - **OCSP**: Real-time certificate status checking
+//! - **CRL**: Download and parse certificate revocation lists (RFC 5280)
+//! - **OCSP**: Real-time certificate status checking (RFC 6960)
 //!
 //! # Features
 //!
 //! - CRL download and caching
 //! - OCSP request/response handling
 //! - Revocation status checking API
+//! - Audit logging of revocation checks
 //!
 //! # Usage
 //!

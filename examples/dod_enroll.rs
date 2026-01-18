@@ -6,6 +6,26 @@
 //! This example demonstrates certificate enrollment on DoD networks using
 //! DoD Root CA trust anchors and certificate policy validation.
 //!
+//! # Security Controls Demonstrated
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - IA-2: Identification and Authentication (CAC/PIV authentication)
+//! - IA-5: Authenticator Management (DoD PKI certificate management)
+//! - SC-8: Transmission Confidentiality (TLS with DoD PKI)
+//! - SC-13: Cryptographic Protection (FIPS-validated DoD algorithms)
+//!
+//! **Application Development STIG V5R3:**
+//! - APSC-DV-000160 (CAT I): Authentication (CAC/PIV certificate-based)
+//! - APSC-DV-000170 (CAT I): FIPS-validated cryptography
+//! - APSC-DV-003235 (CAT I): Certificate validation (DoD PKI chain validation)
+//!
+//! # DoD PKI Compliance
+//!
+//! - Uses DoD Root CA trust anchors (embedded or downloaded)
+//! - Validates certificate policies (id-fpki-common-*)
+//! - Supports CAC/PIV hardware authentication
+//! - FIPS 140-2 compliant cryptography
+//!
 //! # Requirements
 //!
 //! - DoD Root CA certificates (embedded or downloaded)

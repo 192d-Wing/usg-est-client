@@ -7,12 +7,24 @@
 //! man-in-the-middle attacks during initial enrollment with HTTP Basic
 //! authentication.
 //!
+//! # Security Controls Demonstrated
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - IA-2: Identification and Authentication (channel binding for authentication)
+//! - SC-8: Transmission Confidentiality (TLS with channel binding)
+//! - SC-23: Session Authenticity (cryptographic session binding)
+//!
+//! **Application Development STIG V5R3:**
+//! - APSC-DV-000160 (CAT I): Authentication (prevents credential forwarding)
+//! - APSC-DV-002440 (CAT I): Session Management (cryptographic session binding)
+//!
 //! # RFC 7030 Section 3.5 - Channel Binding
 //!
 //! Channel binding provides cryptographic linkage between the TLS session
-//! and the HTTP Basic authentication, preventing credential forwarding attacks.
+//! and the HTTP Basic authentication, preventing credential forwarding attacks
+//! and MITM attacks during initial enrollment.
 //!
-//! ## Usage
+//! # Usage
 //!
 //! ```bash
 //! cargo run --example channel_binding_enroll --features csr-gen \

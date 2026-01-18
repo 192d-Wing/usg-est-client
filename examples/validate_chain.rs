@@ -1,14 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2025 U.S. Federal Government (in countries where recognized)
 //
-// Example: Certificate chain validation using RFC 5280 path validation
-//
-// This example demonstrates how to:
-// 1. Validate a certificate chain against trust anchors
-// 2. Configure validation options (name constraints, policy constraints)
-// 3. Use validation hooks with the EST client
-//
-// Run with: cargo run --example validate_chain --features validation
+//! Certificate chain validation using RFC 5280 path validation.
+//!
+//! # Security Controls Demonstrated
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - IA-2: Identification and Authentication (certificate-based authentication)
+//! - SC-23: Session Authenticity (certificate chain validation)
+//! - SI-10: Information Input Validation (certificate data validation)
+//!
+//! **Application Development STIG V5R3:**
+//! - APSC-DV-003235 (CAT I): Certificate Validation (RFC 5280 compliant path validation)
+//! - APSC-DV-000500 (CAT I): Input Validation (certificate structure validation)
+//!
+//! # RFC 5280 Validation Features
+//!
+//! - Signature verification with FIPS-approved algorithms
+//! - Validity period checking (notBefore/notAfter)
+//! - Basic constraints validation (CA flag, path length)
+//! - Name constraints processing (DNS, email, URI)
+//! - Policy constraints validation
+//!
+//! # Usage
+//!
+//! ```bash
+//! cargo run --example validate_chain --features validation
+//! ```
 
 use base64::Engine;
 use der::Decode;

@@ -19,12 +19,23 @@
 //! that monitors certificate expiration and automatically renews certificates
 //! before they expire.
 //!
+//! # Security Controls Demonstrated
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - IA-5: Authenticator Management (automatic certificate lifecycle management)
+//! - SC-12: Cryptographic Key Establishment (timely key/cert renewal)
+//! - AU-2: Audit Events (renewal attempts and outcomes logged)
+//!
+//! **Application Development STIG V5R3:**
+//! - APSC-DV-000160 (CAT I): Authentication (prevents authentication failures from expired certs)
+//!
 //! # Features
 //!
 //! - Background monitoring of certificate expiration
 //! - Configurable renewal threshold (e.g., renew 30 days before expiry)
 //! - Automatic re-enrollment with retry logic
 //! - Event callbacks for renewal status
+//! - Audit logging of renewal operations
 //!
 //! # Usage
 //!

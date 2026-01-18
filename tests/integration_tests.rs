@@ -17,6 +17,29 @@
 //!
 //! These tests use wiremock to create mock EST servers and test
 //! all operations, authentication methods, and error handling.
+//!
+//! # Security Controls Tested
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - SC-8: Transmission Confidentiality (TLS configuration tests)
+//! - IA-2: Identification and Authentication (auth method tests)
+//! - SC-13: Cryptographic Protection (algorithm validation tests)
+//! - SI-10: Information Input Validation (error handling tests)
+//!
+//! **Application Development STIG V5R3:**
+//! - APSC-DV-000160 (CAT I): Authentication (mutual TLS, HTTP Basic)
+//! - APSC-DV-000170 (CAT I): FIPS-validated cryptography
+//! - APSC-DV-000500 (CAT I): Input validation (certificate parsing)
+//! - APSC-DV-003235 (CAT I): Certificate validation (chain validation tests)
+//!
+//! # Test Coverage Areas
+//!
+//! - **Operations**: All EST protocol operations (/cacerts, /simpleenroll, etc.)
+//! - **Authentication**: Client cert auth, HTTP Basic auth, channel binding
+//! - **TLS**: TLS version enforcement, cipher suite validation
+//! - **Errors**: Error handling, validation failures, timeout handling
+//! - **Metrics**: Operation tracking and performance metrics (if enabled)
+//! - **Platform**: Windows service integration, SIEM integration (if enabled)
 
 mod integration;
 

@@ -18,12 +18,25 @@
 //! This example demonstrates certificate enrollment using keys stored in
 //! a Hardware Security Module (HSM) or other secure key provider.
 //!
+//! # Security Controls Demonstrated
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - SC-12: Cryptographic Key Establishment (HSM-based key generation)
+//! - SC-13: Cryptographic Protection (hardware-backed cryptography)
+//! - AC-6: Least Privilege (non-exportable keys)
+//! - IA-5: Authenticator Management (secure key storage)
+//!
+//! **Application Development STIG V5R3:**
+//! - APSC-DV-000170 (CAT I): FIPS-validated cryptography (HSM FIPS modules)
+//! - APSC-DV-002340 (CAT II): Least privilege (keys cannot be extracted)
+//!
 //! # Features
 //!
-//! - Key generation in HSM
+//! - Key generation in HSM (keys never leave hardware)
 //! - CSR creation with HSM-backed keys
-//! - Private keys never leave the HSM
-//! - Support for multiple key algorithms
+//! - Private keys non-exportable
+//! - Support for multiple key algorithms (RSA, ECDSA)
+//! - FIPS 140-2 Level 2+ compliance with hardware HSMs
 //!
 //! # Key Providers
 //!

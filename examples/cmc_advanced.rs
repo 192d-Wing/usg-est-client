@@ -21,6 +21,17 @@
 //! - Batch operations for multiple requests
 //! - Parsing PKIResponse with status handling
 //!
+//! # Security Controls Demonstrated
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - IA-2: Identification and Authentication (CMC transaction IDs)
+//! - SC-8: Transmission Confidentiality (CMS-protected messages)
+//! - AU-2: Audit Events (transaction tracking)
+//!
+//! **Application Development STIG V5R3:**
+//! - APSC-DV-000160 (CAT I): Authentication (cryptographic message protection)
+//! - APSC-DV-000170 (CAT I): FIPS-validated cryptography (CMS signatures)
+//!
 //! # CMC Protocol Overview
 //!
 //! CMC (RFC 5272, 5273, 5274) provides advanced certificate management features:
@@ -28,6 +39,7 @@
 //! - Transaction tracking with IDs and nonces
 //! - Rich status reporting with detailed failure codes
 //! - Support for PKCS#10 and CRMF request formats
+//! - Digital signatures for request authentication
 //!
 //! # Usage
 //!

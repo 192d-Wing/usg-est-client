@@ -19,6 +19,26 @@
 //! for secure key generation and EST certificate enrollment. Private keys never leave the
 //! hardware security boundary.
 //!
+//! # Security Controls Demonstrated
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - SC-12: Cryptographic Key Establishment (PKCS#11 HSM key generation)
+//! - SC-13: Cryptographic Protection (FIPS 140-2 Level 2+ HSM)
+//! - AC-6: Least Privilege (non-exportable keys)
+//! - IA-5: Authenticator Management (hardware-protected keys)
+//!
+//! **Application Development STIG V5R3:**
+//! - APSC-DV-000170 (CAT I): FIPS-validated cryptography (HSM FIPS modules)
+//! - APSC-DV-002340 (CAT II): Least privilege (hardware key protection)
+//!
+//! # PKCS#11 Security Features
+//!
+//! - Private keys generated and stored in HSM (never in software)
+//! - Non-exportable key flag prevents key extraction
+//! - PIN/password protection for key access
+//! - FIPS 140-2 Level 2+ compliance with hardware HSMs
+//! - Tamper-resistant hardware security boundary
+//!
 //! # Prerequisites
 //!
 //! You'll need a PKCS#11-compatible device or software HSM. For testing, you can use SoftHSM:

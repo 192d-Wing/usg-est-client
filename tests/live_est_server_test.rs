@@ -18,7 +18,29 @@
 //! These tests are marked with `#[ignore]` by default because they require
 //! network access to the public EST test server at testrfc7030.com.
 //!
-//! To run these tests:
+//! # Security Controls Tested
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - SC-8: Transmission Confidentiality (TLS 1.2+ with real server)
+//! - IA-2: Identification and Authentication (HTTP Basic auth)
+//! - SC-13: Cryptographic Protection (real cryptographic operations)
+//!
+//! **Application Development STIG V5R3:**
+//! - APSC-DV-000160 (CAT I): Authentication (HTTP Basic over TLS)
+//! - APSC-DV-000170 (CAT I): FIPS cryptography (real TLS handshake)
+//! - APSC-DV-003235 (CAT I): Certificate validation (real cert chain)
+//!
+//! # RFC 7030 Compliance Testing
+//!
+//! These tests verify RFC 7030 compliance against a real EST server:
+//! - `/cacerts` operation (Section 4.1)
+//! - `/simpleenroll` operation (Section 4.2)
+//! - `/simplereenroll` operation (Section 4.2.2)
+//! - HTTP Basic authentication (Section 3.2.3)
+//! - TLS requirements (Section 3.3.1)
+//!
+//! # Running Tests
+//!
 //! ```bash
 //! cargo test --test live_est_server_test --all-features -- --ignored
 //! ```

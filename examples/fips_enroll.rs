@@ -5,6 +5,23 @@
 //!
 //! This example demonstrates certificate enrollment using FIPS-validated cryptography.
 //!
+//! # Security Controls Demonstrated
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - SC-13: Cryptographic Protection (FIPS 140-2 approved algorithms only)
+//! - SC-12: Cryptographic Key Establishment (FIPS-validated key generation)
+//! - IA-7: Cryptographic Module Authentication (FIPS module verification)
+//!
+//! **Application Development STIG V5R3:**
+//! - APSC-DV-000170 (CAT I): Use only FIPS-validated cryptography
+//!
+//! # FIPS 140-2 Compliance
+//!
+//! - Enforces use of FIPS-approved algorithms (AES-256, RSA-2048+, ECDSA P-256+)
+//! - Blocks deprecated algorithms (3DES, MD5, SHA-1, RC4)
+//! - Validates OpenSSL FIPS module status (CMVP #4282, #4616)
+//! - Uses FIPS-approved random number generator (BCryptGenRandom)
+//!
 //! # Requirements
 //!
 //! - OpenSSL 3.0+ with FIPS module installed and configured

@@ -3,13 +3,27 @@
 
 //! Comprehensive example demonstrating EST client metrics collection and export.
 //!
-//! This example shows:
+//! # Security Controls Demonstrated
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - AU-2: Audit Events (operational metrics collection)
+//! - AU-6: Audit Review (metrics analysis for security monitoring)
+//! - SI-4: System Monitoring (performance and security metrics)
+//!
+//! **Application Development STIG V5R3:**
+//! - APSC-DV-000830 (CAT II): Audit generation (operational event tracking)
+//!
+//! # Features
+//!
 //! - Basic metrics collection during EST operations
 //! - Exporting metrics in Prometheus format
 //! - Using OpenTelemetry for metrics
 //! - Integrating with monitoring systems
+//! - Tracking enrollment success/failure rates
+//! - Performance monitoring (latency, throughput)
 //!
-//! Run with:
+//! # Usage
+//!
 //! ```bash
 //! cargo run --example metrics --features metrics,metrics-prometheus
 //! ```

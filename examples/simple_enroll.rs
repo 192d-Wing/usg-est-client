@@ -20,6 +20,23 @@
 //!
 //! This example demonstrates basic EST client usage for certificate enrollment.
 //!
+//! # Security Controls Demonstrated
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - IA-2: Identification and Authentication (certificate-based authentication)
+//! - SC-8: Transmission Confidentiality and Integrity (TLS 1.2+ transport)
+//! - SC-13: Cryptographic Protection (CSR generation with FIPS-approved algorithms)
+//!
+//! **Application Development STIG V5R3:**
+//! - APSC-DV-000160 (CAT I): Cryptographically-based authentication
+//! - APSC-DV-000170 (CAT I): FIPS-validated cryptography
+//!
+//! # RFC 7030 Operations Demonstrated
+//!
+//! - `/cacerts` - Retrieval of CA certificates (Section 4.1)
+//! - `/csrattrs` - CSR attributes query (Section 4.5)
+//! - `/simpleenroll` - Certificate enrollment (Section 4.2)
+//!
 //! # Usage
 //!
 //! ```bash

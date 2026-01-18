@@ -18,6 +18,27 @@
 //! This example demonstrates how to use bootstrap/TOFU mode to discover
 //! CA certificates from an EST server without pre-existing trust.
 //!
+//! # Security Controls Demonstrated
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - IA-2: Identification and Authentication (Trust On First Use)
+//! - SI-10: Information Input Validation (certificate fingerprint verification)
+//!
+//! **Application Development STIG V5R3:**
+//! - APSC-DV-000160 (CAT I): Authentication (TOFU with out-of-band verification)
+//! - APSC-DV-003235 (CAT I): Certificate Validation (fingerprint verification)
+//!
+//! # RFC 7030 Compliance
+//!
+//! - Section 4.1.1: Bootstrap mode (explicit trust anchor management)
+//! - Section 2.4: Certificate fingerprint verification for TOFU
+//!
+//! # Security Warning
+//!
+//! ⚠️ Bootstrap mode performs NO TLS verification on first use. The certificate
+//! fingerprint MUST be verified out-of-band (phone call, secure message, physical
+//! verification) before trusting. Without verification, bootstrap is vulnerable to MITM.
+//!
 //! # Usage
 //!
 //! ```bash
