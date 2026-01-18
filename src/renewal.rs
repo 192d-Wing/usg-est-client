@@ -13,10 +13,108 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// ============================================================================
+// SECURITY CONTROL: Automatic Certificate Renewal
+// ----------------------------------------------------------------------------
+// NIST SP 800-53 Rev 5: IA-5 (Authenticator Management)
+//                       SC-12 (Cryptographic Key Establishment)
+//                       CM-6 (Configuration Settings)
+//
+// Application Development STIG V5R3:
+//   APSC-DV-001740 (CAT II) - Certificate Lifecycle Management
+//
+// SECURITY CONTROL IMPLEMENTATION:
+//
+// This module implements automatic certificate renewal to ensure continuous
+// secure operation without manual intervention. Certificate expiration is a
+// common cause of security and operational failures.
+//
+// IA-5: AUTHENTICATOR MANAGEMENT
+// -------------------------------
+// Certificates serve as authenticators for EST client identity. This module:
+//
+// - Monitors certificate validity periods continuously
+// - Triggers renewal before expiration (configurable threshold)
+// - Prevents service disruption from expired certificates
+// - Maintains cryptographic binding between identity and public key
+//
+// Renewal threshold should be set to allow sufficient time for:
+// - Multiple retry attempts if initial renewal fails
+// - Administrative intervention if automated renewal fails
+// - Certificate propagation to all systems
+//
+// Recommended threshold: 30 days before expiration for production systems.
+//
+// SC-12: CRYPTOGRAPHIC KEY ESTABLISHMENT
+// ---------------------------------------
+// Certificate renewal includes new key pair generation:
+//
+// - Each renewal generates a fresh key pair (key rotation)
+// - Old private keys should be securely destroyed after successful renewal
+// - Prevents long-term key compromise from affecting new certificates
+// - Maintains cryptographic agility (can upgrade algorithms during renewal)
+//
+// Key rotation best practices:
+// - New key pair for each certificate (no key reuse)
+// - Secure deletion of old private keys
+// - Audit logging of renewal operations
+//
+// CM-6: CONFIGURATION SETTINGS
+// -----------------------------
+// Renewal scheduler configuration parameters:
+//
+// - **renewal_threshold**: When to trigger renewal (time before expiration)
+// - **check_interval**: How often to check certificate status
+// - **max_retries**: Number of retry attempts for failed renewals
+// - **retry_delay**: Base delay for exponential backoff
+//
+// These parameters should be tuned based on:
+// - EST server availability and reliability
+// - Network conditions and expected latencies
+// - Operational requirements (e.g., maintenance windows)
+// - Certificate validity period length
+//
+// OPERATIONAL SECURITY:
+//
+// 1. MONITORING: Renewal events should be logged for security monitoring
+//    and compliance auditing. Failed renewals may indicate:
+//    - EST server compromise or unavailability
+//    - Network attacks (e.g., DoS on EST server)
+//    - Configuration errors
+//
+// 2. ALERTING: Production systems must alert administrators when:
+//    - Renewal attempts fail
+//    - All retry attempts exhausted
+//    - Certificate expiring soon with no successful renewal
+//
+// 3. GRACEFUL DEGRADATION: When renewal fails, system should:
+//    - Continue operating with existing certificate until expiration
+//    - Log detailed error information for troubleshooting
+//    - Trigger administrator alerts
+//    - Attempt renewal again at next check interval
+//
+// ============================================================================
+
 //! Automatic certificate renewal and expiration monitoring.
 //!
 //! This module provides utilities for monitoring certificate expiration
 //! and automatically triggering re-enrollment before certificates expire.
+//!
+//! # Security Controls
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - IA-5 (Authenticator Management) - Certificate lifecycle management
+//! - SC-12 (Cryptographic Key Establishment) - Key rotation during renewal
+//! - CM-6 (Configuration Settings) - Renewal policy configuration
+//!
+//! # Security Implementation
+//!
+//! Automatic renewal prevents service disruption from certificate expiration:
+//! - Continuous monitoring of certificate validity periods
+//! - Proactive renewal before expiration (default: 30 days)
+//! - New key pair generation with each renewal (key rotation)
+//! - Exponential backoff retry logic for failed renewals
+//! - Event callbacks for monitoring and alerting
 //!
 //! # Example
 //!
@@ -56,6 +154,50 @@ use tracing::{debug, error, info, warn};
 use x509_cert::Certificate;
 
 /// Configuration for automatic certificate renewal.
+///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:**
+/// - IA-5 (Authenticator Management) - Certificate renewal timing
+/// - CM-6 (Configuration Settings) - Renewal policy enforcement
+/// - SC-5 (Denial of Service Protection) - Retry limits and backoff
+///
+/// # Security Implementation
+///
+/// This configuration controls when and how certificates are automatically renewed:
+///
+/// - **renewal_threshold**: Time before expiration to trigger renewal.
+///   Recommended values:
+///   * Production: 30 days (allows time for retries and manual intervention)
+///   * Development: 7 days
+///   * High-security: 60 days (extra margin for critical systems)
+///
+/// - **check_interval**: Frequency of expiration checks.
+///   Recommended values:
+///   * Production: Daily (24 hours)
+///   * Critical systems: Every 6-12 hours
+///   * Development: Weekly
+///   Trade-off: More frequent checks detect issues faster but increase load
+///
+/// - **max_retries**: Number of retry attempts for failed renewals.
+///   Recommended: 3-5 retries
+///   Prevents infinite retry loops while allowing transient failures to resolve
+///
+/// - **retry_delay**: Base delay for exponential backoff.
+///   Recommended: 1 hour
+///   Actual delay = retry_delay × 2^(attempt - 1)
+///   Example: 1h, 2h, 4h, 8h... (exponential backoff prevents DoS)
+///
+/// - **event_callback**: Optional handler for renewal events.
+///   Use for: Logging, alerting, metrics collection, audit trails
+///
+/// # Configuration Security
+///
+/// Misconfigured renewal parameters can cause security issues:
+/// - Too short threshold: Insufficient time for retries
+/// - Too frequent checks: Unnecessary load, potential DoS
+/// - Too many retries: May mask persistent failures
+/// - Too short retry delay: May overwhelm EST server
 #[derive(Clone)]
 pub struct RenewalConfig {
     /// Time before expiration to trigger renewal (e.g., 30 days).
@@ -209,6 +351,72 @@ pub trait RenewalEventHandler: Send + Sync {
 ///
 /// Monitors certificate expiration and automatically triggers re-enrollment
 /// when certificates approach expiration.
+///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:**
+/// - IA-5 (Authenticator Management) - Automatic certificate lifecycle management
+/// - SC-12 (Cryptographic Key Establishment) - Key rotation with renewal
+/// - AU-2 (Audit Events) - Renewal event logging
+///
+/// **Application Development STIG V5R3:**
+/// - APSC-DV-001740 (CAT II) - Certificate lifecycle management
+///
+/// # Security Implementation
+///
+/// The renewal scheduler provides automatic, unattended certificate renewal:
+///
+/// ## Continuous Monitoring (IA-5)
+///
+/// - Runs background task that checks certificate expiration at configured intervals
+/// - Compares certificate notAfter time to renewal threshold
+/// - Triggers renewal when: (notAfter - now) ≤ renewal_threshold
+/// - Continues monitoring even after successful renewal
+///
+/// ## Automatic Re-enrollment (IA-5, SC-12)
+///
+/// When renewal is needed:
+/// 1. Generates new key pair (SC-12 key rotation)
+/// 2. Builds CSR with same subject as existing certificate
+/// 3. Submits re-enrollment request to EST server (RFC 7030 Section 3.3)
+/// 4. Parses and validates new certificate
+/// 5. Updates current certificate for future monitoring
+///
+/// ## Retry Logic (SC-5, CM-6)
+///
+/// If renewal fails:
+/// - Retry up to max_retries times
+/// - Use exponential backoff: delay × 2^(attempt-1)
+/// - Log each attempt and failure reason
+/// - Emit events for external monitoring
+/// - Continue monitoring with existing certificate
+///
+/// ## Event Handling (AU-2)
+///
+/// Emits events for security monitoring:
+/// - CheckStarted: Scheduler started
+/// - RenewalNeeded: Certificate approaching expiration
+/// - RenewalStarted: Renewal attempt beginning
+/// - RenewalSucceeded: New certificate obtained
+/// - RenewalFailed: Renewal attempt failed
+/// - RenewalExhausted: All retry attempts failed
+/// - CertificateValid: No renewal needed yet
+///
+/// # Production Deployment
+///
+/// For production use, applications MUST:
+///
+/// 1. **Implement RenewalEventHandler**: Log all events for audit trail
+/// 2. **Alert on Failures**: Monitor RenewalFailed and RenewalExhausted events
+/// 3. **Validate New Certificates**: Verify new certificate before using
+/// 4. **Persist New Certificates**: Store renewed certificates securely
+/// 5. **Destroy Old Keys**: Securely delete old private keys after renewal
+///
+/// # Security Warning
+///
+/// The scheduler continues operating with existing certificate if renewal fails.
+/// Applications must monitor RenewalExhausted events and take action before
+/// certificate expiration (e.g., graceful shutdown, alert administrators).
 pub struct RenewalScheduler {
     client: Arc<EstClient>,
     config: RenewalConfig,

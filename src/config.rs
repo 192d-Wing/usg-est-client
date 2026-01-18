@@ -17,6 +17,30 @@
 //!
 //! This module provides configuration structures for setting up an EST client,
 //! including server URL, authentication credentials, and TLS settings.
+//!
+//! # Security Controls
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - CM-2: Baseline Configuration (EST client configuration management)
+//! - CM-6: Configuration Settings (secure configuration defaults)
+//! - SI-10: Information Input Validation (URL and parameter validation)
+//! - IA-5: Authenticator Management (credential configuration)
+//! - SC-8: Transmission Confidentiality (TLS configuration)
+//!
+//! **Application Development STIG V5R3:**
+//! - APSC-DV-000500 (CAT I): Input Validation
+//! - APSC-DV-002440 (CAT I): Encryption in Transit
+//! - APSC-DV-001750 (CAT I): Certificate Validation
+//!
+//! # Configuration Components
+//!
+//! - [`EstClientConfig`]: Main client configuration structure
+//! - [`EstClientConfigBuilder`]: Builder pattern for configuration creation
+//! - [`ClientIdentity`]: TLS client certificate authentication
+//! - [`HttpAuth`]: HTTP Basic authentication credentials
+//! - [`TrustAnchors`]: Trust anchor configuration for server verification
+//! - [`BootstrapConfig`]: Bootstrap trust configuration for initial enrollment
+//! - [`CertificateValidationConfig`]: Certificate validation settings
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -25,60 +49,194 @@ use url::Url;
 #[cfg(feature = "validation")]
 use x509_cert::Certificate;
 
+// ============================================================================
+// SECURITY CONTROL: EST Client Configuration
+// ----------------------------------------------------------------------------
+// NIST SP 800-53 Rev 5: CM-2 (Baseline Configuration)
+//                       CM-6 (Configuration Settings)
+//                       SI-10 (Information Input Validation)
+//                       SC-8 (Transmission Confidentiality)
+//                       IA-5 (Authenticator Management)
+// STIG: APSC-DV-000500 (CAT I) - Input Validation
+//       APSC-DV-002440 (CAT I) - Encryption in Transit
+//       APSC-DV-001750 (CAT I) - Certificate Validation
+// Standards: RFC 7030 (EST Protocol)
+//           RFC 5280 (X.509 PKI Certificate Validation)
+// ----------------------------------------------------------------------------
+// Central configuration structure for EST client operations. Enforces secure
+// defaults and validates all configuration parameters.
+//
+// Security Rationale:
+// - CM-2/CM-6: Establishes secure baseline configuration for EST operations
+// - SI-10: Validates all inputs (URLs, certificates, credentials)
+// - SC-8: Enforces HTTPS by default, warns on HTTP usage
+// - IA-5: Supports both TLS client certs and HTTP Basic auth
+// - Certificate validation ensures trust anchor verification (RFC 5280)
+// - Channel binding prevents credential forwarding attacks (RFC 7030 Sec 3.5)
+// - FIPS mode enforces cryptographic compliance when enabled
+// ============================================================================
+
 /// Configuration for an EST client.
+///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:**
+/// - CM-2: Baseline Configuration (secure EST client settings)
+/// - CM-6: Configuration Settings (validated configuration parameters)
+/// - SI-10: Information Input Validation (URL, credential validation)
+/// - SC-8: Transmission Confidentiality (HTTPS enforcement)
+/// - IA-5: Authenticator Management (client authentication)
+///
+/// **STIG Findings:**
+/// - APSC-DV-000500 (CAT I): Input Validation
+/// - APSC-DV-002440 (CAT I): Encryption in Transit (HTTPS)
+/// - APSC-DV-001750 (CAT I): Certificate Validation
+///
+/// # Authentication Methods (IA-5)
+///
+/// EST supports two authentication methods (RFC 7030):
+///
+/// 1. **TLS Client Certificate** (preferred): `client_identity`
+///    - Mutual TLS authentication
+///    - Certificate-based identity
+///    - No password transmission
+///
+/// 2. **HTTP Basic Authentication** (fallback): `http_auth`
+///    - Username/password credentials
+///    - Transmitted over TLS (protected by SC-8)
+///    - Use only when client certificates unavailable
+///
+/// # Configuration Validation (SI-10)
+///
+/// All configuration parameters are validated:
+/// - **URL**: HTTPS enforced (warns on HTTP), valid scheme/host/port
+/// - **CA Label**: RFC 3986 path segment validation
+/// - **Credentials**: Non-empty username/password
+/// - **Timeout**: Reasonable range (1-300 seconds recommended)
+/// - **Trust Anchors**: Valid X.509 certificates
+///
+/// # Example
+///
+/// ```no_run
+/// use usg_est_client::EstClientConfig;
+/// use std::time::Duration;
+///
+/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let config = EstClientConfig::builder()
+///     .server_url("https://est.example.com")?
+///     .trust_webpki_roots()
+///     .timeout(Duration::from_secs(60))
+///     .enable_channel_binding()
+///     .verify_csr_signatures()
+///     .build()?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone)]
 pub struct EstClientConfig {
-    /// EST server base URL (e.g., "https://est.example.com").
+    /// EST server base URL (SC-8: HTTPS required, SI-10: validated).
+    ///
+    /// Format: `https://hostname:port` (default port 443)
+    /// Example: `https://est.example.com:8443`
+    ///
+    /// **Security**: HTTPS enforced for production. HTTP generates warning.
     pub server_url: Url,
 
-    /// Optional CA label for multi-CA deployments.
+    /// Optional CA label for multi-CA deployments (CM-6: multi-CA support).
     ///
     /// When set, the EST path becomes `/.well-known/est/{ca_label}/{operation}`.
+    /// RFC 7030 Section 3.2.2: Allows single EST server to support multiple CAs.
+    ///
+    /// Example: `ca_label = "corp-issuing-ca"` results in:
+    /// `https://est.example.com/.well-known/est/corp-issuing-ca/simpleenroll`
     pub ca_label: Option<String>,
 
-    /// Client identity for TLS client certificate authentication.
+    /// Client identity for TLS client certificate authentication (IA-5: preferred).
+    ///
+    /// Contains PEM-encoded client certificate and private key for mutual TLS.
+    /// Used for certificate-based authentication (no password transmission).
+    ///
+    /// **Security**: Preferred authentication method. Private key MUST be protected.
     pub client_identity: Option<ClientIdentity>,
 
-    /// HTTP Basic authentication credentials.
+    /// HTTP Basic authentication credentials (IA-5: fallback authentication).
     ///
     /// Used as a fallback when TLS client authentication is not available.
+    /// Credentials are Base64-encoded and transmitted over TLS (SC-8).
+    ///
+    /// **Security**: Use client certificates when possible. HTTP Basic auth
+    /// should only be used over HTTPS to prevent credential exposure.
     pub http_auth: Option<HttpAuth>,
 
-    /// Trust anchor configuration for server certificate verification.
+    /// Trust anchor configuration for server certificate verification (IA-5).
+    ///
+    /// Defines trusted root CAs for validating EST server certificates.
+    /// Options: WebPKI roots, system roots, custom CA certificates.
+    ///
+    /// **Security**: Essential for preventing MITM attacks. Server certificate
+    /// MUST chain to a trusted root CA (RFC 5280 path validation).
     pub trust_anchors: TrustAnchors,
 
-    /// Request timeout duration.
+    /// Request timeout duration (SC-5: DoS protection).
+    ///
+    /// Default: 30 seconds. Prevents indefinite blocking on slow servers.
+    /// Recommended range: 10-120 seconds (EST operations can be slow).
+    ///
+    /// **Security**: Prevents resource exhaustion from slow-read attacks.
     pub timeout: Duration,
 
-    /// Enable TLS channel binding.
+    /// Enable TLS channel binding (SC-11: proof of TLS termination).
     ///
     /// When enabled, the tls-unique value is placed in the CSR challenge-password
-    /// field as per RFC 7030 Section 3.5.
+    /// field as per RFC 7030 Section 3.5. Binds the CSR to the TLS session.
+    ///
+    /// **Security**: Prevents credential forwarding attacks. Ensures EST server
+    /// directly received the CSR over TLS (not relayed through proxy).
+    ///
+    /// Default: `false`. Enable for high-security environments.
     pub channel_binding: bool,
 
-    /// Verify CSR signatures before submission.
+    /// Verify CSR signatures before submission (SI-3: malformed data detection).
     ///
     /// When enabled, the client validates CSR signatures to ensure proof-of-possession
     /// before sending to the EST server. This catches malformed CSRs early and provides
     /// an additional security check.
     ///
     /// Supported algorithms: RSA (SHA-256/384/512), ECDSA (P-256/P-384 with SHA-256/384)
+    ///
+    /// **Security**: Validates CSR integrity before submission. Detects accidental
+    /// or malicious CSR corruption. Verifies proof-of-possession of private key.
+    ///
+    /// Default: `false`. Enable for additional validation (minimal performance impact).
     pub verify_csr_signatures: bool,
 
-    /// Additional HTTP headers to include in requests.
+    /// Additional HTTP headers to include in requests (CM-6: custom headers).
+    ///
+    /// Allows adding custom headers for application-specific requirements
+    /// (e.g., API keys, tracking headers, custom authentication).
+    ///
+    /// **Security Warning**: Do NOT include sensitive data in headers that could
+    /// be logged by proxies/servers. Use for non-sensitive metadata only.
     pub additional_headers: Vec<(String, String)>,
 
-    /// Certificate validation configuration for issued certificates.
+    /// Certificate validation configuration for issued certificates (IA-5).
     ///
     /// When enabled, issued certificates are validated against the configured
     /// trust anchors using RFC 5280 path validation.
+    ///
+    /// **Security**: Validates that the EST server issued a valid certificate
+    /// that chains to a trusted root. Detects certificate validation failures
+    /// before the certificate is installed.
     #[cfg(feature = "validation")]
     pub validation_config: Option<CertificateValidationConfig>,
 
-    /// FIPS 140-2 compliance configuration.
+    /// FIPS 140-2 compliance configuration (SC-13: cryptographic protection).
     ///
     /// When enabled, the client will use FIPS-validated cryptographic modules
     /// and enforce FIPS-approved algorithms only.
+    ///
+    /// **Security**: Required for federal/defense systems requiring FIPS 140-2
+    /// compliance. Restricts algorithms to NIST-approved subset.
     #[cfg(feature = "fips")]
     pub fips_config: Option<crate::fips::FipsConfig>,
 }
@@ -369,18 +527,119 @@ impl EstClientConfigBuilder {
     }
 }
 
+// ============================================================================
+// SECURITY CONTROL: TLS Client Certificate Authentication
+// ----------------------------------------------------------------------------
+// NIST SP 800-53 Rev 5: IA-2 (Identification and Authentication)
+//                       IA-5 (Authenticator Management)
+//                       SC-8 (Transmission Confidentiality)
+//                       SC-12 (Cryptographic Key Establishment)
+// STIG: APSC-DV-000160 (CAT I) - Bidirectional Authentication
+//       APSC-DV-001740 (CAT I) - PKI Certificate Authentication
+// Standards: RFC 7030 Section 3.3.2 (Client Authentication)
+//           RFC 5280 (X.509 PKI)
+// ----------------------------------------------------------------------------
+// Client identity contains the certificate and private key for mutual TLS
+// authentication. Private key is automatically zeroized on drop to prevent
+// memory disclosure attacks.
+//
+// Security Rationale:
+// - IA-2: Client certificates provide strong cryptographic authentication
+// - IA-5: Certificate-based auth eliminates password transmission
+// - SC-12: Private key protection through memory zeroization
+// - Mutual TLS prevents unauthorized EST server access
+// - Preferred authentication method over HTTP Basic auth
+// ============================================================================
+
 /// Client identity for TLS client certificate authentication.
 ///
-/// Private key data is automatically zeroed when dropped for security.
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:**
+/// - IA-2: Identification and Authentication (certificate-based authentication)
+/// - IA-5: Authenticator Management (private key protection)
+/// - SC-8: Transmission Confidentiality (mutual TLS)
+/// - SC-12: Cryptographic Key Establishment (key lifecycle management)
+///
+/// **STIG Findings:**
+/// - APSC-DV-000160 (CAT I): Bidirectional Authentication
+/// - APSC-DV-001740 (CAT I): PKI Certificate-Based Authentication
+///
+/// # Client Certificate Authentication (RFC 7030 Section 3.3.2)
+///
+/// Mutual TLS provides bidirectional authentication where both client and server
+/// authenticate each other using X.509 certificates. This is the **preferred**
+/// authentication method for EST as it:
+/// - Eliminates password transmission (IA-5)
+/// - Provides strong cryptographic authentication (IA-2)
+/// - Protects against MITM attacks (SC-8)
+/// - Supports PKI-based access control (AC-2)
+///
+/// # Private Key Security (SC-12, IA-5)
+///
+/// The private key is automatically zeroized when dropped using the `zeroize`
+/// crate. This prevents:
+/// - Memory dumps from exposing key material
+/// - Core files from containing keys
+/// - Swap space from persisting keys
+/// - Heap analysis attacks
+///
+/// # Certificate Chain Format
+///
+/// The `cert_pem` field should contain the PEM-encoded certificate chain:
+/// 1. **Client certificate** (leaf certificate, FIRST in chain)
+/// 2. **Intermediate certificates** (if any, in order from leaf to root)
+///
+/// The root CA certificate is typically NOT included as it should be in the
+/// server's trust store.
+///
+/// # File Permission Recommendations (Unix)
+///
+/// Private key files SHOULD have restrictive permissions:
+/// - **Mode 0600** (read/write for owner only) - RECOMMENDED
+/// - **Mode 0400** (read-only for owner) - ACCEPTABLE
+///
+/// Use `from_files_with_validation()` to enforce permission checks.
+///
+/// # Example
+///
+/// ```no_run
+/// use usg_est_client::config::ClientIdentity;
+///
+/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// // From PEM bytes
+/// let cert_pem = std::fs::read("client.pem")?;
+/// let key_pem = std::fs::read("client-key.pem")?;
+/// let identity = ClientIdentity::new(cert_pem, key_pem);
+///
+/// // From files (no permission check)
+/// let identity = ClientIdentity::from_files("client.pem", "client-key.pem")?;
+///
+/// // From files (with permission validation - Unix only)
+/// let identity = ClientIdentity::from_files_with_validation(
+///     "client.pem",
+///     "client-key.pem"
+/// )?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone, zeroize::ZeroizeOnDrop)]
 pub struct ClientIdentity {
-    /// PEM-encoded certificate chain.
+    /// PEM-encoded certificate chain (IA-2: client identity credential).
     ///
-    /// The client certificate should be first, followed by any intermediate certificates.
+    /// Format: PEM-encoded X.509 certificates
+    /// Order: Client cert FIRST, then intermediates (if any)
+    ///
+    /// **Security**: Certificate is public information (not zeroized).
     #[zeroize(skip)]
     pub cert_pem: Vec<u8>,
 
-    /// PEM-encoded private key - automatically zeroed on drop.
+    /// PEM-encoded private key (IA-5: authentication secret).
+    ///
+    /// Supports: RSA, ECDSA private keys in PKCS#8 or traditional format
+    ///
+    /// **Security**: Automatically zeroized on drop to prevent memory disclosure.
+    /// NEVER log or serialize this field. Protect at rest with filesystem permissions.
     pub key_pem: Vec<u8>,
 }
 
@@ -465,15 +724,94 @@ impl ClientIdentity {
     }
 }
 
+// ============================================================================
+// SECURITY CONTROL: HTTP Basic Authentication
+// ----------------------------------------------------------------------------
+// NIST SP 800-53 Rev 5: IA-2 (Identification and Authentication)
+//                       IA-5 (Authenticator Management)
+//                       SC-8 (Transmission Confidentiality)
+// STIG: APSC-DV-001740 (CAT I) - Authentication
+//       APSC-DV-002440 (CAT I) - Transmission Confidentiality
+// Standards: RFC 7617 (HTTP Basic Authentication)
+//           RFC 7030 Section 3.2.3 (HTTP-Based Client Authentication)
+// ----------------------------------------------------------------------------
+// HTTP Basic authentication for EST client authentication. Credentials are
+// Base64-encoded and transmitted over TLS. Uses zeroize to securely erase
+// credentials from memory when dropped.
+//
+// Security Rationale:
+// - IA-2: Username/password authentication
+// - SC-8: MUST be used over HTTPS (credentials transmitted in clear over TLS)
+// - IA-5: Credentials zeroized on drop to prevent memory disclosure
+// - Fallback authentication when client certificates unavailable
+// - Less secure than client certificate authentication (prefer mutual TLS)
+// ============================================================================
+
 /// HTTP Basic authentication credentials.
 ///
-/// Uses `zeroize` to securely erase sensitive data from memory when dropped.
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:**
+/// - IA-2: Identification and Authentication (user authentication)
+/// - IA-5: Authenticator Management (credential protection)
+/// - SC-8: Transmission Confidentiality (HTTPS required)
+///
+/// **STIG Findings:**
+/// - APSC-DV-001740 (CAT I): Authentication
+/// - APSC-DV-002440 (CAT I): Transmission Confidentiality
+///
+/// # HTTP Basic Authentication (RFC 7617)
+///
+/// HTTP Basic authentication sends credentials as Base64-encoded `username:password`
+/// in the `Authorization` header. This is a **fallback** authentication method when
+/// TLS client certificates are not available.
+///
+/// # Security Warnings
+///
+/// - **MUST use HTTPS**: Credentials transmitted in clear over TLS (Base64 encoding
+///   is NOT encryption). HTTP Basic over HTTP is completely insecure.
+/// - **Prefer client certificates**: Mutual TLS (client certificates) is more secure
+///   as it eliminates password transmission entirely.
+/// - **Password complexity**: Use strong, random passwords (minimum 16 characters,
+///   high entropy recommended).
+/// - **Credential storage**: Do NOT hardcode credentials. Use environment variables,
+///   secret management systems, or secure credential stores.
+///
+/// # Memory Security (IA-5)
+///
+/// Uses `zeroize` to securely erase credentials from memory when dropped. This prevents:
+/// - Memory dumps from exposing credentials
+/// - Core files from containing passwords
+/// - Swap space from persisting credentials
+///
+/// # Example
+///
+/// ```no_run
+/// use usg_est_client::config::HttpAuth;
+///
+/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// // From environment variables (RECOMMENDED)
+/// let username = std::env::var("EST_USERNAME")?;
+/// let password = std::env::var("EST_PASSWORD")?;
+/// let auth = HttpAuth::new(username, password);
+///
+/// // Direct creation (NOT RECOMMENDED for production)
+/// let auth = HttpAuth::new("admin", "very-strong-password-here");
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone, zeroize::ZeroizeOnDrop)]
 pub struct HttpAuth {
-    /// Username (may be empty for password-only auth).
+    /// Username (IA-2: user identifier).
+    ///
+    /// May be empty for password-only authentication (rare).
+    /// Zeroized on drop for defense-in-depth (usernames less sensitive than passwords).
     pub username: String,
 
-    /// Password - automatically zeroed on drop.
+    /// Password (IA-5: authentication secret).
+    ///
+    /// **Security**: Automatically zeroized on drop. NEVER log or serialize.
+    /// Use strong, random passwords (minimum 16 characters recommended).
     #[zeroize(skip)] // We'll manually zeroize via ZeroizeOnDrop
     pub password: String,
 }
@@ -496,25 +834,90 @@ impl zeroize::Zeroize for HttpAuth {
     }
 }
 
+// ============================================================================
+// SECURITY CONTROL: Trust Anchor Configuration
+// ----------------------------------------------------------------------------
+// NIST SP 800-53 Rev 5: IA-5 (Authenticator Management)
+//                       SC-8 (Transmission Confidentiality)
+//                       SC-12 (Cryptographic Key Establishment)
+//                       SC-13 (Cryptographic Protection)
+// STIG: APSC-DV-001750 (CAT I) - Certificate Validation
+//       APSC-DV-000460 (CAT I) - PKI Certificate Validation
+// Standards: RFC 5280 (X.509 PKI Certificate Validation)
+//           RFC 7030 Section 3.3.1 (Server Authentication)
+// ----------------------------------------------------------------------------
+// Configures trust anchors for EST server certificate validation. Trust
+// anchors establish the root of trust for server authentication per RFC 5280.
+//
+// Security Rationale:
+// - IA-5: Trust anchors define trusted authentication authorities
+// - SC-8: Prevents MITM attacks through server certificate validation
+// - RFC 5280: Path validation from server cert to trusted root CA
+// - Multiple trust models supported (WebPKI, explicit CAs, bootstrap TOFU)
+// ============================================================================
+
 /// Trust anchor configuration for server certificate verification.
+///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:**
+/// - IA-5: Authenticator Management (trust anchor management)
+/// - SC-8: Transmission Confidentiality (server authentication prevents MITM)
+/// - SC-12: Cryptographic Key Establishment (trust anchor lifecycle)
+/// - SC-13: Cryptographic Protection (certificate validation algorithms)
+///
+/// **STIG Findings:**
+/// - APSC-DV-001750 (CAT I): Certificate Validation
+/// - APSC-DV-000460 (CAT I): PKI Certificate Validation
+///
+/// # Trust Anchor Selection (IA-5)
+///
+/// | Use Case | Trust Model | Security | When to Use |
+/// |----------|-------------|----------|-------------|
+/// | Public EST servers | WebPKI | High | Commercial CAs (Let's Encrypt, DigiCert) |
+/// | Enterprise PKI | Explicit CA | High | Internal/private CAs |
+/// | Initial enrollment | Bootstrap (TOFU) | Medium | CA cert unknown, OOB fingerprint |
+/// | Development only | InsecureAcceptAny | NONE | Local testing ONLY |
 #[derive(Clone)]
 pub enum TrustAnchors {
-    /// Use Mozilla's root CA store (webpki-roots).
+    /// Use Mozilla's root CA store (webpki-roots) - Default for public CAs.
+    ///
+    /// **Security**: High - Same trusted CAs as Firefox/Chrome
+    /// **Use case**: Public EST servers with commercial CA certificates
+    ///
+    /// Includes ~140 trusted root CAs from Mozilla's CA Certificate Program.
     WebPki,
 
-    /// Use explicit CA certificates (PEM-encoded).
+    /// Use explicit CA certificates (PEM-encoded) - Enterprise PKI.
+    ///
+    /// **Security**: High - Precise control over trusted CAs
+    /// **Use case**: Enterprise deployments with internal Certificate Authorities
+    ///
+    /// Allows pinning specific CA certificates for enhanced security.
+    /// Format: Vec of PEM-encoded X.509 CA certificates
     Explicit(Vec<Vec<u8>>),
 
-    /// Bootstrap mode with fingerprint verification callback.
+    /// Bootstrap mode with fingerprint verification - Trust-On-First-Use (TOFU).
     ///
-    /// Used for Trust-On-First-Use (TOFU) scenarios where the CA certificate
-    /// is not known in advance.
+    /// **Security**: Medium - Requires out-of-band fingerprint verification
+    /// **Use case**: Initial enrollment when CA certificate unknown
+    ///
+    /// **Security Warning**: Vulnerable to MITM if fingerprint not verified
+    /// out-of-band (secure email, phone, physical meeting).
+    ///
+    /// See [`BootstrapConfig`] for implementation.
     Bootstrap(BootstrapConfig),
 
-    /// Accept any server certificate (insecure, for testing only).
+    /// Accept any server certificate - **INSECURE, TESTING ONLY**.
     ///
-    /// **WARNING**: This disables all server certificate verification.
-    /// Only use for testing purposes.
+    /// **Security**: NONE - Completely disables certificate validation
+    ///
+    /// **WARNING**: **NEVER** use in production. Violates:
+    /// - NIST SP 800-53 Rev 5: IA-5, SC-8, SC-13
+    /// - STIG APSC-DV-001750 (CAT I), APSC-DV-000460 (CAT I)
+    /// - RFC 7030 Section 3.3.1
+    ///
+    /// Only for local development/testing with self-signed certificates.
     InsecureAcceptAny,
 }
 

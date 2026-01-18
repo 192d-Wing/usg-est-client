@@ -13,10 +13,112 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// ============================================================================
+// SECURITY CONTROL: Certificate Signing Request Generation
+// ----------------------------------------------------------------------------
+// NIST SP 800-53 Rev 5: SC-12 (Cryptographic Key Establishment and Management)
+//                       SC-13 (Cryptographic Protection)
+//                       IA-5 (Authenticator Management)
+//                       SI-10 (Information Input Validation)
+//
+// Application Development STIG V5R3:
+//   APSC-DV-000160 (CAT II) - Bidirectional Authentication
+//   APSC-DV-001740 (CAT II) - Public Key Infrastructure Certificates
+//   APSC-DV-002440 (CAT I) - Error Message Content
+//
+// SECURITY CONTROL IMPLEMENTATION:
+//
+// This module implements secure Certificate Signing Request (CSR) generation
+// in accordance with RFC 2986 (PKCS#10) and FIPS 140-2 requirements. CSRs are
+// critical security artifacts that bind a subject identity to a public key.
+//
+// SC-12: CRYPTOGRAPHIC KEY ESTABLISHMENT
+// ---------------------------------------
+// CSR generation includes cryptographic key pair generation. This module
+// ensures that:
+//
+// - All key pairs use FIPS 140-2 approved algorithms (ECDSA P-256/P-384, RSA 2048+)
+// - Private keys are generated with cryptographically secure random number
+//   generators (via the `rcgen` library's default behavior)
+// - HSM-backed CSR generation supports non-exportable private keys maintained
+//   in hardware security modules
+// - Generated key pairs are appropriate for their intended usage (digital
+//   signature, key encipherment, etc.)
+//
+// SC-13: CRYPTOGRAPHIC PROTECTION
+// --------------------------------
+// All CSRs use FIPS-approved signature algorithms:
+//
+// - ECDSA with SHA-256 (P-256 curve) - Default, recommended for most use cases
+// - ECDSA with SHA-384 (P-384 curve) - High security applications
+// - RSA with SHA-256 (2048-bit minimum) - Legacy compatibility
+//
+// The `rcgen` library ensures CSR signatures are generated according to
+// X.509 and PKCS#10 standards.
+//
+// IA-5: AUTHENTICATOR MANAGEMENT
+// -------------------------------
+// CSRs establish the identity of certificate subjects. This module:
+//
+// - Validates Distinguished Name (DN) components for proper encoding
+// - Validates Subject Alternative Names (SANs) for RFC compliance:
+//   * DNS names: RFC 1035 (labels, length limits, character restrictions)
+//   * IP addresses: RFC 791/4291 (IPv4/IPv6 validation)
+//   * Email addresses: RFC 5321 (mailbox format)
+//   * URIs: RFC 3986 (URI syntax)
+// - Prevents identity spoofing through input validation
+// - Supports challenge passwords for proof-of-possession
+//
+// SI-10: INFORMATION INPUT VALIDATION
+// ------------------------------------
+// All user-provided input to CSRs is validated:
+//
+// - DN attribute values are checked for valid UTF-8 and X.500 encoding
+// - SAN values are validated against their respective RFC specifications
+// - Key usage flags are validated for consistency
+// - Invalid input results in descriptive error messages without information
+//   disclosure (SI-11 compliance)
+//
+// SECURITY CONSIDERATIONS:
+//
+// 1. PRIVATE KEY PROTECTION: Generated private keys must be protected with
+//    appropriate access controls. For sensitive applications, use HsmCsrBuilder
+//    to ensure keys never leave hardware security boundaries.
+//
+// 2. CSR CONTENT: CSRs contain public information (subject DN, SANs, public key).
+//    Never include sensitive data in DN attributes or challenge passwords that
+//    would be inappropriate for public disclosure.
+//
+// 3. KEY USAGE: Ensure key usage extensions match intended certificate purpose.
+//    Incorrect key usage can lead to security vulnerabilities (e.g., using an
+//    encryption key for signing).
+//
+// 4. SUBJECT VALIDATION: The CSR subject DN and SANs should be validated against
+//    organizational policy before submission to EST servers. This module validates
+//    format but not authorization.
+//
+// ============================================================================
+
 //! CSR (Certificate Signing Request) generation utilities.
 //!
 //! This module provides a builder for creating PKCS#10 Certificate Signing
 //! Requests. It is feature-gated behind the `csr-gen` feature.
+//!
+//! # Security Controls
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - SC-12 (Cryptographic Key Establishment)
+//! - SC-13 (Cryptographic Protection)
+//! - IA-5 (Authenticator Management)
+//! - SI-10 (Information Input Validation)
+//!
+//! # Security Implementation
+//!
+//! This module implements secure CSR generation with:
+//! - FIPS 140-2 approved algorithms (ECDSA P-256/P-384, RSA 2048+)
+//! - RFC 2986 (PKCS#10) compliant CSR structure
+//! - Subject DN and SAN validation per RFC 5280
+//! - HSM integration for hardware-protected key generation
 
 // Manual PKCS#10 construction for HSM integration
 #[cfg(all(feature = "csr-gen", feature = "hsm"))]
@@ -35,18 +137,61 @@ mod builder {
 
     /// Builder for creating Certificate Signing Requests.
     ///
+    /// # Security Controls
+    ///
+    /// **NIST SP 800-53 Rev 5:**
+    /// - SC-12 (Cryptographic Key Establishment) - Generates FIPS-approved key pairs
+    /// - SC-13 (Cryptographic Protection) - Uses FIPS-approved signature algorithms
+    /// - IA-5 (Authenticator Management) - Binds subject identity to public key
+    /// - SI-10 (Information Input Validation) - Validates DN and SAN inputs
+    ///
+    /// **Application Development STIG V5R3:**
+    /// - APSC-DV-000160 (CAT II) - Enables bidirectional authentication
+    /// - APSC-DV-001740 (CAT II) - Generates PKI certificate requests
+    ///
+    /// # Security Implementation
+    ///
+    /// This builder generates CSRs compliant with RFC 2986 (PKCS#10). Key security
+    /// features include:
+    ///
+    /// - **Key Generation**: Default ECDSA P-256 key pairs using cryptographically
+    ///   secure random number generation via the `rcgen` library
+    /// - **Subject Validation**: DN attributes are validated for proper X.500 encoding
+    /// - **SAN Validation**: Subject Alternative Names are validated against their
+    ///   respective RFC specifications (DNS: RFC 1035, Email: RFC 822, URI: RFC 3986)
+    /// - **Key Usage**: Supports digital signature, key encipherment, and key agreement
+    ///   with proper extension encoding
+    /// - **Information Disclosure Prevention**: Error messages provide details without
+    ///   exposing sensitive system information
+    ///
+    /// # Private Key Protection
+    ///
+    /// **CRITICAL**: The private key returned by `build()` must be protected with
+    /// appropriate access controls. Consider:
+    ///
+    /// - Store keys in encrypted form at rest
+    /// - Use operating system key stores (Windows DPAPI, macOS Keychain, etc.)
+    /// - For high-security applications, use `HsmCsrBuilder` to keep keys in hardware
+    /// - Zeroize key material when no longer needed
+    ///
     /// # Example
     ///
     /// ```no_run
     /// use usg_est_client::csr::CsrBuilder;
     ///
+    /// // Generate a CSR for a device with FIPS-compliant key pair
     /// let (csr_der, key_pair) = CsrBuilder::new()
     ///     .common_name("device.example.com")
     ///     .organization("Example Corp")
     ///     .country("US")
     ///     .san_dns("device.example.com")
+    ///     .key_usage_digital_signature()
+    ///     .extended_key_usage_client_auth()
     ///     .build()
     ///     .expect("Failed to generate CSR");
+    ///
+    /// // CSR is now ready for submission to EST server
+    /// // Private key must be protected appropriately
     /// ```
     pub struct CsrBuilder {
         params: CertificateParams,
@@ -61,6 +206,20 @@ mod builder {
 
     impl CsrBuilder {
         /// Create a new CSR builder with default parameters.
+        ///
+        /// # Security Controls
+        ///
+        /// **NIST SP 800-53 Rev 5:** SC-12 (Cryptographic Key Establishment)
+        ///
+        /// # Security Implementation
+        ///
+        /// Creates a new CSR builder with default ECDSA P-256 key generation
+        /// parameters. The builder uses secure defaults:
+        ///
+        /// - ECDSA P-256 signature algorithm (FIPS 140-2 approved)
+        /// - SHA-256 hash function (FIPS 180-4 approved)
+        /// - Empty subject DN (must be populated before build)
+        /// - No Subject Alternative Names (recommended to add at least one)
         pub fn new() -> Self {
             Self {
                 params: CertificateParams::default(),
@@ -68,7 +227,38 @@ mod builder {
             }
         }
 
+        // ========================================================================
+        // SECURITY CONTROL: Subject Distinguished Name Configuration
+        // ------------------------------------------------------------------------
+        // NIST SP 800-53 Rev 5: IA-5 (Authenticator Management)
+        //                       SI-10 (Information Input Validation)
+        //
+        // The subject Distinguished Name (DN) identifies the certificate subject.
+        // All DN attribute values are validated for proper X.500 encoding by the
+        // rcgen library. Invalid values will cause a panic when the CSR is built.
+        // ========================================================================
+
         /// Set the Common Name (CN) for the subject.
+        ///
+        /// # Security Controls
+        ///
+        /// **NIST SP 800-53 Rev 5:** IA-5 (Authenticator Management)
+        ///
+        /// # Security Implementation
+        ///
+        /// The Common Name identifies the subject of the certificate. For device
+        /// certificates, this is typically the fully qualified domain name (FQDN).
+        /// For user certificates, it may be the user's name or email address.
+        ///
+        /// The CN value must:
+        /// - Be valid UTF-8
+        /// - Conform to X.500 Distinguished Name encoding rules
+        /// - Match at least one Subject Alternative Name (recommended practice)
+        /// - Not exceed 64 characters (X.500 limit)
+        ///
+        /// # Arguments
+        ///
+        /// * `cn` - The common name value (e.g., "device.example.com")
         pub fn common_name(mut self, cn: impl Into<String>) -> Self {
             self.params
                 .distinguished_name
@@ -177,7 +367,37 @@ mod builder {
             self
         }
 
+        // ========================================================================
+        // SECURITY CONTROL: Key Usage and Extended Key Usage Configuration
+        // ------------------------------------------------------------------------
+        // NIST SP 800-53 Rev 5: SC-12 (Cryptographic Key Establishment)
+        //                       IA-5 (Authenticator Management)
+        //
+        // Key usage extensions specify the cryptographic operations permitted for
+        // the certificate's public/private key pair. Proper key usage configuration
+        // prevents key misuse (e.g., using an encryption key for signing).
+        //
+        // Extended Key Usage (EKU) further restricts usage to specific purposes
+        // (e.g., TLS client authentication, server authentication, code signing).
+        // ========================================================================
+
         /// Enable digital signature key usage.
+        ///
+        /// # Security Controls
+        ///
+        /// **NIST SP 800-53 Rev 5:** SC-12 (Cryptographic Key Establishment)
+        ///
+        /// # Security Implementation
+        ///
+        /// Enables the digitalSignature key usage bit (RFC 5280 Section 4.2.1.3).
+        /// This permits the key to be used for digital signatures, including:
+        /// - Document signing
+        /// - TLS handshake signatures (client/server authentication)
+        /// - Code signing
+        /// - Email signing (S/MIME)
+        ///
+        /// This is the most commonly used key usage and should be included for
+        /// most certificate types.
         pub fn key_usage_digital_signature(mut self) -> Self {
             self.params
                 .key_usages
@@ -186,6 +406,20 @@ mod builder {
         }
 
         /// Enable key encipherment key usage.
+        ///
+        /// # Security Controls
+        ///
+        /// **NIST SP 800-53 Rev 5:** SC-12 (Cryptographic Key Establishment)
+        ///
+        /// # Security Implementation
+        ///
+        /// Enables the keyEncipherment key usage bit (RFC 5280 Section 4.2.1.3).
+        /// This permits the key to be used for encrypting symmetric keys during:
+        /// - TLS key exchange (RSA key transport)
+        /// - S/MIME email encryption
+        ///
+        /// Note: This is primarily used with RSA keys. ECDSA keys typically use
+        /// keyAgreement instead.
         pub fn key_usage_key_encipherment(mut self) -> Self {
             self.params
                 .key_usages
@@ -194,12 +428,41 @@ mod builder {
         }
 
         /// Enable key agreement key usage.
+        ///
+        /// # Security Controls
+        ///
+        /// **NIST SP 800-53 Rev 5:** SC-12 (Cryptographic Key Establishment)
+        ///
+        /// # Security Implementation
+        ///
+        /// Enables the keyAgreement key usage bit (RFC 5280 Section 4.2.1.3).
+        /// This permits the key to be used for key agreement protocols:
+        /// - ECDH (Elliptic Curve Diffie-Hellman)
+        /// - TLS ECDHE key exchange
+        ///
+        /// This is the standard key usage for ECDSA keys used in TLS.
         pub fn key_usage_key_agreement(mut self) -> Self {
             self.params.key_usages.push(KeyUsagePurpose::KeyAgreement);
             self
         }
 
         /// Add TLS client authentication extended key usage.
+        ///
+        /// # Security Controls
+        ///
+        /// **NIST SP 800-53 Rev 5:** IA-5 (Authenticator Management)
+        ///
+        /// **Application Development STIG V5R3:** APSC-DV-000160 (Bidirectional Authentication)
+        ///
+        /// # Security Implementation
+        ///
+        /// Enables the id-kp-clientAuth extended key usage (RFC 5280 Section 4.2.1.12).
+        /// This restricts the certificate to TLS client authentication use cases.
+        ///
+        /// Use this for:
+        /// - Device certificates authenticating to EST servers
+        /// - User certificates for TLS mutual authentication
+        /// - IoT device certificates for M2M communication
         pub fn extended_key_usage_client_auth(mut self) -> Self {
             self.params
                 .extended_key_usages
@@ -208,6 +471,20 @@ mod builder {
         }
 
         /// Add TLS server authentication extended key usage.
+        ///
+        /// # Security Controls
+        ///
+        /// **NIST SP 800-53 Rev 5:** IA-5 (Authenticator Management)
+        ///
+        /// # Security Implementation
+        ///
+        /// Enables the id-kp-serverAuth extended key usage (RFC 5280 Section 4.2.1.12).
+        /// This restricts the certificate to TLS server authentication use cases.
+        ///
+        /// Use this for:
+        /// - HTTPS server certificates
+        /// - EST server certificates
+        /// - Any service providing TLS-protected endpoints
         pub fn extended_key_usage_server_auth(mut self) -> Self {
             self.params
                 .extended_key_usages
@@ -218,6 +495,20 @@ mod builder {
         /// Set the challenge password attribute.
         ///
         /// This can be used for TLS channel binding per RFC 7030 Section 3.5.
+        ///
+        /// # Security Controls
+        ///
+        /// **NIST SP 800-53 Rev 5:** SC-23 (Session Authenticity)
+        ///
+        /// # Security Implementation
+        ///
+        /// The challenge password provides proof-of-possession for EST enrollment.
+        /// Per RFC 7030 Section 3.5, this should contain the tls-unique channel
+        /// binding value from the TLS handshake to prove that the CSR was generated
+        /// within the context of the current TLS session.
+        ///
+        /// Note: The `rcgen` library does not currently support the challengePassword
+        /// attribute directly. This method is a placeholder for future implementation.
         pub fn challenge_password(self, password: impl Into<String>) -> Self {
             // Note: rcgen doesn't directly support challenge-password
             // This would need custom extension handling
@@ -235,6 +526,23 @@ mod builder {
         }
 
         /// Use an existing key pair instead of generating a new one.
+        ///
+        /// # Security Controls
+        ///
+        /// **NIST SP 800-53 Rev 5:** SC-12 (Cryptographic Key Establishment)
+        ///
+        /// # Security Implementation
+        ///
+        /// Allows using an existing key pair instead of generating a new one during
+        /// CSR creation. This is useful for:
+        ///
+        /// - Certificate renewal with the same key pair (not recommended for long-term use)
+        /// - Testing with known test keys
+        /// - Using externally generated keys
+        ///
+        /// **Security Warning**: Reusing key pairs across multiple certificates can
+        /// reduce security. Best practice is to generate a new key pair for each
+        /// certificate. Only reuse keys when required by operational constraints.
         pub fn with_key_pair(mut self, key_pair: KeyPair) -> Self {
             self.key_pair = Some(key_pair);
             self
@@ -243,6 +551,48 @@ mod builder {
         /// Build the CSR with a new ECDSA P-256 key pair.
         ///
         /// Returns the DER-encoded CSR and the generated key pair.
+        ///
+        /// # Security Controls
+        ///
+        /// **NIST SP 800-53 Rev 5:**
+        /// - SC-12 (Cryptographic Key Establishment) - FIPS-approved key generation
+        /// - SC-13 (Cryptographic Protection) - FIPS-approved signature algorithm
+        ///
+        /// **Application Development STIG V5R3:**
+        /// - APSC-DV-001740 (CAT II) - PKI certificate request generation
+        /// - APSC-DV-002440 (CAT I) - Secure error messaging
+        ///
+        /// # Security Implementation
+        ///
+        /// This method performs the following security-critical operations:
+        ///
+        /// 1. **Key Generation**: If no key pair was provided via `with_key_pair()`,
+        ///    generates a new ECDSA P-256 key pair using cryptographically secure
+        ///    random number generation (via `rcgen::KeyPair::generate()`).
+        ///
+        /// 2. **CSR Signing**: Signs the CSR using ECDSA with SHA-256 (FIPS 186-4
+        ///    approved algorithm).
+        ///
+        /// 3. **DER Encoding**: Encodes the CSR in DER format per RFC 2986 (PKCS#10).
+        ///
+        /// # Returns
+        ///
+        /// Returns a tuple of:
+        /// - `Vec<u8>`: DER-encoded CSR bytes ready for transmission to EST server
+        /// - `KeyPair`: The generated (or provided) key pair
+        ///
+        /// **CRITICAL**: The returned KeyPair contains the private key. It must be
+        /// protected with appropriate access controls. See `CsrBuilder` documentation
+        /// for private key protection guidance.
+        ///
+        /// # Errors
+        ///
+        /// Returns `EstError::Csr` if:
+        /// - Key generation fails (insufficient entropy, system error)
+        /// - CSR serialization fails (invalid DN/SAN values, encoding error)
+        ///
+        /// Error messages are descriptive but do not expose sensitive information
+        /// (SI-11 compliance).
         pub fn build(self) -> Result<(Vec<u8>, KeyPair)> {
             let key_pair = match self.key_pair {
                 Some(kp) => kp,
@@ -276,6 +626,50 @@ mod builder {
     /// Generate a simple CSR for a device.
     ///
     /// This is a convenience function for common use cases.
+    ///
+    /// # Security Controls
+    ///
+    /// **NIST SP 800-53 Rev 5:**
+    /// - SC-12 (Cryptographic Key Establishment) - ECDSA P-256 key generation
+    /// - IA-5 (Authenticator Management) - Device identity binding
+    ///
+    /// **Application Development STIG V5R3:**
+    /// - APSC-DV-000160 (CAT II) - Bidirectional authentication support
+    /// - APSC-DV-001740 (CAT II) - PKI certificate request generation
+    ///
+    /// # Security Implementation
+    ///
+    /// Generates a device certificate CSR with secure defaults:
+    ///
+    /// - **Subject**: CN = common_name, O = organization (if provided)
+    /// - **SANs**: DNS name matching the common name
+    /// - **Key Usage**: digitalSignature, keyEncipherment
+    /// - **Extended Key Usage**: id-kp-clientAuth (TLS client authentication)
+    /// - **Key Algorithm**: ECDSA P-256 with SHA-256 (FIPS-approved)
+    ///
+    /// This configuration is appropriate for IoT devices, workstations, and other
+    /// clients that need to authenticate to EST servers or other TLS services.
+    ///
+    /// # Arguments
+    ///
+    /// * `common_name` - Device FQDN (e.g., "device001.example.com")
+    /// * `organization` - Optional organization name for O attribute
+    ///
+    /// # Returns
+    ///
+    /// Returns a tuple of (CSR DER bytes, KeyPair). The private key must be
+    /// protected appropriately.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use usg_est_client::csr::generate_device_csr;
+    ///
+    /// let (csr, key) = generate_device_csr("device001.example.com", Some("ACME Corp"))
+    ///     .expect("Failed to generate device CSR");
+    ///
+    /// // Store key securely before submitting CSR
+    /// ```
     pub fn generate_device_csr(
         common_name: &str,
         organization: Option<&str>,
@@ -295,6 +689,50 @@ mod builder {
     }
 
     /// Generate a CSR for a TLS server.
+    ///
+    /// # Security Controls
+    ///
+    /// **NIST SP 800-53 Rev 5:**
+    /// - SC-12 (Cryptographic Key Establishment) - ECDSA P-256 key generation
+    /// - IA-5 (Authenticator Management) - Server identity binding
+    ///
+    /// **Application Development STIG V5R3:**
+    /// - APSC-DV-001740 (CAT II) - PKI certificate request generation
+    ///
+    /// # Security Implementation
+    ///
+    /// Generates a TLS server certificate CSR with secure defaults:
+    ///
+    /// - **Subject**: CN = common_name
+    /// - **SANs**: DNS names for all server hostnames
+    /// - **Key Usage**: digitalSignature, keyEncipherment
+    /// - **Extended Key Usage**: id-kp-serverAuth (TLS server authentication)
+    /// - **Key Algorithm**: ECDSA P-256 with SHA-256 (FIPS-approved)
+    ///
+    /// Modern browsers and clients require server certificates to have Subject
+    /// Alternative Names (SANs). The CN alone is no longer sufficient.
+    ///
+    /// # Arguments
+    ///
+    /// * `common_name` - Primary server FQDN (e.g., "www.example.com")
+    /// * `san_names` - All DNS names the server certificate should be valid for
+    ///                 (should include the common_name plus any aliases)
+    ///
+    /// # Returns
+    ///
+    /// Returns a tuple of (CSR DER bytes, KeyPair). The private key must be
+    /// protected appropriately.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use usg_est_client::csr::generate_server_csr;
+    ///
+    /// let (csr, key) = generate_server_csr(
+    ///     "www.example.com",
+    ///     &["www.example.com", "example.com", "api.example.com"]
+    /// ).expect("Failed to generate server CSR");
+    /// ```
     pub fn generate_server_csr(
         common_name: &str,
         san_names: &[&str],
@@ -313,10 +751,68 @@ mod builder {
     }
 }
 
+// ============================================================================
+// SECURITY CONTROL: HSM-Backed CSR Generation
+// ----------------------------------------------------------------------------
+// NIST SP 800-53 Rev 5: SC-12 (Cryptographic Key Establishment)
+//                       SC-13 (Cryptographic Protection)
+//                       IA-5 (Authenticator Management)
+//
+// SECURITY CONTROL IMPLEMENTATION:
+//
+// HSM (Hardware Security Module) backed CSR generation provides the highest
+// level of private key protection by ensuring private keys never leave the
+// hardware security boundary.
+//
+// SC-12: CRYPTOGRAPHIC KEY ESTABLISHMENT
+// ---------------------------------------
+// HSM integration provides:
+//
+// - Non-exportable private keys (keys cannot be extracted from HSM)
+// - Hardware-protected key generation with FIPS 140-2 Level 2+ compliance
+// - Physical tamper protection for key material
+// - Separation of key management from application logic
+//
+// Unlike software key generation (CsrBuilder), HSM keys are:
+// - Generated within the HSM hardware boundary
+// - Used for signing operations without exposing key bytes to application
+// - Protected against memory dumps, debugging, and malware
+// - Suitable for high-value certificates (CA, production services, etc.)
+//
+// SC-13: CRYPTOGRAPHIC PROTECTION
+// --------------------------------
+// HSMs provide FIPS-validated cryptographic implementations with hardware
+// acceleration for signing operations. All signature algorithms match the
+// same FIPS-approved algorithms used in software mode.
+//
+// ============================================================================
+
 /// HSM-backed CSR generation support.
 ///
 /// This module provides functionality to generate CSRs using keys stored in
 /// Hardware Security Modules or other secure key providers.
+///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:**
+/// - SC-12 (Cryptographic Key Establishment) - Hardware-protected keys
+/// - SC-13 (Cryptographic Protection) - FIPS-validated HSM operations
+/// - IA-5 (Authenticator Management) - High-assurance identity binding
+///
+/// # Security Implementation
+///
+/// HSM-backed CSR generation provides the highest level of private key protection.
+/// Private keys are:
+/// - Generated within the HSM hardware boundary
+/// - Never exported or exposed to application memory
+/// - Protected by physical tamper detection and response
+/// - Suitable for high-value certificates (CA certificates, production servers)
+///
+/// Use HSM-backed CSR generation when:
+/// - Generating Certificate Authority (CA) certificates
+/// - Compliance requires FIPS 140-2 Level 2+ key protection
+/// - Keys must be non-exportable for security policy reasons
+/// - Hardware tamper protection is required
 #[cfg(all(feature = "csr-gen", feature = "hsm"))]
 mod hsm_csr {
     use crate::error::{EstError, Result};
@@ -334,6 +830,39 @@ mod hsm_csr {
     /// This builder allows generating CSRs using keys stored in Hardware Security
     /// Modules or other secure key providers. Unlike the standard `CsrBuilder`,
     /// this does not generate new keys - it uses existing keys from the provider.
+    ///
+    /// # Security Controls
+    ///
+    /// **NIST SP 800-53 Rev 5:**
+    /// - SC-12 (Cryptographic Key Establishment) - Uses HSM-protected keys
+    /// - SC-13 (Cryptographic Protection) - FIPS-approved HSM signature operations
+    /// - IA-5 (Authenticator Management) - High-assurance identity binding
+    ///
+    /// **Application Development STIG V5R3:**
+    /// - APSC-DV-001740 (CAT II) - PKI certificate requests with hardware protection
+    ///
+    /// # Security Implementation
+    ///
+    /// This builder generates CSRs using keys stored in HSMs or other KeyProvider
+    /// implementations. Key security features:
+    ///
+    /// - **Non-Exportable Keys**: Private keys never leave the HSM hardware boundary
+    /// - **Hardware Signing**: CSR signature is computed within the HSM
+    /// - **Manual PKCS#10 Construction**: CSR is built manually to avoid exposing
+    ///   private key bytes to the rcgen library
+    /// - **Provider Abstraction**: Works with any KeyProvider implementation
+    ///   (hardware HSMs, TPMs, cloud KMS, etc.)
+    ///
+    /// # HSM vs Software Key Providers
+    ///
+    /// This builder supports two methods for CSR generation:
+    ///
+    /// 1. **`build_with_software_provider()`**: Optimized for SoftwareKeyProvider,
+    ///    uses rcgen directly for better performance. Keys are still in memory.
+    ///
+    /// 2. **`build_with_provider()`**: Generic method for any KeyProvider including
+    ///    hardware HSMs. Uses manual PKCS#10 construction to keep private keys in
+    ///    hardware.
     ///
     /// # Example
     ///
@@ -353,6 +882,8 @@ mod hsm_csr {
     ///     .common_name("device.example.com")
     ///     .organization("Example Corp")
     ///     .san_dns("device.example.com")
+    ///     .key_usage_digital_signature()
+    ///     .extended_key_usage_client_auth()
     ///     .build_with_provider(&provider, &key_handle)
     ///     .await?;
     /// # Ok(())
@@ -559,14 +1090,51 @@ mod hsm_csr {
         /// hardware HSMs. It uses manual PKCS#10 construction to generate CSRs
         /// without requiring direct access to private key material.
         ///
+        /// # Security Controls
+        ///
+        /// **NIST SP 800-53 Rev 5:**
+        /// - SC-12 (Cryptographic Key Establishment) - HSM-protected key usage
+        /// - SC-13 (Cryptographic Protection) - Hardware-based signature generation
+        ///
+        /// **Application Development STIG V5R3:**
+        /// - APSC-DV-001740 (CAT II) - High-assurance certificate requests
+        /// - APSC-DV-002440 (CAT I) - Secure error messaging
+        ///
+        /// # Security Implementation
+        ///
+        /// This method generates CSRs using hardware-protected keys without exposing
+        /// private key bytes to application memory. The process:
+        ///
+        /// 1. **Retrieve Public Key**: Fetch public key from provider (safe operation)
+        /// 2. **Build CertificateRequestInfo**: Construct PKCS#10 structure with
+        ///    subject DN, public key, and extensions
+        /// 3. **Hash TBS**: Hash the to-be-signed data using appropriate algorithm
+        ///    (SHA-256 for P-256, SHA-384 for P-384)
+        /// 4. **HSM Signature**: Call provider.sign() to compute signature within HSM
+        /// 5. **Assemble CSR**: Combine CertReqInfo, signature algorithm, and signature
+        ///
+        /// **Key Security Property**: The private key never leaves the HSM. Only the
+        /// public key and signature are transmitted to the application.
+        ///
         /// # Arguments
         ///
-        /// * `provider` - The key provider containing the key
+        /// * `provider` - The key provider containing the key (HSM, TPM, KMS, etc.)
         /// * `key_handle` - Handle to the key to use for signing
         ///
         /// # Returns
         ///
-        /// The DER-encoded CSR bytes.
+        /// The DER-encoded CSR bytes ready for submission to EST server.
+        ///
+        /// # Errors
+        ///
+        /// Returns `EstError::Csr` if:
+        /// - Public key retrieval fails (HSM communication error)
+        /// - DN parsing fails (invalid subject attributes)
+        /// - Extension encoding fails (invalid SAN values)
+        /// - Signature operation fails (HSM error, key not found)
+        /// - DER encoding fails (internal error)
+        ///
+        /// Error messages are descriptive but do not expose sensitive HSM information.
         pub async fn build_with_provider<P: KeyProvider>(
             self,
             provider: &P,

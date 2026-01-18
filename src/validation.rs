@@ -119,6 +119,35 @@ struct AccumulatedNameConstraints {
 }
 
 /// Configuration for certificate validation.
+///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:**
+/// - SC-23 (Session Authenticity) - Name constraint enforcement
+/// - IA-5 (Authenticator Management) - Validity period checks
+/// - AU-10 (Non-Repudiation) - Revocation checking support
+///
+/// # Security Implementation
+///
+/// This configuration controls security-critical validation behaviors:
+///
+/// - **max_chain_length**: Prevents denial-of-service from deeply nested chains.
+///   RFC 5280 recommends limiting path length to prevent resource exhaustion.
+///   Default 10 is reasonable for most PKI hierarchies.
+///
+/// - **check_revocation**: Enables CRL/OCSP revocation checking. When true,
+///   certificates are checked against revocation lists to detect compromised keys.
+///   Note: Not yet implemented.
+///
+/// - **enforce_name_constraints**: When true, validates that CA certificates
+///   only issue for permitted domains/names per RFC 5280 Section 4.2.1.10.
+///   Prevents CAs from issuing for unauthorized namespaces.
+///
+/// - **enforce_policy_constraints**: When true, validates certificate policy
+///   extensions and requirements per RFC 5280 Section 4.2.1.11.
+///
+/// - **allow_expired**: **TESTING ONLY**. When true, skips validity period checks.
+///   **WARNING**: Never enable in production - allows use of expired certificates.
 #[derive(Debug, Clone)]
 pub struct ValidationConfig {
     /// Maximum chain length (default: 10).
@@ -150,6 +179,53 @@ impl Default for ValidationConfig {
 }
 
 /// Result of certificate validation.
+///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:**
+/// - IA-2 (Identification and Authentication) - Validation result for authentication
+/// - AU-3 (Content of Audit Records) - Errors and warnings for audit logging
+///
+/// # Security Implementation
+///
+/// This structure contains the complete validation result including:
+///
+/// - **is_valid**: Boolean indicating if all validation checks passed. Only true
+///   if errors list is empty.
+///
+/// - **chain**: The complete validated certificate chain from end-entity to trusted
+///   root. This chain has passed all signature checks, validity period checks, and
+///   constraint validations.
+///
+/// - **errors**: Critical validation failures that prevent certificate acceptance.
+///   Each error describes a specific RFC 5280 violation or security check failure.
+///   If any errors exist, is_valid will be false.
+///
+/// - **warnings**: Non-fatal issues detected during validation (e.g., unsupported
+///   features, missing optional extensions). Warnings do not affect is_valid but
+///   should be logged for security monitoring.
+///
+/// # Security Usage
+///
+/// Applications MUST check `is_valid` before accepting a certificate:
+///
+/// ```no_run
+/// # use usg_est_client::validation::ValidationResult;
+/// # let result = ValidationResult {
+/// #     is_valid: false,
+/// #     chain: vec![],
+/// #     errors: vec![],
+/// #     warnings: vec![],
+/// # };
+/// if !result.is_valid {
+///     // Log errors for security audit
+///     for error in &result.errors {
+///         eprintln!("Certificate validation failed: {}", error);
+///     }
+///     return Err("Certificate validation failed".into());
+/// }
+/// // Proceed with validated certificate chain
+/// ```
 #[derive(Debug, Clone)]
 pub struct ValidationResult {
     /// Whether the certificate is valid.
@@ -168,6 +244,98 @@ pub struct ValidationResult {
 /// Certificate path validator.
 ///
 /// Implements RFC 5280 certificate path validation algorithm.
+///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:**
+/// - IA-2 (Identification and Authentication) - Certificate-based authentication
+/// - IA-5 (Authenticator Management) - Certificate lifecycle validation
+/// - SC-23 (Session Authenticity) - Binding certificates to sessions
+/// - SI-10 (Information Input Validation) - Certificate data validation
+///
+/// **Application Development STIG V5R3:**
+/// - APSC-DV-003235 (CAT I) - RFC 5280 compliant path validation
+/// - APSC-DV-000170 (CAT I) - FIPS-approved signature algorithms
+/// - APSC-DV-000500 (CAT I) - Input validation of certificate structures
+///
+/// # Security Implementation
+///
+/// This validator implements the complete RFC 5280 Section 6 certification path
+/// validation algorithm with the following security features:
+///
+/// ## Trust Anchor Management (IA-2, IA-5)
+///
+/// - Trust anchors are the foundation of certificate validation
+/// - Only certificates signed by (or chaining to) trust anchors are accepted
+/// - Trust anchor certificates are assumed valid (validity period, constraints)
+/// - Applications must protect trust anchor store from unauthorized modification
+///
+/// ## Chain Building (IA-2)
+///
+/// - Builds certification paths from end-entity to trusted root
+/// - Validates issuer/subject DN matching
+/// - Prevents infinite loops in malformed chains
+/// - Enforces maximum chain length to prevent DoS
+///
+/// ## Signature Verification (SC-13, APSC-DV-000170)
+///
+/// - Verifies all signatures using FIPS-approved algorithms:
+///   * RSA-PKCS#1 v1.5 with SHA-256/384/512 (2048+ bit keys)
+///   * ECDSA with SHA-256 (P-256) or SHA-384 (P-384)
+/// - Rejects weak/deprecated algorithms (MD5, SHA-1, RSA <2048)
+/// - Validates signature algorithm matches key type
+///
+/// ## Validity Period Checks (IA-5)
+///
+/// - Validates notBefore and notAfter times
+/// - Uses system clock for current time reference
+/// - Prevents use of expired or not-yet-valid certificates
+/// - Can be disabled for testing (allow_expired config flag)
+///
+/// ## Name Constraints (SC-23, APSC-DV-003235)
+///
+/// - Enforces DNS, email, URI, and directory name constraints
+/// - Accumulates constraints from CA certificates in chain
+/// - Validates end-entity certificate complies with all constraints
+/// - Prevents CAs from issuing for unauthorized namespaces
+///
+/// ## Policy Constraints (APSC-DV-003235)
+///
+/// - Processes certificate policy extensions
+/// - Enforces requireExplicitPolicy and inhibitPolicyMapping
+/// - Validates policy requirements across chain
+///
+/// # Example
+///
+/// ```no_run
+/// use usg_est_client::validation::{CertificateValidator, ValidationConfig};
+/// # use usg_est_client::Certificate;
+///
+/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// # let end_entity: Certificate = todo!();
+/// # let intermediates: Vec<Certificate> = vec![];
+/// # let trust_anchors: Vec<Certificate> = vec![];
+/// // Create validator with trust anchors
+/// let mut config = ValidationConfig::default();
+/// config.enforce_name_constraints = true;
+/// config.enforce_policy_constraints = true;
+///
+/// let validator = CertificateValidator::with_config(trust_anchors, config);
+///
+/// // Validate certificate chain
+/// let result = validator.validate(&end_entity, &intermediates)?;
+///
+/// if !result.is_valid {
+///     for error in &result.errors {
+///         eprintln!("Validation error: {}", error);
+///     }
+///     return Err("Certificate validation failed".into());
+/// }
+///
+/// println!("Certificate chain validated successfully");
+/// # Ok(())
+/// # }
+/// ```
 pub struct CertificateValidator {
     /// Trusted root CA certificates.
     trust_anchors: Vec<Certificate>,
@@ -1416,6 +1584,24 @@ impl CertificateValidator {
 }
 
 /// Helper function to extract common name from certificate subject.
+///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:** IA-2 (Identification and Authentication)
+///
+/// # Security Implementation
+///
+/// Extracts the Common Name (CN) attribute from the certificate subject
+/// Distinguished Name. The CN is often used for display and logging purposes.
+///
+/// **Security Note**: For hostname validation, use Subject Alternative Names
+/// (SANs) instead of CN. RFC 6125 deprecates use of CN for hostname validation.
+/// This function should only be used for logging and display purposes.
+///
+/// # Returns
+///
+/// - `Some(String)`: The CN value if present in the subject DN
+/// - `None`: If no CN attribute exists or CN value is not valid UTF-8
 pub fn get_subject_cn(cert: &Certificate) -> Option<String> {
     use const_oid::db::rfc4519::CN;
 
@@ -1434,6 +1620,41 @@ pub fn get_subject_cn(cert: &Certificate) -> Option<String> {
 /// Helper function to check if a certificate is a CA certificate.
 ///
 /// Parses the Basic Constraints extension and checks if the cA flag is TRUE.
+///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:** IA-2 (Identification and Authentication)
+///
+/// **Application Development STIG V5R3:** APSC-DV-003235 (CAT I)
+///
+/// # Security Implementation
+///
+/// Determines if a certificate is a Certificate Authority (CA) certificate by
+/// examining the Basic Constraints extension (RFC 5280 Section 4.2.1.9).
+///
+/// Per RFC 5280:
+/// - The cA boolean indicates whether the certified public key may be used to
+///   verify certificate signatures
+/// - If cA is FALSE, the certificate cannot be used to verify signatures on
+///   other certificates
+/// - CA certificates MUST include Basic Constraints extension with cA=TRUE
+///
+/// This function is used to:
+/// - Validate that intermediate certificates in a chain have CA capabilities
+/// - Prevent end-entity certificates from being used as CAs
+/// - Enforce proper PKI hierarchy
+///
+/// # Returns
+///
+/// - `true`: Certificate has Basic Constraints with cA=TRUE
+/// - `false`: Certificate lacks Basic Constraints or has cA=FALSE
+///
+/// # Security Note
+///
+/// This function returns false if:
+/// - Basic Constraints extension is missing (end-entity certificate)
+/// - Basic Constraints extension has cA=FALSE (end-entity certificate)
+/// - Basic Constraints extension cannot be parsed (assume not a CA)
 pub fn is_ca_certificate(cert: &Certificate) -> bool {
     use der::Decode;
     use x509_cert::ext::pkix::BasicConstraints;

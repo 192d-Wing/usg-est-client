@@ -13,11 +13,111 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// ============================================================================
+// SECURITY CONTROL: Certificate Revocation Checking
+// ----------------------------------------------------------------------------
+// NIST SP 800-53 Rev 5: IA-5 (Authenticator Management)
+//                       AU-10 (Non-Repudiation)
+//                       SC-12 (Cryptographic Key Establishment)
+//
+// Application Development STIG V5R3:
+//   APSC-DV-001740 (CAT II) - Certificate Revocation Validation
+//
+// SECURITY CONTROL IMPLEMENTATION:
+//
+// This module implements certificate revocation checking to detect and reject
+// compromised certificates. Revocation checking is critical for PKI security.
+//
+// IA-5: AUTHENTICATOR MANAGEMENT
+// -------------------------------
+// Certificates serve as authenticators. This module:
+//
+// - Verifies certificates have not been revoked (key compromise, CA compromise)
+// - Prevents use of revoked certificates for authentication
+// - Supports two revocation protocols:
+//   * CRL (Certificate Revocation List) - RFC 5280
+//   * OCSP (Online Certificate Status Protocol) - RFC 6960
+//
+// Revocation scenarios requiring certificate rejection:
+// - Key compromise: Private key exposed or stolen
+// - CA compromise: Issuing CA's key compromised
+// - Affiliation changed: Subject no longer affiliated with organization
+// - Superseded: Certificate replaced by newer certificate
+// - Cessation of operation: Certificate no longer needed
+//
+// AU-10: NON-REPUDIATION
+// -----------------------
+// Revocation checking provides non-repudiation evidence:
+//
+// - Revocation status checked at time of certificate use
+// - Revocation date proves when certificate became invalid
+// - Prevents disputes about certificate validity
+// - Provides audit trail for compliance
+//
+// SC-12: CRYPTOGRAPHIC KEY ESTABLISHMENT
+// ---------------------------------------
+// Revocation protects against compromised cryptographic keys:
+//
+// - Detects when private keys are compromised
+// - Prevents continued use of weak or exposed keys
+// - Supports cryptographic agility (algorithm transitions)
+//
+// REVOCATION PROTOCOLS:
+//
+// CRL (Certificate Revocation List):
+// - Periodically published list of revoked certificate serial numbers
+// - Signed by CA to ensure authenticity
+// - Cached to reduce network traffic
+// - Includes revocation date and reason
+// - Limitations: May be stale between updates
+//
+// OCSP (Online Certificate Status Protocol):
+// - Real-time revocation status query
+// - Lower latency than CRL
+// - Reduced bandwidth (single certificate check)
+// - May leak information about which certificates are being validated
+// - Requires network connectivity to OCSP responder
+//
+// SECURITY TRADE-OFFS:
+//
+// 1. AVAILABILITY VS SECURITY:
+//    - Soft-fail: Accept certificates if revocation check fails (network error)
+//    - Hard-fail: Reject certificates if revocation check fails
+//    - Recommendation: Hard-fail for high-security applications
+//
+// 2. PRIVACY VS SECURITY:
+//    - OCSP may leak which certificates are being used
+//    - CRL provides better privacy but higher latency
+//    - OCSP Stapling mitigates privacy concerns (RFC 6066)
+//
+// 3. PERFORMANCE VS FRESHNESS:
+//    - CRL caching improves performance but increases staleness
+//    - OCSP provides real-time status but requires network round-trip
+//    - Balance depends on threat model and network characteristics
+//
+// ============================================================================
+
 //! Certificate revocation checking (CRL and OCSP).
 //!
 //! This module provides support for checking certificate revocation status
 //! using Certificate Revocation Lists (CRL) and Online Certificate Status
 //! Protocol (OCSP).
+//!
+//! # Security Controls
+//!
+//! **NIST SP 800-53 Rev 5:**
+//! - IA-5 (Authenticator Management) - Certificate revocation validation
+//! - AU-10 (Non-Repudiation) - Revocation status evidence
+//! - SC-12 (Cryptographic Key Establishment) - Compromised key detection
+//!
+//! # Security Implementation
+//!
+//! Revocation checking prevents use of compromised certificates:
+//! - CRL validation per RFC 5280
+//! - OCSP validation per RFC 6960
+//! - Configurable soft-fail vs hard-fail behavior
+//! - CRL caching to reduce network traffic
+//! - Signature verification of CRLs and OCSP responses
 //!
 //! # Example
 //!

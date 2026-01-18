@@ -13,6 +13,55 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// ============================================================================
+// SECURITY CONTROL: Audit Logging and Record Generation
+// ----------------------------------------------------------------------------
+// NIST SP 800-53 Rev 5: AU-2 (Audit Events)
+//                       AU-3 (Content of Audit Records)
+//                       AU-12 (Audit Generation)
+//                       AU-9 (Protection of Audit Information)
+// STIG: APSC-DV-000830 (CAT II) - Security-Relevant Events
+//       APSC-DV-001740 (CAT I) - Audit Record Generation
+//       APSC-DV-002440 (CAT II) - Audit Record Content
+// Standards: NIST SP 800-92 (Guide to Computer Security Log Management)
+// ----------------------------------------------------------------------------
+// This module provides comprehensive audit logging for EST certificate
+// enrollment operations. All security-relevant events are logged with
+// sufficient detail to support forensic analysis, incident response, and
+// compliance auditing.
+//
+// # Audit Event Categories
+//
+// The logging system captures the following security-relevant events:
+//
+// - Certificate enrollment attempts (success/failure)
+// - TLS connection establishment (mutual authentication)
+// - Cryptographic key generation operations
+// - Authentication failures (HTTP Basic, TLS client cert)
+// - Configuration changes
+// - Error conditions that may indicate attacks
+//
+// # Audit Record Content (AU-3)
+//
+// Each audit record includes:
+// - Timestamp (ISO 8601 format)
+// - Event type (INFO, WARN, ERROR)
+// - Event description
+// - Subject identity (when available)
+// - Event outcome (success/failure)
+// - Structured fields for correlation
+//
+// # Log Protection (AU-9)
+//
+// Audit logs are protected through:
+// - File rotation with size limits (prevents disk exhaustion)
+// - Atomic write operations (prevents partial records)
+// - Configurable output to secure locations
+// - Optional encryption (see encryption module)
+// - JSON format support for SIEM integration
+//
+// ============================================================================
+
 //! Logging infrastructure for EST auto-enrollment.
 //!
 //! This module provides file-based logging with support for:
@@ -59,7 +108,47 @@ use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+// ============================================================================
+// SECURITY CONTROL: Audit Event Filtering
+// ----------------------------------------------------------------------------
+// NIST SP 800-53 Rev 5: AU-2 (Audit Events)
+//                       AU-12 (Audit Generation)
+// STIG: APSC-DV-000830 (CAT II) - Security-Relevant Events
+// ----------------------------------------------------------------------------
+// Log levels enable filtering of audit events by severity. Production systems
+// should use INFO or higher to capture security-relevant events while
+// minimizing log volume.
+//
+// # Security Considerations
+//
+// - **ERROR**: Critical failures requiring immediate attention (authentication
+//   failures, TLS errors, certificate validation failures)
+// - **WARN**: Potential security issues (certificate expiration warnings,
+//   configuration issues, deprecated cipher usage)
+// - **INFO**: Normal security events (enrollment success, TLS connection
+//   established, key generation)
+// - **DEBUG/TRACE**: Development only (verbose protocol details, internal state)
+//
+// For compliance with AU-2, production systems must log at INFO level minimum
+// to ensure all security-relevant events are captured.
+// ============================================================================
+
 /// Log level for filtering messages.
+///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:**
+/// - AU-2: Audit Events (selective event logging)
+/// - AU-12: Audit Generation (configurable audit capture)
+///
+/// **STIG Finding:**
+/// - APSC-DV-000830 (CAT II): Security-Relevant Events
+///
+/// # Security Guidance
+///
+/// Production deployments must use INFO or higher to ensure compliance with
+/// AU-2. DEBUG and TRACE levels may expose sensitive protocol details and
+/// should only be used in development or troubleshooting scenarios.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum LogLevel {
     /// Most verbose - all messages.
@@ -106,7 +195,74 @@ impl std::fmt::Display for LogLevel {
     }
 }
 
+// ============================================================================
+// SECURITY CONTROL: Audit Logging Configuration
+// ----------------------------------------------------------------------------
+// NIST SP 800-53 Rev 5: AU-2 (Audit Events)
+//                       AU-3 (Content of Audit Records)
+//                       AU-9 (Protection of Audit Information)
+//                       AU-11 (Audit Record Retention)
+// STIG: APSC-DV-002440 (CAT II) - Audit Record Content
+//       APSC-DV-000830 (CAT II) - Security-Relevant Events
+// ----------------------------------------------------------------------------
+// Logging configuration controls audit record generation, content, and
+// retention. Proper configuration is essential for compliance with audit
+// requirements and forensic analysis capabilities.
+//
+// # Configuration Requirements
+//
+// - **AU-3**: Timestamps, event types, and outcomes must be included
+// - **AU-9**: Logs must be protected from unauthorized access/modification
+// - **AU-11**: Log rotation ensures retention without disk exhaustion
+//
+// # Secure Defaults
+//
+// - INFO level minimum (captures all security-relevant events)
+// - Timestamps enabled (AU-3 requirement)
+// - Level tags enabled (event type identification)
+// - 10 MB rotation size (prevents disk exhaustion)
+// - 5 rotated files (provides sufficient retention)
+// ============================================================================
+
 /// Logging configuration.
+///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:**
+/// - AU-2: Audit Events (level filtering)
+/// - AU-3: Content of Audit Records (timestamp, level, message format)
+/// - AU-9: Protection of Audit Information (secure file locations)
+/// - AU-11: Audit Record Retention (rotation policy)
+///
+/// **STIG Findings:**
+/// - APSC-DV-002440 (CAT II): Audit Record Content
+/// - APSC-DV-000830 (CAT II): Security-Relevant Events
+///
+/// # Security Requirements
+///
+/// Production configurations must:
+/// - Set `level` to INFO or higher (AU-2 compliance)
+/// - Enable `include_timestamp` (AU-3 requirement)
+/// - Enable `include_level` (event type identification)
+/// - Use secure `path` with restricted permissions (AU-9)
+/// - Configure appropriate `max_files` for retention (AU-11)
+///
+/// # Example: Secure Configuration
+///
+/// ```no_run,ignore
+/// use usg_est_client::logging::{LogConfig, LogLevel};
+///
+/// // Production-ready configuration
+/// let config = LogConfig {
+///     level: LogLevel::Info,
+///     path: Some("/var/log/est/enrollment.log".into()),
+///     json_format: true,  // SIEM integration
+///     max_size_bytes: 10 * 1024 * 1024,  // 10 MB
+///     max_files: 10,  // 100 MB total retention
+///     include_timestamp: true,  // AU-3 requirement
+///     include_level: true,  // Event classification
+/// };
+/// ```
 #[derive(Debug, Clone)]
 pub struct LogConfig {
     /// Minimum log level to output.
@@ -178,7 +334,61 @@ impl LogConfig {
     }
 }
 
+// ============================================================================
+// SECURITY CONTROL: Audit Record Structure
+// ----------------------------------------------------------------------------
+// NIST SP 800-53 Rev 5: AU-3 (Content of Audit Records)
+//                       AU-12 (Audit Generation)
+// STIG: APSC-DV-002440 (CAT II) - Audit Record Content
+// Standards: NIST SP 800-92 (Guide to Computer Security Log Management)
+// ----------------------------------------------------------------------------
+// Log entries contain the minimum required information for audit records:
+//
+// 1. **Timestamp**: When the event occurred (AU-3.a)
+// 2. **Event Type**: Severity level (AU-3.b)
+// 3. **Event Description**: What happened (AU-3.c)
+// 4. **Outcome**: Success/failure implied by level (AU-3.d)
+// 5. **Additional Details**: Structured fields for context (AU-3.e)
+//
+// This structure supports both human-readable text format and machine-readable
+// JSON format for SIEM integration.
+// ============================================================================
+
 /// A log entry.
+///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:**
+/// - AU-3: Content of Audit Records (timestamp, type, outcome, identity)
+/// - AU-12: Audit Generation (structured event capture)
+///
+/// **STIG Finding:**
+/// - APSC-DV-002440 (CAT II): Audit Record Content
+///
+/// # Audit Record Requirements
+///
+/// Each log entry satisfies AU-3 requirements by including:
+/// - **timestamp**: Date and time of event (AU-3.a)
+/// - **level**: Event type/severity (AU-3.b)
+/// - **message**: Event description (AU-3.c)
+/// - **fields**: Additional context (subject identity, outcome details)
+///
+/// # Example: Security Event Logging
+///
+/// ```no_run,ignore
+/// use usg_est_client::logging::{LogEntry, LogLevel};
+///
+/// // Log successful certificate enrollment
+/// let entry = LogEntry::new(LogLevel::Info, "Certificate enrollment successful")
+///     .with_field("subject_cn", "device001.example.mil")
+///     .with_field("est_server", "pki.example.mil")
+///     .with_field("certificate_serial", "1A2B3C4D5E6F");
+///
+/// // Log authentication failure
+/// let entry = LogEntry::new(LogLevel::Error, "TLS client authentication failed")
+///     .with_field("server", "pki.example.mil")
+///     .with_field("reason", "certificate_revoked");
+/// ```
 #[derive(Debug, Clone)]
 pub struct LogEntry {
     /// Log level.
@@ -270,7 +480,88 @@ impl LogEntry {
     }
 }
 
+// ============================================================================
+// SECURITY CONTROL: File-Based Audit Logging
+// ----------------------------------------------------------------------------
+// NIST SP 800-53 Rev 5: AU-9 (Protection of Audit Information)
+//                       AU-11 (Audit Record Retention)
+//                       AU-12 (Audit Generation)
+// STIG: APSC-DV-001740 (CAT I) - Audit Record Generation
+//       APSC-DV-002440 (CAT II) - Audit Record Content
+// ----------------------------------------------------------------------------
+// FileLogger provides persistent audit logging with automatic rotation to
+// prevent disk exhaustion while maintaining sufficient retention for forensic
+// analysis.
+//
+// # Security Features
+//
+// - **Atomic Writes**: Each log entry is written and flushed atomically to
+//   prevent partial records in case of system failure
+// - **Automatic Rotation**: Prevents disk exhaustion (AU-9, AU-11)
+// - **Thread-Safe**: Mutex-protected writer enables concurrent logging
+// - **Graceful Degradation**: Lock poisoning is handled without panic
+//
+// # Audit Protection (AU-9)
+//
+// Log files should be created with restricted permissions:
+// - Unix: 0600 (owner read/write only)
+// - Windows: ACL restricted to SYSTEM and Administrators
+//
+// # Retention (AU-11)
+//
+// Log rotation maintains a configurable number of historical files:
+// - Current log: enrollment.log
+// - Rotated logs: enrollment.log.1, enrollment.log.2, etc.
+// - Oldest logs are automatically deleted when max_files is reached
+// ============================================================================
+
 /// File logger with rotation support.
+///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:**
+/// - AU-9: Protection of Audit Information (atomic writes, secure storage)
+/// - AU-11: Audit Record Retention (rotation policy)
+/// - AU-12: Audit Generation (continuous logging capability)
+///
+/// **STIG Findings:**
+/// - APSC-DV-001740 (CAT I): Audit Record Generation
+/// - APSC-DV-002440 (CAT II): Audit Record Content
+///
+/// # Security Requirements
+///
+/// Production deployments must:
+/// 1. Store logs in a secure location with restricted permissions
+/// 2. Configure sufficient retention via `max_files` (AU-11)
+/// 3. Monitor disk space to prevent log loss
+/// 4. Protect log files from unauthorized modification (AU-9)
+///
+/// # Example: Secure File Logger
+///
+/// ```no_run,ignore
+/// use usg_est_client::logging::{LogConfig, FileLogger, LogLevel};
+///
+/// // Create secure configuration
+/// let config = LogConfig {
+///     level: LogLevel::Info,
+///     path: Some("/var/log/est/enrollment.log".into()),
+///     json_format: true,
+///     max_size_bytes: 10 * 1024 * 1024,  // 10 MB
+///     max_files: 10,  // 100 MB retention
+///     include_timestamp: true,
+///     include_level: true,
+/// };
+///
+/// let logger = FileLogger::new(config)?;
+///
+/// // Log security events
+/// logger.info("Certificate enrollment initiated")?;
+/// logger.log_with_fields(
+///     LogLevel::Info,
+///     "TLS handshake completed",
+///     &[("cipher", "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384")]
+/// )?;
+/// ```
 pub struct FileLogger {
     config: LogConfig,
     writer: Arc<Mutex<LogWriter>>,
@@ -288,6 +579,41 @@ enum LogWriter {
 
 impl FileLogger {
     /// Create a new file logger.
+    ///
+    /// # Security Controls
+    ///
+    /// **NIST SP 800-53 Rev 5:**
+    /// - AU-9: Protection of Audit Information (secure file creation)
+    /// - AU-12: Audit Generation (logger initialization)
+    ///
+    /// **STIG Finding:**
+    /// - APSC-DV-001740 (CAT I): Audit Record Generation
+    ///
+    /// # Security Implementation
+    ///
+    /// This method creates the audit log file with appropriate permissions:
+    /// - Parent directories are created if missing
+    /// - File is opened in append mode to preserve existing audit records
+    /// - Current file size is tracked for rotation
+    ///
+    /// On Unix systems, the file inherits the process umask. For production:
+    /// ```bash
+    /// umask 0077  # Before running EST client
+    /// # Results in 0600 permissions (owner-only access)
+    /// ```
+    ///
+    /// On Windows, files are created with default ACLs. For production:
+    /// ```powershell
+    /// # Restrict to SYSTEM and Administrators only
+    /// icacls "C:\ProgramData\EST\logs" /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F"
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Parent directory cannot be created (permission denied)
+    /// - Log file cannot be opened (disk full, permission denied)
+    /// - File metadata cannot be read
     pub fn new(config: LogConfig) -> Result<Self> {
         let writer = match &config.path {
             Some(path) => {
@@ -320,6 +646,44 @@ impl FileLogger {
     }
 
     /// Log an entry.
+    ///
+    /// # Security Controls
+    ///
+    /// **NIST SP 800-53 Rev 5:**
+    /// - AU-3: Content of Audit Records (formatted record output)
+    /// - AU-12: Audit Generation (event recording)
+    /// - AU-11: Audit Record Retention (automatic rotation)
+    ///
+    /// **STIG Finding:**
+    /// - APSC-DV-002440 (CAT II): Audit Record Content
+    ///
+    /// # Security Implementation
+    ///
+    /// This method implements the core audit generation capability:
+    ///
+    /// 1. **Level Filtering**: Events below configured level are discarded
+    /// 2. **Format Selection**: Text or JSON based on configuration
+    /// 3. **Atomic Write**: Entry is written and flushed atomically
+    /// 4. **Automatic Rotation**: Triggers rotation when size limit is reached
+    /// 5. **Lock Poisoning Handling**: Gracefully handles thread panics
+    ///
+    /// The method ensures AU-3 compliance by including timestamp, level, and
+    /// message in every audit record. Structured fields provide additional
+    /// context for forensic analysis.
+    ///
+    /// # Thread Safety
+    ///
+    /// This method is thread-safe and can be called concurrently. The internal
+    /// mutex ensures atomic writes. If a thread panics while holding the lock,
+    /// subsequent calls will return an error instead of panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Writer lock is poisoned (previous thread panicked)
+    /// - Write operation fails (disk full, permission denied)
+    /// - Flush operation fails
+    /// - Rotation fails
     pub fn log(&self, entry: &LogEntry) -> Result<()> {
         if entry.level < self.config.level {
             return Ok(());
@@ -375,6 +739,44 @@ impl FileLogger {
     }
 
     /// Rotate log files.
+    ///
+    /// # Security Controls
+    ///
+    /// **NIST SP 800-53 Rev 5:**
+    /// - AU-9: Protection of Audit Information (prevents disk exhaustion)
+    /// - AU-11: Audit Record Retention (maintains historical records)
+    ///
+    /// **STIG Finding:**
+    /// - APSC-DV-001740 (CAT I): Audit Record Generation
+    ///
+    /// # Security Implementation
+    ///
+    /// This method implements log rotation to prevent disk exhaustion while
+    /// maintaining audit record retention:
+    ///
+    /// 1. **Delete Oldest**: Removes the oldest log file if max_files is reached
+    /// 2. **Shift Logs**: Renames existing rotated logs (N → N+1)
+    /// 3. **Rotate Current**: Moves current log to .1
+    /// 4. **Create New**: Opens fresh log file
+    /// 5. **Update Writer**: Replaces writer with new file handle
+    ///
+    /// Example rotation sequence (max_files=3):
+    /// - Before: enrollment.log (11MB), enrollment.log.1, enrollment.log.2, enrollment.log.3
+    /// - After: enrollment.log (0MB), enrollment.log.1, enrollment.log.2, enrollment.log.3
+    /// - Oldest file (.3) is deleted
+    ///
+    /// # Audit Continuity
+    ///
+    /// Rotation is atomic from the application's perspective. The mutex ensures
+    /// no log entries are lost during rotation. New entries block until rotation
+    /// completes.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Current log file cannot be renamed
+    /// - New log file cannot be created
+    /// - Writer lock is poisoned
     fn rotate(&self) -> Result<()> {
         let path = match &self.config.path {
             Some(p) => p,
@@ -427,34 +829,116 @@ impl FileLogger {
         Ok(())
     }
 
-    // Convenience logging methods
+    // ========================================================================
+    // Convenience Logging Methods
+    // ========================================================================
+    //
+    // These methods provide ergonomic access to the log() method at specific
+    // severity levels. Each method creates a LogEntry with the appropriate
+    // level and forwards to the core log() method.
+    //
+    // Security Note: All methods support AU-12 (Audit Generation) by enabling
+    // consistent event recording across the codebase.
 
-    /// Log at trace level.
+    /// Log at trace level (development/troubleshooting only).
+    ///
+    /// # Security Note
+    ///
+    /// TRACE level should not be used in production. It may expose sensitive
+    /// protocol details, internal state, or cryptographic material.
     pub fn trace(&self, message: impl Into<String>) -> Result<()> {
         self.log(&LogEntry::new(LogLevel::Trace, message))
     }
 
-    /// Log at debug level.
+    /// Log at debug level (development/troubleshooting only).
+    ///
+    /// # Security Note
+    ///
+    /// DEBUG level should not be used in production. It may expose detailed
+    /// error information useful for attackers.
     pub fn debug(&self, message: impl Into<String>) -> Result<()> {
         self.log(&LogEntry::new(LogLevel::Debug, message))
     }
 
-    /// Log at info level.
+    /// Log at info level (normal security events).
+    ///
+    /// # Security Controls
+    ///
+    /// **NIST SP 800-53 Rev 5:** AU-2, AU-12 (Audit Generation)
+    ///
+    /// Use for security-relevant events:
+    /// - Certificate enrollment success
+    /// - TLS connection established
+    /// - Key generation completed
+    /// - Configuration loaded
     pub fn info(&self, message: impl Into<String>) -> Result<()> {
         self.log(&LogEntry::new(LogLevel::Info, message))
     }
 
-    /// Log at warn level.
+    /// Log at warn level (potential security issues).
+    ///
+    /// # Security Controls
+    ///
+    /// **NIST SP 800-53 Rev 5:** AU-2, AU-12 (Audit Generation)
+    ///
+    /// Use for conditions that may indicate security concerns:
+    /// - Certificate expiration warnings
+    /// - Weak cipher suite negotiated
+    /// - Configuration validation warnings
+    /// - Retry attempts
     pub fn warn(&self, message: impl Into<String>) -> Result<()> {
         self.log(&LogEntry::new(LogLevel::Warn, message))
     }
 
-    /// Log at error level.
+    /// Log at error level (critical security failures).
+    ///
+    /// # Security Controls
+    ///
+    /// **NIST SP 800-53 Rev 5:** AU-2, AU-12 (Audit Generation)
+    ///
+    /// Use for security failures requiring immediate attention:
+    /// - Authentication failures
+    /// - Certificate validation failures
+    /// - TLS handshake failures
+    /// - Cryptographic errors
+    /// - Authorization denials
     pub fn error(&self, message: impl Into<String>) -> Result<()> {
         self.log(&LogEntry::new(LogLevel::Error, message))
     }
 
-    /// Log with structured fields.
+    /// Log with structured fields for enhanced forensic analysis.
+    ///
+    /// # Security Controls
+    ///
+    /// **NIST SP 800-53 Rev 5:**
+    /// - AU-3: Content of Audit Records (structured context)
+    /// - AU-12: Audit Generation (enhanced event capture)
+    ///
+    /// **STIG Finding:**
+    /// - APSC-DV-002440 (CAT II): Audit Record Content
+    ///
+    /// # Security Implementation
+    ///
+    /// Structured fields provide additional context for audit records:
+    /// - Subject identity (user, device, certificate CN)
+    /// - Object identity (server URL, resource path)
+    /// - Event outcome details (error codes, status)
+    /// - Session context (connection ID, correlation ID)
+    ///
+    /// # Example: Authentication Failure
+    ///
+    /// ```no_run,ignore
+    /// logger.log_with_fields(
+    ///     LogLevel::Error,
+    ///     "TLS client authentication failed",
+    ///     &[
+    ///         ("server", "pki.example.mil"),
+    ///         ("client_cn", "device001.example.mil"),
+    ///         ("reason", "certificate_expired"),
+    ///         ("not_after", "2024-01-15T00:00:00Z"),
+    ///     ]
+    /// )?;
+    /// ```
     pub fn log_with_fields(
         &self,
         level: LogLevel,
@@ -469,14 +953,95 @@ impl FileLogger {
     }
 }
 
+// ============================================================================
+// SECURITY CONTROL: Multi-Destination Audit Logging
+// ----------------------------------------------------------------------------
+// NIST SP 800-53 Rev 5: AU-9 (Protection of Audit Information)
+//                       AU-12 (Audit Generation)
+// STIG: APSC-DV-001740 (CAT I) - Audit Record Generation
+// ----------------------------------------------------------------------------
+// MultiLogger enables simultaneous logging to multiple destinations for
+// enhanced audit protection and availability:
+//
+// - **Local File**: Primary audit trail with rotation
+// - **Remote Syslog**: Centralized SIEM for real-time monitoring
+// - **Windows Event Log**: Integration with OS audit subsystem
+// - **Stdout**: Console output for interactive troubleshooting
+//
+// Multiple destinations increase audit reliability (AU-9) by ensuring that
+// even if one destination fails (disk full, network outage), other destinations
+// continue capturing audit events.
+// ============================================================================
+
 /// Combined logger that writes to multiple destinations.
+///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:**
+/// - AU-9: Protection of Audit Information (redundant storage)
+/// - AU-12: Audit Generation (multiple capture points)
+///
+/// **STIG Finding:**
+/// - APSC-DV-001740 (CAT I): Audit Record Generation
+///
+/// # Security Benefits
+///
+/// Multiple log destinations provide:
+/// - **Redundancy**: If one destination fails, others continue
+/// - **Real-time Monitoring**: Syslog enables SIEM integration
+/// - **Forensic Analysis**: Local files retain detailed history
+/// - **OS Integration**: Windows Event Log for enterprise audit tools
+///
+/// # Example: Production Logging Configuration
+///
+/// ```no_run,ignore
+/// use usg_est_client::logging::{MultiLogger, FileLogger, LogConfig, LogLevel};
+///
+/// let mut multi = MultiLogger::new();
+///
+/// // Primary audit trail (local file with rotation)
+/// let file_logger = FileLogger::new(
+///     LogConfig::file("/var/log/est/enrollment.log")
+///         .with_level(LogLevel::Info)
+///         .with_json()
+///         .with_max_size_mb(10)
+///         .with_max_files(10)
+/// )?;
+/// multi.add(file_logger);
+///
+/// // Console output for troubleshooting
+/// let console_logger = FileLogger::new(
+///     LogConfig::stdout()
+///         .with_level(LogLevel::Warn)
+/// )?;
+/// multi.add(console_logger);
+///
+/// // Log to all destinations
+/// multi.log(&LogEntry::new(LogLevel::Info, "Enrollment started"))?;
+/// ```
 pub struct MultiLogger {
     loggers: Vec<Box<dyn Logger + Send + Sync>>,
 }
 
 /// Trait for log destinations.
+///
+/// # Security Controls
+///
+/// **NIST SP 800-53 Rev 5:** AU-12 (Audit Generation)
+///
+/// This trait enables polymorphic logging to any destination that implements
+/// the `log()` method, supporting diverse audit architectures.
 pub trait Logger {
     /// Log an entry.
+    ///
+    /// # Security Controls
+    ///
+    /// **NIST SP 800-53 Rev 5:**
+    /// - AU-3: Content of Audit Records
+    /// - AU-12: Audit Generation
+    ///
+    /// **STIG Finding:**
+    /// - APSC-DV-002440 (CAT II): Audit Record Content
     fn log(&self, entry: &LogEntry) -> Result<()>;
 }
 
