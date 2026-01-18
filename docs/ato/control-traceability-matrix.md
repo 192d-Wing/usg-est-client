@@ -2,8 +2,8 @@
 
 ## EST Client Library for Windows
 
-**Version:** 1.0
-**Date:** 2026-01-13
+**Version:** 1.1
+**Date:** 2026-01-18
 **Classification:** UNCLASSIFIED
 
 ---
@@ -121,6 +121,80 @@ This Control Traceability Matrix maps NIST SP 800-53 Rev 5 security controls to 
 
 ---
 
+## 4.7 In-Code NIST/STIG Documentation (2026-01-18)
+
+All critical security modules, supporting modules, example files, and test files now include comprehensive NIST SP 800-53 Rev 5 and Application Development STIG V5R3 documentation directly in the source code.
+
+### 4.7.1 Core Security Modules with NIST/STIG Comments
+
+| Module | File | Controls Documented | Documentation Status |
+|--------|------|---------------------|---------------------|
+| TLS Configuration | `src/tls.rs` | SC-8, IA-2, AC-17 | ✅ Complete |
+| Certificate Validation | `src/validation.rs` | IA-2, SC-23, SI-10 | ✅ Complete |
+| FIPS Enforcement | `src/fips/algorithms.rs` | SC-12, SC-13, IA-7 | ✅ Complete |
+| Audit Log Encryption | `src/logging/encryption.rs` | AU-9, SC-12, SC-13, SC-28 | ✅ Complete |
+| Windows Security | `src/windows/security.rs` | AC-3, AC-6, AU-2, AU-3, AU-12, SC-12 | ✅ Complete |
+| Configuration | `src/config.rs` | CM-2, CM-6, SI-10 | ✅ Complete |
+| Audit Logging | `src/logging.rs` | AU-2, AU-3, AU-6, AU-8, AU-12 | ✅ Complete |
+| Error Handling | `src/error.rs` | SI-10 | ✅ Complete |
+| CSR Generation | `src/csr.rs` | SC-12, SC-13 | ✅ Complete |
+| Certificate Renewal | `src/renewal.rs` | IA-5, SC-12, AU-2 | ✅ Complete |
+| Revocation Checking | `src/revocation.rs` | IA-2, SI-4, AU-2 | ✅ Complete |
+
+### 4.7.2 Example Files Demonstrating Security Controls
+
+| Example | File | Controls Demonstrated | STIG Findings |
+|---------|------|----------------------|---------------|
+| Simple Enrollment | `examples/simple_enroll.rs` | IA-2, SC-8, SC-13 | APSC-DV-000160, APSC-DV-000170 |
+| Bootstrap/TOFU | `examples/bootstrap.rs` | IA-2, SI-10 | APSC-DV-000160, APSC-DV-003235 |
+| Re-enrollment | `examples/reenroll.rs` | IA-2, SC-8, IA-5 | APSC-DV-000160, APSC-DV-000170 |
+| FIPS Compliance | `examples/fips_enroll.rs` | SC-13, SC-12, IA-7 | APSC-DV-000170 |
+| Auto Renewal | `examples/auto_renewal.rs` | IA-5, SC-12, AU-2 | APSC-DV-000160 |
+| Chain Validation | `examples/validate_chain.rs` | IA-2, SC-23, SI-10 | APSC-DV-003235, APSC-DV-000500 |
+| Revocation Check | `examples/check_revocation.rs` | IA-2, SI-4, AU-2 | APSC-DV-003235, APSC-DV-000160 |
+| HSM Enrollment | `examples/hsm_enroll.rs` | SC-12, SC-13, AC-6, IA-5 | APSC-DV-000170, APSC-DV-002340 |
+| PKCS#11 Enrollment | `examples/pkcs11_enroll.rs` | SC-12, SC-13, AC-6, IA-5 | APSC-DV-000170, APSC-DV-002340 |
+| DoD PKI Enrollment | `examples/dod_enroll.rs` | IA-2, IA-5, SC-8, SC-13 | APSC-DV-000160, APSC-DV-000170, APSC-DV-003235 |
+| Metrics Collection | `examples/metrics.rs` | AU-2, AU-6, SI-4 | APSC-DV-000830 |
+| Channel Binding | `examples/channel_binding_enroll.rs` | IA-2, SC-8, SC-23 | APSC-DV-000160, APSC-DV-002440 |
+| CMC Protocol | `examples/cmc_advanced.rs` | IA-2, SC-8, AU-2 | APSC-DV-000160, APSC-DV-000170 |
+
+### 4.7.3 Test Files Validating Security Controls
+
+| Test File | Controls Tested | Purpose |
+|-----------|----------------|---------|
+| `tests/integration_tests.rs` | SC-8, IA-2, SC-13, SI-10 | Mock server tests for all EST operations, auth methods, TLS config, error handling |
+| `tests/live_est_server_test.rs` | SC-8, IA-2, SC-13 | RFC 7030 compliance testing against real EST server |
+
+### 4.7.4 Documentation Completeness
+
+**Total Files with NIST/STIG Documentation:** 26+ files
+- Core security modules: 11 files
+- Example files: 13 files
+- Test files: 2 files
+
+**Documentation Format:**
+- Security Controls sections listing NIST 800-53 Rev 5 controls
+- STIG Requirements sections listing Application Development STIG V5R3 findings
+- RFC Compliance sections referencing RFC 7030, RFC 5280, RFC 6960
+- Security Implementation sections explaining WHY code satisfies controls
+- Security Warnings for risky operations (bootstrap mode, etc.)
+
+**Reference Documentation:**
+- Implementation Plan: `docs/ato/CODE-COMMENT-IMPLEMENTATION-PLAN.md`
+- Week 4 Completion: `docs/ato/WEEK-4-COMPLETION.md`
+- Code-to-Control Mapping: `docs/ato/CODE-TO-CONTROL-MAPPING.md`
+
+### 4.7.5 Benefits for Security Assessment
+
+1. **In-Code Traceability:** Auditors can see security control implementation directly in source code
+2. **Developer Guidance:** Clear documentation of security requirements and constraints
+3. **Compliance Evidence:** Demonstrates systematic approach to security control implementation
+4. **Maintenance Support:** Future developers understand security intent and requirements
+5. **Example Demonstrations:** Working examples show secure usage patterns for each control
+
+---
+
 ## 5. Code Coverage by Control
 
 ### 5.1 Files by Number of Controls Implemented
@@ -203,6 +277,7 @@ This Control Traceability Matrix maps NIST SP 800-53 Rev 5 security controls to 
 | 2026-01-02 | SC-23 | Implemented DoD PKI validation | Phase 12.2 |
 | 2026-01-02 | IA-5 | Implemented CAC/PIV support | Phase 12.2 |
 | 2026-01-13 | AU-2 | Enhanced audit logging | Phase 12.3 |
+| 2026-01-18 | All Controls | Added comprehensive NIST/STIG in-code documentation | Week 1-4 Implementation |
 
 ### 8.2 Control Assessment History
 
@@ -256,6 +331,7 @@ This Control Traceability Matrix maps NIST SP 800-53 Rev 5 security controls to 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
 | 1.0 | 2026-01-13 | Initial Control Traceability Matrix | Security Team |
+| 1.1 | 2026-01-18 | Added Section 4.7: In-Code NIST/STIG Documentation<br/>Updated audit trail with code documentation completion | Security Team |
 
 ---
 
