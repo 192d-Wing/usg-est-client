@@ -211,6 +211,7 @@ impl Default for ValidationConfig {
 ///
 /// ```no_run
 /// # use usg_est_client::validation::ValidationResult;
+/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// # let result = ValidationResult {
 /// #     is_valid: false,
 /// #     chain: vec![],
@@ -225,6 +226,8 @@ impl Default for ValidationConfig {
 ///     return Err("Certificate validation failed".into());
 /// }
 /// // Proceed with validated certificate chain
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone)]
 pub struct ValidationResult {
