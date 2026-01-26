@@ -2,8 +2,8 @@
 
 ## EST Client Library for Windows
 
-**Version:** 1.0
-**Date:** 2026-01-13
+**Version:** 1.1
+**Date:** 2026-01-18
 **STIG Version:** Application Security and Development STIG V5R3
 **Classification:** UNCLASSIFIED
 
@@ -58,8 +58,13 @@ This STIG (Security Technical Implementation Guide) checklist documents complian
 **Evidence:**
 
 - FIPS implementation: [src/fips/mod.rs](../../src/fips/mod.rs)
-- TLS configuration: [src/tls.rs](../../src/tls.rs)
-- Algorithm enforcement: [src/fips/algorithms.rs](../../src/fips/algorithms.rs)
+- TLS configuration with NIST comments: [src/tls.rs](../../src/tls.rs) (SC-8, IA-2, AC-17)
+- Algorithm enforcement with NIST comments: [src/fips/algorithms.rs](../../src/fips/algorithms.rs) (SC-12, SC-13, IA-7)
+- Example demonstrations:
+  - Simple enrollment: [examples/simple_enroll.rs](../../examples/simple_enroll.rs)
+  - FIPS enrollment: [examples/fips_enroll.rs](../../examples/fips_enroll.rs)
+  - DoD PKI enrollment: [examples/dod_enroll.rs](../../examples/dod_enroll.rs)
+- In-code NIST/STIG documentation: See Control Traceability Matrix §4.7
 
 **Testing:** FIPS mode validation tests pass (100%)
 
@@ -83,8 +88,14 @@ This STIG (Security Technical Implementation Guide) checklist documents complian
 **Evidence:**
 
 - FIPS configuration: [src/fips/mod.rs](../../src/fips/mod.rs)
-- Cryptographic operations: [src/csr.rs](../../src/csr.rs)
+- Cryptographic operations with NIST comments: [src/csr.rs](../../src/csr.rs) (SC-12, SC-13)
 - Algorithm validation: [tests/fips/algorithm_tests.rs](../../tests/fips/)
+- TLS cryptography: [src/tls.rs](../../src/tls.rs) (SC-8, SC-13)
+- Example demonstrations:
+  - FIPS enrollment: [examples/fips_enroll.rs](../../examples/fips_enroll.rs)
+  - HSM enrollment: [examples/hsm_enroll.rs](../../examples/hsm_enroll.rs)
+  - PKCS#11 enrollment: [examples/pkcs11_enroll.rs](../../examples/pkcs11_enroll.rs)
+- In-code NIST/STIG documentation: See Control Traceability Matrix §4.7
 
 **Testing:** All cryptographic tests pass with FIPS module
 
@@ -107,8 +118,14 @@ This STIG (Security Technical Implementation Guide) checklist documents complian
 
 **Evidence:**
 
-- Input validation: [src/auto_enroll/config.rs](../../src/auto_enroll/config.rs)
+- Input validation with NIST comments: [src/config.rs](../../src/config.rs) (CM-2, CM-6, SI-10)
+- Certificate validation: [src/validation.rs](../../src/validation.rs) (IA-2, SC-23, SI-10)
+- Error handling: [src/error.rs](../../src/error.rs) (SI-10)
 - No command execution: Code review confirms no `std::process::Command` with user input
+- Example demonstrations:
+  - Bootstrap validation: [examples/bootstrap.rs](../../examples/bootstrap.rs)
+  - Chain validation: [examples/validate_chain.rs](../../examples/validate_chain.rs)
+- In-code NIST/STIG documentation: See Control Traceability Matrix §4.7
 
 **Testing:** Fuzzing with 1M inputs, 0 command injection vulnerabilities
 
@@ -187,8 +204,13 @@ This STIG (Security Technical Implementation Guide) checklist documents complian
 
 **Evidence:**
 
-- TLS implementation: [src/tls.rs:45-89](../../src/tls.rs#L45-L89)
+- TLS implementation with NIST comments: [src/tls.rs:45-89](../../src/tls.rs#L45-L89) (SC-8, IA-2, AC-17)
 - testssl.sh scan: A+ rating
+- Example demonstrations:
+  - Channel binding: [examples/channel_binding_enroll.rs](../../examples/channel_binding_enroll.rs)
+  - All enrollment examples demonstrate TLS 1.2+ usage
+- Test validation: [tests/live_est_server_test.rs](../../tests/live_est_server_test.rs)
+- In-code NIST/STIG documentation: See Control Traceability Matrix §4.7
 
 **Testing:** TLS configuration tested, all weak ciphers rejected
 
@@ -211,9 +233,15 @@ This STIG (Security Technical Implementation Guide) checklist documents complian
 
 **Evidence:**
 
-- Chain validation: [src/dod/validation.rs](../../src/dod/validation.rs)
-- Revocation checking: [src/revocation.rs](../../src/revocation.rs)
+- Chain validation with NIST comments: [src/validation.rs](../../src/validation.rs) (IA-2, SC-23, SI-10)
+- DoD PKI validation: [src/dod/validation.rs](../../src/dod/validation.rs)
+- Revocation checking with NIST comments: [src/revocation.rs](../../src/revocation.rs) (IA-2, SI-4, AU-2)
 - DoD Root CAs: [src/dod/roots.rs](../../src/dod/roots.rs)
+- Example demonstrations:
+  - Certificate chain validation: [examples/validate_chain.rs](../../examples/validate_chain.rs)
+  - Revocation checking: [examples/check_revocation.rs](../../examples/check_revocation.rs)
+  - DoD PKI enrollment: [examples/dod_enroll.rs](../../examples/dod_enroll.rs)
+- In-code NIST/STIG documentation: See Control Traceability Matrix §4.7
 
 **Testing:** Certificate validation tests (100% pass rate)
 
@@ -894,6 +922,54 @@ This STIG (Security Technical Implementation Guide) checklist documents complian
 
 ---
 
+## 3.4 In-Code STIG Documentation (2026-01-18)
+
+**Comprehensive NIST/STIG Code Documentation Complete**
+
+All STIG findings now have corresponding in-code documentation with NIST SP 800-53 Rev 5 and Application Development STIG V5R3 comments directly in the source code.
+
+### 3.4.1 CAT I Findings with In-Code Documentation
+
+| STIG ID | Files with Documentation | Example Demonstrations |
+|---------|-------------------------|----------------------|
+| APSC-DV-000160 | `src/tls.rs`, `src/fips/algorithms.rs` | All 13 example files |
+| APSC-DV-000170 | `src/fips/algorithms.rs`, `src/csr.rs`, `src/tls.rs` | `fips_enroll.rs`, `hsm_enroll.rs`, `pkcs11_enroll.rs` |
+| APSC-DV-000500 | `src/config.rs`, `src/validation.rs`, `src/error.rs` | `bootstrap.rs`, `validate_chain.rs` |
+| APSC-DV-001620 | Rust language safety (documented in examples) | All example files |
+| APSC-DV-002440 | `src/tls.rs`, `src/logging.rs` | `channel_binding_enroll.rs`, `simple_enroll.rs` |
+| APSC-DV-003235 | `src/validation.rs`, `src/revocation.rs` | `validate_chain.rs`, `check_revocation.rs`, `dod_enroll.rs` |
+
+### 3.4.2 CAT II Findings with In-Code Documentation
+
+| STIG ID | Files with Documentation | Controls |
+|---------|-------------------------|----------|
+| APSC-DV-000010 | Documentation across all modules | N/A (Documentation) |
+| APSC-DV-000230 | `src/logging.rs`, `src/windows/security.rs` | AU-2, AU-3, AU-12 |
+| APSC-DV-000240 | `src/logging.rs` (SIEM-ready format) | AU-2, AU-6 |
+| APSC-DV-000830 | `src/logging.rs`, `src/windows/security.rs` | AU-2, AU-12 |
+| APSC-DV-000840 | `src/logging.rs` | AU-3 |
+| APSC-DV-002340 | `src/windows/security.rs`, HSM examples | AC-6 |
+
+### 3.4.3 Documentation Coverage Summary
+
+**Total Files with STIG Documentation:** 26+ files
+- Core security modules: 11 files
+- Example files: 13 files
+- Test files: 2 files
+
+**Documentation Benefits for STIG Compliance:**
+1. **Auditor Evidence:** In-code comments provide immediate evidence of STIG finding implementation
+2. **Developer Guidance:** Security requirements clearly documented at point of use
+3. **Maintenance:** Future developers understand security constraints
+4. **Traceability:** Direct mapping from code to STIG findings to NIST controls
+
+**Reference Documentation:**
+- Control Traceability Matrix §4.7: In-Code NIST/STIG Documentation
+- Week 4 Completion Report: `docs/ato/WEEK-4-COMPLETION.md`
+- Code Comment Implementation Plan: `docs/ato/CODE-COMMENT-IMPLEMENTATION-PLAN.md`
+
+---
+
 ## 4. Hardening Recommendations
 
 ### 4.1 Mandatory Settings (DoD Deployment)
@@ -1035,6 +1111,7 @@ Test-AuditLogging -Enabled $true
 | Version | Date | Description | Author |
 |---------|------|-------------|--------|
 | 1.0 | 2026-01-13 | Initial STIG checklist | Security Team |
+| 1.1 | 2026-01-18 | Added in-code NIST/STIG documentation references, enhanced evidence sections for CAT I findings | Security Team |
 
 ---
 
