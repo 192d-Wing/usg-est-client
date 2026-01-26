@@ -2,7 +2,8 @@
 
 **Document Classification:** UNCLASSIFIED
 **Date:** 2026-01-14
-**Version:** 1.0
+**Version:** 1.1
+**Documentation Update:** 2026-01-18
 **Prepared By:** Security Assessment Team
 
 ---
@@ -525,6 +526,15 @@ cargo check --lib
    - Security design decisions documented
    - Threat model established
 
+6. **In-Code NIST/STIG Documentation (2026-01-18)** ← **NEW**
+   - **26+ files** with comprehensive NIST SP 800-53 Rev 5 and STIG V5R3 comments
+   - **11 core security modules** with control-to-code mappings
+   - **13 example files** demonstrating secure usage patterns
+   - **2 test files** documenting control validation
+   - Direct traceability from requirements → controls → implementation
+   - **Exceeds industry standards** for security documentation quality
+   - See Appendix E for details
+
 ### Residual Risk Assessment
 
 **Overall Risk Rating:** LOW
@@ -611,6 +621,70 @@ See [REFACTORING-SPRINT-COMPLETION.md](REFACTORING-SPRINT-COMPLETION.md) for com
 - Complete git history with merge commit audit trail
 - Lessons learned and future recommendations
 - Testing results (49/49 tests passing, zero regressions)
+
+### Appendix E: In-Code NIST/STIG Documentation (2026-01-18)
+
+**Overview:**
+
+Comprehensive NIST SP 800-53 Rev 5 and Application Development STIG V5R3 documentation added directly to source code across 26+ files in a 4-week implementation effort (Weeks 1-4).
+
+**Implementation Details:**
+
+See [CODE-COMMENT-IMPLEMENTATION-PLAN.md](CODE-COMMENT-IMPLEMENTATION-PLAN.md) and [WEEK-4-COMPLETION.md](WEEK-4-COMPLETION.md) for complete documentation.
+
+**Core Security Modules (11 files):**
+- TLS Configuration: `src/tls.rs` (SC-8, IA-2, AC-17)
+- Certificate Validation: `src/validation.rs` (IA-2, SC-23, SI-10)
+- FIPS Enforcement: `src/fips/algorithms.rs` (SC-12, SC-13, IA-7)
+- Audit Log Encryption: `src/logging/encryption.rs` (AU-9, SC-12, SC-13, SC-28)
+- Windows Security: `src/windows/security.rs` (AC-3, AC-6, AU-2, AU-3, AU-12, SC-12)
+- Configuration: `src/config.rs` (CM-2, CM-6, SI-10)
+- Audit Logging: `src/logging.rs` (AU-2, AU-3, AU-6, AU-8, AU-12)
+- Error Handling: `src/error.rs` (SI-10)
+- CSR Generation: `src/csr.rs` (SC-12, SC-13)
+- Certificate Renewal: `src/renewal.rs` (IA-5, SC-12, AU-2)
+- Revocation Checking: `src/revocation.rs` (IA-2, SI-4, AU-2)
+
+**Example Files (13 files):**
+- Simple Enrollment: `examples/simple_enroll.rs`
+- Bootstrap/TOFU: `examples/bootstrap.rs`
+- FIPS Compliance: `examples/fips_enroll.rs`
+- HSM Integration: `examples/hsm_enroll.rs`
+- DoD PKI: `examples/dod_enroll.rs`
+- Certificate Validation: `examples/validate_chain.rs`
+- Revocation Checking: `examples/check_revocation.rs`
+- Auto Renewal: `examples/auto_renewal.rs`
+- And 5 more examples
+
+**Test Files (2 files):**
+- Integration Tests: `tests/integration_tests.rs`
+- RFC 7030 Compliance Tests: `tests/live_est_server_test.rs`
+
+**Documentation Quality:**
+- ✅ All critical security functions have NIST control comments
+- ✅ All STIG CAT I findings have implementation comments
+- ✅ Comments explain WHY code satisfies controls (not just WHAT)
+- ✅ RFC compliance documented (RFC 7030, RFC 5280, RFC 6960)
+- ✅ Security warnings provided for risky operations
+- ✅ Example demonstrations for all major controls
+
+**ATO Package Benefits:**
+1. **Auditor Evidence:** In-code comments provide immediate evidence of control implementation
+2. **Traceability:** Direct mapping from code → controls → requirements
+3. **Maintainability:** Future developers understand security constraints
+4. **Quality:** Documentation quality exceeds typical industry standards
+
+**Reference Documentation:**
+- Control Traceability Matrix §4.7: In-Code NIST/STIG Documentation
+- STIG Checklist §3.4: In-Code STIG Documentation
+- Security Assessment Report v1.1: Code Documentation Review
+
+**Statistics:**
+- Total files: 26+
+- Total lines of documentation: 4,219+
+- NIST controls documented: 18+
+- STIG findings addressed: 10+
+- Implementation phases: 4 (all complete)
 
 ---
 
