@@ -1,0 +1,2 @@
+8cf325d402e0a306176245750b99fec3a177fbc48c5f5ab8af0d53bb1e16f436  usg-est-client-cyclonedx-1.5.json
+47dbebdb56632985f8c0e75176f9a8d69f0d26ee17af1600ff2d1a9e485a466a  usg-est-client-spdx-2.3.json
