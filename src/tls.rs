@@ -31,7 +31,7 @@
 //!
 //! This module provides functions for building TLS configurations
 //! compatible with RFC 7030 requirements. All TLS communications enforce:
-//! - Minimum TLS 1.2 (RFC 7030 Section 3.3.1 compliance)
+//! - Minimum TLS 1.3 (RFC 7030 Section 3.3.1, NIST SP 800-52 Rev 2 compliance)
 //! - Strong cipher suites (ECDHE-ECDSA, ECDHE-RSA)
 //! - Mutual TLS authentication when configured
 //! - Certificate validation with trusted root anchors
@@ -53,14 +53,15 @@ use crate::error::{EstError, Result};
 // RFC 7030: Section 3.3.1 - TLS Requirements
 // ----------------------------------------------------------------------------
 // RFC 7030 Section 3.3.1 states: "TLS 1.1 [RFC4346] (or a later version) MUST be used"
-// We enforce TLS 1.2 as the minimum since TLS 1.1 is deprecated per NIST guidance.
-// This ensures confidentiality and integrity for all EST protocol communications.
+// We enforce TLS 1.3 as the minimum per current NIST SP 800-52 Rev 2 guidance.
+// TLS 1.2 is deprecated for new implementations; TLS 1.3 provides:
 //
-// TLS 1.2 provides:
-// - Strong cipher suites (ECDHE-ECDSA, ECDHE-RSA with AES-GCM)
-// - Perfect forward secrecy
+// - Simplified handshake (1-RTT, 0-RTT resumption)
+// - Removal of legacy cipher suites (CBC, RC4, SHA-1, static RSA)
+// - Mandatory perfect forward secrecy (ECDHE only)
+// - Encrypted handshake messages (hides certificate from passive observers)
 // - Protection against downgrade attacks
-// - FIPS 140-2 compliance when using approved algorithms
+// - FIPS 140-2/140-3 compliance when using approved algorithms
 // ============================================================================
 
 /// Build a reqwest Client with the appropriate TLS configuration.
@@ -80,7 +81,7 @@ use crate::error::{EstError, Result};
 /// # Implementation
 ///
 /// This function configures a reqwest HTTP client with:
-/// 1. **TLS 1.2 minimum version** (RFC 7030 Section 3.3.1, SC-8)
+/// 1. **TLS 1.3 minimum version** (RFC 7030 Section 3.3.1, SC-8, NIST SP 800-52 Rev 2)
 /// 2. **Certificate validation** against trusted roots (IA-2, APSC-DV-003235)
 /// 3. **Mutual TLS authentication** when client certificate configured (IA-2, APSC-DV-000160)
 /// 4. **Hostname verification** enabled by default (SC-8)
@@ -126,7 +127,14 @@ pub fn build_http_client(config: &EstClientConfig) -> Result<reqwest::Client> {
             }
             builder = builder.tls_backend_rustls().tls_certs_only(certs);
         }
-        TrustAnchors::Bootstrap(_) => {
+        TrustAnchors::Bootstrap(bootstrap_config) => {
+            // Check if the bootstrap window has expired
+            if std::time::Instant::now() > bootstrap_config.expires_at {
+                return Err(EstError::tls(
+                    "Bootstrap mode has expired. Reconfigure with explicit trust anchors."
+                        .to_string(),
+                ));
+            }
             // Bootstrap mode still needs some trust for the initial connection
             // The actual verification happens after fetching certificates
             builder = builder
@@ -161,8 +169,9 @@ pub fn build_http_client(config: &EstClientConfig) -> Result<reqwest::Client> {
     // NIST 800-53: SC-8 (Transmission Confidentiality and Integrity)
     // STIG: APSC-DV-000170 (CAT I) - Cryptographic Protection
     // RFC 7030: Section 3.3.1 compliance
-    // Enforce minimum TLS 1.2 (TLS 1.1 and earlier are deprecated/insecure)
-    builder = builder.min_tls_version(reqwest::tls::Version::TLS_1_2);
+    // NIST SP 800-52 Rev 2: TLS 1.3 required for new implementations
+    // Enforce TLS 1.3 minimum (TLS 1.2 and earlier are deprecated)
+    builder = builder.min_tls_version(reqwest::tls::Version::TLS_1_3);
 
     // Add additional headers
     let mut headers = reqwest::header::HeaderMap::new();

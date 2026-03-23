@@ -2,11 +2,12 @@
 name = "usg-est-client"
 version = "1.0.3"
 edition = "2024"
+rust-version = "1.92"
 license = "Apache-2.0"
 description = "RFC 7030 compliant EST (Enrollment over Secure Transport) client"
 keywords = ["est", "pki", "certificate", "enrollment", "rfc7030"]
 categories = ["cryptography", "network-programming"]
-repository = "https://github.com/johnwillman/usg-est-client"
+repository = "https://github.com/192d-Wing/usg-est-client"
 readme = "README.md"
 
 

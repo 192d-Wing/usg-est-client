@@ -30,3 +30,6 @@ fuzz/artifacts/
 # Security scan reports
 audit-report.json
 coverage/
+
+.env
+.DS_Store

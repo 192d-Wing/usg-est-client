@@ -414,12 +414,31 @@ impl EstClientConfigBuilder {
     }
 
     /// Use bootstrap mode (TOFU) for initial CA discovery.
+    ///
+    /// The bootstrap window defaults to 24 hours. Use
+    /// [`trust_bootstrap_with_ttl`](Self::trust_bootstrap_with_ttl) for a custom duration.
     pub fn trust_bootstrap<F>(mut self, verify_fingerprint: F) -> Self
     where
         F: Fn(&[u8; 32]) -> bool + Send + Sync + 'static,
     {
         self.trust_anchors = Some(TrustAnchors::Bootstrap(BootstrapConfig {
             verify_fingerprint: Arc::new(verify_fingerprint),
+            expires_at: std::time::Instant::now() + Duration::from_secs(24 * 60 * 60),
+        }));
+        self
+    }
+
+    /// Use bootstrap mode (TOFU) with a custom time-to-live.
+    ///
+    /// After `ttl` elapses, bootstrap mode will be rejected and the client
+    /// must be reconfigured with explicit trust anchors.
+    pub fn trust_bootstrap_with_ttl<F>(mut self, verify_fingerprint: F, ttl: Duration) -> Self
+    where
+        F: Fn(&[u8; 32]) -> bool + Send + Sync + 'static,
+    {
+        self.trust_anchors = Some(TrustAnchors::Bootstrap(BootstrapConfig {
+            verify_fingerprint: Arc::new(verify_fingerprint),
+            expires_at: std::time::Instant::now() + ttl,
         }));
         self
     }
@@ -943,6 +962,15 @@ pub struct BootstrapConfig {
     /// The fingerprint is a SHA-256 hash of the DER-encoded certificate.
     /// Return `true` to accept the certificate, `false` to reject.
     pub verify_fingerprint: FingerprintVerifier,
+
+    /// Expiration time for the bootstrap window.
+    ///
+    /// After this time, bootstrap mode will be rejected and the client
+    /// must use explicit trust anchors. This prevents indefinite TOFU
+    /// windows that could be exploited by delayed MITM attacks.
+    ///
+    /// Default: 24 hours from creation.
+    pub expires_at: std::time::Instant,
 }
 
 /// Configuration for certificate validation on enrollment responses.
