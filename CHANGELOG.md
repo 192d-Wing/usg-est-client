@@ -42,11 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Release creation with all binaries and checksums
   - See [.github/workflows/release.yml](.github/workflows/release.yml)
 
-- **GitLab CI Release Stage**
+- **GitHub Actions Release Pipeline**
   - Parallel builds for all platforms
-  - GitLab Release and Package Registry integration
+  - GitHub Release integration
   - Template-based builds with graceful fallbacks
-  - See [.gitlab-ci.yml](.gitlab-ci.yml) release stage
+  - See [.github/workflows/release.yml](.github/workflows/release.yml)
 
 - **Release Documentation**
   - Comprehensive release process guide: [docs/RELEASE-PROCESS.md](docs/RELEASE-PROCESS.md)
@@ -314,7 +314,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/johnwillman/usg-est-client/compare/v1.0.1...HEAD
-[1.0.1]: https://github.com/johnwillman/usg-est-client/compare/v1.0.0...v1.0.1
-[1.0.0]: https://github.com/johnwillman/usg-est-client/compare/v0.1.0...v1.0.0
-[0.1.0]: https://github.com/johnwillman/usg-est-client/releases/tag/v0.1.0
+[Unreleased]: https://github.com/192d-Wing/usg-est-client/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/192d-Wing/usg-est-client/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/192d-Wing/usg-est-client/compare/v0.1.0...v1.0.0
+[0.1.0]: https://github.com/192d-Wing/usg-est-client/releases/tag/v0.1.0

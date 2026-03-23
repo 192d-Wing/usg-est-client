@@ -17,8 +17,7 @@ git tag -a v1.0.0 -m "Release v1.0.0"
 git push origin v1.0.0
 
 # 4. Watch CI/CD build binaries automatically
-# GitHub: https://github.com/<user>/<repo>/actions
-# GitLab: https://gitlab.com/<namespace>/<project>/-/pipelines
+# GitHub: https://github.com/192d-Wing/usg-est-client/actions
 ```
 
 ## What Happens Automatically
@@ -32,14 +31,13 @@ When you push a tag matching `v*.*.*`:
 
 2. ✅ **Generates SHA256 checksums** for all binaries
 
-3. ✅ **Creates GitHub/GitLab Release** with:
+3. ✅ **Creates GitHub Release** with:
    - All binary artifacts
    - Checksums file
    - Auto-generated release notes
 
 4. ✅ **Publishes artifacts** to:
    - GitHub Releases
-   - GitLab Package Registry
 
 ## Platforms Built
 
@@ -121,7 +119,6 @@ git push origin v1.0.1
 ## CI/CD Configuration Files
 
 - **GitHub Actions**: `.github/workflows/release.yml`
-- **GitLab CI**: `.gitlab-ci.yml` (release stage)
 
 ## Need Help?
 

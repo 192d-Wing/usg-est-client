@@ -218,7 +218,7 @@ Generate new SBOMs when:
 
 **CI/CD Integration:**
 ```yaml
-# .gitlab-ci.yml or .github/workflows/
+# .github/workflows/ci.yml
 sbom-generation:
   script:
     - cargo install cargo-sbom

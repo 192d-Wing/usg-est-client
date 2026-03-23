@@ -6,18 +6,15 @@
 
 ## CI/CD & Security
 
-[![GitLab Pipeline](https://img.shields.io/badge/gitlab-pipeline-orange.svg)](https://gitlab.com/<namespace>/<project>/-/pipelines)
-[![Security Audit](https://img.shields.io/badge/security-cargo--audit-success.svg)](https://gitlab.com/<namespace>/<project>/-/pipelines)
+[![GitHub Actions](https://img.shields.io/github/actions/workflow/status/192d-Wing/usg-est-client/ci.yml?branch=main)](https://github.com/192d-Wing/usg-est-client/actions)
+[![Security Audit](https://img.shields.io/badge/security-cargo--audit-success.svg)](https://github.com/192d-Wing/usg-est-client/actions)
 [![License Check](https://img.shields.io/badge/licenses-cargo--deny-success.svg)](deny.toml)
-
-**Note:** Replace `<namespace>/<project>` in badges above with your actual GitLab namespace and project name.
-<!-- Example: gitlab.com/yourusername/usg-est-client -->
 
 - 🔒 **Security**: Daily automated security audits with cargo-audit and cargo-deny
 - ✅ **Testing**: Cross-platform CI/CD (Linux, macOS, Windows) with Rust stable, beta, and MSRV
 - 📊 **Coverage**: Automated code coverage reporting with tarpaulin
-- 🔍 **SAST**: Static Application Security Testing with GitLab Security Scanner
-- 📚 **Documentation**: [Security Tools Guide](SECURITY-TOOLS.md) | [GitLab CI/CD](GITLAB-CI.md)
+- 🔍 **SAST**: Static Application Security Testing via GitHub Actions
+- 📚 **Documentation**: [Security Tools Guide](SECURITY-TOOLS.md) | [GitHub Actions CI](.github/workflows/ci.yml)
 
 A Rust implementation of an **RFC 7030 compliant EST (Enrollment over Secure Transport) client** for automated X.509 certificate enrollment and management.
 
@@ -415,8 +412,8 @@ This project is under active development. See [ROADMAP.md](ROADMAP.md) for plann
 ## Support
 
 - 📖 [Documentation](https://docs.rs/usg-est-client)
-- 🐛 [Issue Tracker](https://github.com/johnwillman/usg-est-client/issues)
-- 💬 [Discussions](https://github.com/johnwillman/usg-est-client/discussions)
+- 🐛 [Issue Tracker](https://github.com/192d-Wing/usg-est-client/issues)
+- 💬 [Discussions](https://github.com/192d-Wing/usg-est-client/discussions)
 
 ---
 

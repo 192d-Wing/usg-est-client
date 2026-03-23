@@ -18,7 +18,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-REGISTRY="registry.gitlab.com"
+REGISTRY="ghcr.io"
 PROJECT="192d-wing/usg-est-client"
 IMAGE_NAME="ci"
 TAG="latest"
@@ -68,13 +68,12 @@ Multi-Platform Support:
 
 Environment Variables:
   DOCKER_BUILDKIT=1            Enable BuildKit for faster builds
-  CI_REGISTRY_USER             GitLab registry username
-  CI_REGISTRY_PASSWORD         GitLab registry password
+  CR_PAT                       GitHub Container Registry token
 
 Prerequisites:
   - Docker installed and running
   - Docker buildx installed (for multi-platform support)
-  - Logged in to GitLab Container Registry
+  - Logged in to GitHub Container Registry
   - Execute from project root directory
 
 For detailed documentation, see: docs/BUILD-CI-IMAGE.md
@@ -125,8 +124,8 @@ check_registry_login() {
     print_warning "Not logged in to ${REGISTRY}"
     echo "Attempting to log in..."
 
-    if [ -n "$CI_REGISTRY_USER" ] && [ -n "$CI_REGISTRY_PASSWORD" ]; then
-        echo "$CI_REGISTRY_PASSWORD" | docker login "$REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+    if [ -n "$CR_PAT" ]; then
+        echo "$CR_PAT" | docker login "$REGISTRY" -u USERNAME --password-stdin
     else
         docker login "$REGISTRY"
     fi
@@ -140,8 +139,7 @@ check_registry_login() {
         echo "  docker login ${REGISTRY}"
         echo ""
         echo "Or set environment variables:"
-        echo "  export CI_REGISTRY_USER=your-username"
-        echo "  export CI_REGISTRY_PASSWORD=your-token"
+        echo "  export CR_PAT=your-github-token"
         exit 1
     fi
 
@@ -358,8 +356,8 @@ push_image() {
         echo "Image available at:"
         echo "  ${FULL_IMAGE}"
         echo ""
-        echo "View in GitLab:"
-        echo "  https://gitlab.com/${PROJECT}/container_registry"
+        echo "View in GitHub:"
+        echo "  https://github.com/orgs/192d-Wing/packages"
     else
         print_error "Failed to push image"
         exit 1
@@ -425,7 +423,7 @@ if [ "$TEST_ONLY" = false ]; then
     print_success "Build and push completed successfully!"
     echo ""
     echo "Next steps:"
-    echo "  1. Verify image in GitLab Container Registry"
+    echo "  1. Verify image in GitHub Container Registry"
     echo "  2. Run a test CI pipeline to confirm it's used"
     echo "  3. Monitor pipeline performance improvements"
 else

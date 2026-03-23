@@ -2,8 +2,8 @@
 # Pre-installs all build dependencies and Rust toolchains to speed up pipeline execution
 #
 # Build and push:
-#   docker build -f Dockerfile.ci -t registry.gitlab.com/192d-wing/usg-est-client/ci:latest .
-#   docker push registry.gitlab.com/192d-wing/usg-est-client/ci:latest
+#   docker build -f Dockerfile.ci -t ghcr.io/192d-wing/usg-est-client/ci:latest .
+#   docker push ghcr.io/192d-wing/usg-est-client/ci:latest
 
 FROM rust:1.92-bookworm
 
@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install -y \
 
 # Install Rust toolchains for cross-compilation
 # Note: macOS cross-compilation requires macOS SDK which cannot be legally redistributed
-# For production macOS builds, use native macOS runners in GitLab CI
+# For production macOS builds, use native macOS runners in CI
 RUN rustup target add \
     x86_64-unknown-linux-gnu \
     x86_64-unknown-linux-musl \

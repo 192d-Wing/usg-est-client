@@ -11,7 +11,7 @@ This project uses a custom Docker image for CI/CD pipelines to significantly spe
 
 ## What's Pre-installed
 
-The custom CI image (`registry.gitlab.com/192d-wing/usg-est-client/ci:latest`) includes:
+The custom CI image (`ghcr.io/192d-wing/usg-est-client/ci:latest`) includes:
 
 ### System Dependencies
 - pkg-config
@@ -42,51 +42,53 @@ The custom CI image (`registry.gitlab.com/192d-wing/usg-est-client/ci:latest`) i
 ### Prerequisites
 
 1. Docker installed and running
-2. GitLab Container Registry access
+2. GitHub Container Registry (GHCR) access
 3. Appropriate permissions to push to the registry
 
 ### Build and Push
 
 ```bash
-# Log in to GitLab Container Registry
-docker login registry.gitlab.com
+# Log in to GitHub Container Registry (GHCR)
+docker login ghcr.io
 
 # Build the image
-docker build -f Dockerfile.ci -t registry.gitlab.com/192d-wing/usg-est-client/ci:latest .
+docker build -f Dockerfile.ci -t ghcr.io/192d-wing/usg-est-client/ci:latest .
 
 # Push to registry
-docker push registry.gitlab.com/192d-wing/usg-est-client/ci:latest
+docker push ghcr.io/192d-wing/usg-est-client/ci:latest
 ```
 
-### Using GitLab CI to Build
+### Using GitHub Actions to Build
 
 The CI image is automatically built and updated when:
 
 1. **Dockerfile.ci changes**: Triggered on push
-2. **Manual trigger**: Set CI variable `CI_BUILD_IMAGE=true`
+2. **Manual trigger**: Use workflow dispatch in GitHub Actions
 3. **Weekly schedule**: Picks up Rust toolchain updates
 
 To manually trigger a build:
 
 ```bash
-# In GitLab UI
-CI/CD → Pipelines → Run pipeline
-Add variable: CI_BUILD_IMAGE = true
+# In GitHub UI
+Actions → Select workflow → Run workflow
 ```
 
 ## Using in CI/CD
 
-The `.gitlab-ci.yml` is already configured to use the custom image:
+The `.github/workflows/ci.yml` is already configured to use the custom image:
 
 ```yaml
-variables:
-  CI_IMAGE: "registry.gitlab.com/192d-wing/usg-est-client/ci:latest"
+env:
+  CI_IMAGE: "ghcr.io/192d-wing/usg-est-client/ci:latest"
 
 jobs:
   test:
-    image: ${CI_IMAGE}  # Uses custom image
-    script:
-      - cargo test
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/192d-wing/usg-est-client/ci:latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo test
 ```
 
 ## Performance Comparison
@@ -136,12 +138,13 @@ RUN cargo install --locked new-tool --version X.Y.Z && \
 
 ### Scheduled Updates
 
-Configure a weekly GitLab CI schedule:
+Configure a weekly GitHub Actions schedule in `.github/workflows/ci-image.yml`:
 
-1. Go to CI/CD → Schedules
-2. Create new schedule
-3. Set interval: Weekly
-4. Add variable: `SCHEDULED_JOB=build-ci-image`
+```yaml
+on:
+  schedule:
+    - cron: '0 2 * * 0'  # Weekly on Sunday at 2 AM
+```
 
 ## Troubleshooting
 
@@ -151,9 +154,9 @@ If you see "image not found" errors:
 
 1. Check registry permissions
 2. Ensure image was pushed successfully
-3. Verify image name in `.gitlab-ci.yml` matches registry path
+3. Verify image name in `.github/workflows/ci.yml` matches registry path
 
-**Fallback**: The pipeline will fall back to `rust:latest` if the custom image is unavailable (configured in `.gitlab-ci.yml`).
+**Fallback**: The pipeline will fall back to `rust:latest` if the custom image is unavailable (configured in `.github/workflows/ci.yml`).
 
 ### Old Image Cached
 
@@ -164,7 +167,7 @@ If changes to Dockerfile.ci aren't reflected:
 docker system prune -a
 
 # Rebuild without cache
-docker build --no-cache -f Dockerfile.ci -t registry.gitlab.com/192d-wing/usg-est-client/ci:latest .
+docker build --no-cache -f Dockerfile.ci -t ghcr.io/192d-wing/usg-est-client/ci:latest .
 ```
 
 ### Size Too Large
@@ -190,11 +193,11 @@ This uses `cargo-chef` for dependency caching and creates a minimal runtime imag
 
 ## Security Considerations
 
-- The CI image is stored in a private GitLab Container Registry
+- The CI image is stored in the GitHub Container Registry (GHCR)
 - Only authorized users can push updates
 - Base image is official `rust:bookworm` from Docker Hub
 - All cargo tools installed from crates.io with `--locked` flag
-- Image is scanned by GitLab's container scanning (if available)
+- Image can be scanned via GitHub's container scanning workflows
 
 ## Cost Analysis
 
@@ -215,6 +218,6 @@ This uses `cargo-chef` for dependency caching and creates a minimal runtime imag
 
 - Dockerfile.ci: Custom CI image definition
 - Dockerfile.release: Multi-stage release build
-- .gitlab-ci.yml: CI configuration using custom image
+- .github/workflows/ci.yml: CI configuration using custom image
 - [Docker Multi-stage Builds](https://docs.docker.com/build/building/multi-stage/)
-- [GitLab Container Registry](https://docs.gitlab.com/ee/user/packages/container_registry/)
+- [GitHub Container Registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)

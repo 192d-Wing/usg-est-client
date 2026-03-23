@@ -30,8 +30,8 @@ The Q2 2026 unwrap() refactoring sprint has been **successfully completed**. All
 - [ERROR-HANDLING-PATTERNS.md](../dev/ERROR-HANDLING-PATTERNS.md) - Comprehensive guide (380+ lines)
 - Clippy configuration in `.cargo/config.toml`
 - Pre-commit hook for unwrap() count validation
-- GitLab CI unwrap() tracking dashboard
-- [GITLAB-CI-GUIDE.md](../dev/GITLAB-CI-GUIDE.md) (380+ lines)
+- GitHub Actions unwrap() tracking dashboard
+- [GITLAB-CI-GUIDE.md](../dev/GITLAB-CI-GUIDE.md) (380+ lines, historical)
 
 **Status:** Complete
 **Branch:** main
@@ -305,13 +305,13 @@ mod tests {
 ### Validation Strategy
 
 1. **Pre-commit hook** - Prevents unwrap() count increase
-2. **GitLab CI tracking** - Dashboard shows progress
+2. **GitHub Actions tracking** - Dashboard shows progress
 3. **Clippy warnings** - Enabled for unwrap_used, expect_used
 4. **Manual review** - Pattern application verified
 
 ### CI/CD Integration
 
-**GitLab CI Pipeline:**
+**GitHub Actions Pipeline:**
 - unwrap-tracking job generates dashboard
 - Baseline: 334 (updated post-refactoring)
 - Goal: 334 (maintain current level)
@@ -411,9 +411,9 @@ cargo test --lib
 
 - ✅ Pre-commit hook (`.git/hooks/pre-commit`)
 - ✅ Clippy configuration (`.cargo/config.toml`)
-- ✅ GitLab CI tracking (`.gitlab-ci.yml`)
+- ✅ GitHub Actions tracking (`.github/workflows/ci.yml`)
 - ✅ Local test script (`test-unwrap-tracking.sh`)
-- ✅ MR templates (`.gitlab/merge_request_templates/`)
+- ✅ PR templates (`.github/pull_request_template.md`)
 
 ---
 
@@ -488,7 +488,7 @@ main
    - Demonstrate automated validation
 
 3. **Maintain evidence trail**
-   - Keep GitLab CI artifacts
+   - Keep GitHub Actions artifacts
    - Preserve git history
    - Document lessons learned
 

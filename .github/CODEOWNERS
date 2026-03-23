@@ -1,0 +1,28 @@
+# Code owners for USG EST Client
+# These owners will be automatically requested for review on PRs
+
+# Default owner for everything
+* @192d-Wing/maintainers
+
+# Security-critical paths require security review
+src/tls.rs @192d-Wing/maintainers
+src/bootstrap.rs @192d-Wing/maintainers
+src/validation.rs @192d-Wing/maintainers
+src/fips/ @192d-Wing/maintainers
+src/config.rs @192d-Wing/maintainers
+
+# Cryptographic operations
+src/csr.rs @192d-Wing/maintainers
+src/operations/enroll.rs @192d-Wing/maintainers
+src/operations/serverkeygen.rs @192d-Wing/maintainers
+
+# Windows platform security (CNG, DPAPI, cert store, TPM)
+src/windows/ @192d-Wing/maintainers
+
+# HSM / PKCS#11 integration
+src/hsm/ @192d-Wing/maintainers
+
+# CI/CD and dependency policy
+.github/workflows/ @192d-Wing/maintainers
+deny.toml @192d-Wing/maintainers
+Cargo.toml @192d-Wing/maintainers

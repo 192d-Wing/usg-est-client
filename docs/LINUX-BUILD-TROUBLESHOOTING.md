@@ -324,21 +324,6 @@ The resulting binary has no dependencies and can run on any Linux system.
 
 ## CI/CD Configuration
 
-### GitLab CI (.gitlab-ci.yml)
-
-```yaml
-build:linux:
-  image: rust:1.84-bookworm
-  before_script:
-    - apt-get update
-    - apt-get install -y build-essential pkg-config libssl-dev
-  script:
-    - cargo build --release --all-features
-  artifacts:
-    paths:
-      - target/release/est-enroll
-```
-
 ### GitHub Actions (.github/workflows/build.yml)
 
 ```yaml

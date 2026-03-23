@@ -4,7 +4,7 @@ This document describes how to create and publish releases for the USG EST Clien
 
 ## Overview
 
-The project uses automated CI/CD pipelines to build releases for multiple platforms when a version tag is pushed. Both GitHub Actions and GitLab CI are configured to handle releases.
+The project uses automated CI/CD pipelines to build releases for multiple platforms when a version tag is pushed. GitHub Actions is configured to handle releases.
 
 ## Supported Platforms
 
@@ -113,14 +113,9 @@ The workflow runs when tags matching `v*.*.*` are pushed:
 - Uploads artifacts to GitHub Releases
 - Generates combined checksums file
 
-#### GitLab CI
+#### Note on GitLab CI (Historical)
 
-Configuration: `.gitlab-ci.yml` (release stage)
-
-The pipeline runs when tags matching `v*.*.*` are pushed:
-- Builds on: Linux runners, macOS runners (if available), Windows runners (if available)
-- Creates GitLab Release with artifacts
-- Uploads to GitLab Package Registry
+The project was previously hosted on GitLab. All CI/CD is now handled by GitHub Actions.
 
 ### 4. Verify Release
 
@@ -128,7 +123,6 @@ After the pipeline completes:
 
 1. **Check build status**: Ensure all jobs succeeded
    - GitHub: Check Actions tab
-   - GitLab: Check Pipelines page
 
 2. **Download and test binaries**:
    ```bash
@@ -338,5 +332,5 @@ If releasing a security fix:
 - [Semantic Versioning](https://semver.org/)
 - [Keep a Changelog](https://keepachangelog.com/)
 - [GitHub Releases](https://docs.github.com/en/repositories/releasing-projects-on-github)
-- [GitLab Releases](https://docs.gitlab.com/ee/user/project/releases/)
+- [GitHub Actions](https://docs.github.com/en/actions)
 - [Rust Cross-Compilation](https://rust-lang.github.io/rustup/cross-compilation.html)

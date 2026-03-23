@@ -98,7 +98,7 @@ brew install openssl@3
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/usg-est-client.git
+git clone https://github.com/192d-Wing/usg-est-client.git
 cd usg-est-client
 
 # Build with default features
@@ -912,37 +912,9 @@ jobs:
         cargo audit
 ```
 
-### GitLab CI
+### Additional GitHub Actions Examples
 
-```yaml
-# .gitlab-ci.yml
-stages:
-  - build
-  - test
-  - security
-
-build:
-  stage: build
-  image: rust:1.75
-  script:
-    - cargo build --release --all-features
-  artifacts:
-    paths:
-      - target/release/
-
-test:
-  stage: test
-  image: rust:1.75
-  script:
-    - cargo test --release --all-features
-
-security:
-  stage: security
-  image: rust:1.75
-  script:
-    - cargo install cargo-audit
-    - cargo audit
-```
+For more CI/CD configuration examples, see the workflow files in `.github/workflows/`.
 
 ---
 
@@ -987,8 +959,8 @@ cargo publish
 
 ### Community
 
-- GitHub Issues: <https://github.com/your-org/usg-est-client/issues>
-- Discussions: <https://github.com/your-org/usg-est-client/discussions>
+- GitHub Issues: <https://github.com/192d-Wing/usg-est-client/issues>
+- Discussions: <https://github.com/192d-Wing/usg-est-client/discussions>
 
 ### Security
 

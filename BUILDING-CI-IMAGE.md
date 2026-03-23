@@ -5,8 +5,8 @@ This project uses a custom Docker image for faster CI/CD pipelines. Here's how t
 ## TL;DR
 
 ```bash
-# 1. Log in to GitLab Container Registry
-docker login registry.gitlab.com
+# 1. Log in to GitHub Container Registry (GHCR)
+docker login ghcr.io
 
 # 2. Run the build script
 ./scripts/build-ci-image.sh
@@ -17,16 +17,16 @@ docker login registry.gitlab.com
 ## What You Need
 
 1. Docker installed and running
-2. GitLab account with access to this project
-3. Personal access token with `read_registry` + `write_registry` scopes
+2. GitHub account with access to this project
+3. Personal access token (classic) with `read:packages` + `write:packages` scopes
 
 ## Creating a Personal Access Token
 
-1. Go to GitLab → **User Settings** → **Access Tokens**
-2. Click **Add new token**
+1. Go to GitHub → **Settings** → **Developer settings** → **Personal access tokens**
+2. Click **Generate new token (classic)**
 3. Name: `Docker Registry Access`
-4. Scopes: Check `read_registry` and `write_registry`
-5. Click **Create personal access token**
+4. Scopes: Check `read:packages` and `write:packages`
+5. Click **Generate token**
 6. **Save the token** (you won't see it again!)
 
 ## Build Methods
@@ -54,23 +54,23 @@ docker login registry.gitlab.com
 
 ```bash
 # Log in
-docker login registry.gitlab.com
+docker login ghcr.io
 
 # Build
 docker build -f Dockerfile.ci \
-  -t registry.gitlab.com/192d-wing/usg-est-client/ci:latest \
+  -t ghcr.io/192d-wing/usg-est-client/ci:latest \
   .
 
 # Push
-docker push registry.gitlab.com/192d-wing/usg-est-client/ci:latest
+docker push ghcr.io/192d-wing/usg-est-client/ci:latest
 ```
 
-### Method 3: Use GitLab CI
+### Method 3: Use GitHub Actions
 
 **Trigger via UI:**
-1. Go to **CI/CD → Pipelines**
-2. Click **Run pipeline**
-3. Add variable: `CI_BUILD_IMAGE` = `true`
+1. Go to **Actions** tab
+2. Select the CI image build workflow
+3. Click **Run workflow**
 4. Run
 
 **Or push a change to Dockerfile.ci:**
@@ -84,8 +84,8 @@ git push
 
 ## Verify It Worked
 
-1. **Check GitLab Registry:**
-   - Go to: **Packages & Registries → Container Registry**
+1. **Check GitHub Container Registry:**
+   - Go to: **Packages** on the repository page
    - Look for: `192d-wing/usg-est-client/ci`
 
 2. **Run a test pipeline:**
@@ -108,14 +108,14 @@ git push
 
 ### "authentication required"
 ```bash
-docker logout registry.gitlab.com
-docker login registry.gitlab.com
+docker logout ghcr.io
+docker login ghcr.io
 # Enter username and personal access token
 ```
 
 ### "access forbidden"
 - Check you have **Developer** role or higher
-- Verify Container Registry is enabled in project settings
+- Verify you have package access on the repository
 
 ### "image not found" in CI
 - Wait ~1 minute for registry to propagate
@@ -137,18 +137,18 @@ docker login registry.gitlab.com
 ./scripts/build-ci-image.sh --test
 
 # Check image exists
-docker pull registry.gitlab.com/192d-wing/usg-est-client/ci:latest
+docker pull ghcr.io/192d-wing/usg-est-client/ci:latest
 
 # Test tools are installed
-docker run --rm registry.gitlab.com/192d-wing/usg-est-client/ci:latest cargo --version
-docker run --rm registry.gitlab.com/192d-wing/usg-est-client/ci:latest cargo audit --version
+docker run --rm ghcr.io/192d-wing/usg-est-client/ci:latest cargo --version
+docker run --rm ghcr.io/192d-wing/usg-est-client/ci:latest cargo audit --version
 
-# View in GitLab
-open https://gitlab.com/192d-wing/usg-est-client/container_registry
+# View in GitHub
+open https://github.com/192d-Wing/usg-est-client/pkgs/container/usg-est-client%2Fci
 ```
 
 ## Need Help?
 
 - **Script help**: `./scripts/build-ci-image.sh --help`
 - **Build issues**: See [docs/BUILD-CI-IMAGE.md](docs/BUILD-CI-IMAGE.md)
-- **CI/CD questions**: Check `.gitlab-ci.yml` comments
+- **CI/CD questions**: Check `.github/workflows/ci.yml` comments

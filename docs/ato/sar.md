@@ -76,7 +76,7 @@ The assessment followed NIST SP 800-53A Rev 5 guidance using a combination of ex
 
 **Documents Reviewed:**
 - System Security Plan (SSP)
-- Source code repository (GitHub/GitLab)
+- Source code repository (GitHub)
 - Configuration files and templates
 - API documentation (rustdoc)
 - Windows enrollment guide

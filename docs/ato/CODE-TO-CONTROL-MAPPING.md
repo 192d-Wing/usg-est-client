@@ -410,7 +410,7 @@ pub fn validate_signature_algorithm(
 #### SI-2: Flaw Remediation
 **Implementation Status**: ✅ Satisfied
 **Source Code Locations**:
-- `.gitlab-ci.yml:security:cargo-audit` - Automated vulnerability scanning
+- `.github/workflows/ci.yml` (security:cargo-audit) - Automated vulnerability scanning
 - `docs/ato/security-update-sla.md` - Remediation timeline SLA
 
 **Implementation Details**:
@@ -447,7 +447,7 @@ pub fn validate_signature_algorithm(
 **Implementation Status**: ✅ Satisfied
 **Source Code Locations**:
 - `docs/ato/code-signing-implementation.md` - Code signing procedures
-- `.gitlab-ci.yml:release:publish` - SHA-256 checksum generation
+- `.github/workflows/ci.yml` (release:publish) - SHA-256 checksum generation
 
 **Implementation Details**:
 - **Code Signing**: Authenticode (Windows), GPG (Linux/macOS)
@@ -580,8 +580,8 @@ Get-FileHash -Algorithm SHA256 est-enroll-*.exe
 #### RA-5: Vulnerability Scanning
 **Implementation Status**: ✅ Satisfied
 **Source Code Locations**:
-- `.gitlab-ci.yml:security:cargo-audit` - Dependency vulnerability scanning
-- `.gitlab-ci.yml:security:cargo-deny` - License and ban policy enforcement
+- `.github/workflows/ci.yml` (security:cargo-audit) - Dependency vulnerability scanning
+- `.github/workflows/ci.yml` (security:cargo-deny) - License and ban policy enforcement
 - `fuzz/` - Fuzzing infrastructure
 
 **Implementation Details**:
@@ -1414,7 +1414,7 @@ ENCRYPTED-LOG-v1:<nonce>:<ciphertext>:<mac>
    - Validate with automated scans (where applicable)
 
 3. **Evidence Collection**:
-   - Source code: GitHub/GitLab repository
+   - Source code: GitHub repository
    - Test results: CI/CD pipeline artifacts
    - Scan results: `cargo audit`, `cargo deny`, fuzzing reports
    - Documentation: `docs/ato/` directory
@@ -1427,7 +1427,7 @@ ENCRYPTED-LOG-v1:<nonce>:<ciphertext>:<mac>
    - Include source code excerpts as evidence
 
 2. **Test Evidence**:
-   - CI/CD pipeline logs (GitLab CI)
+   - CI/CD pipeline logs (GitHub Actions)
    - Test coverage reports (`cargo tarpaulin`)
    - Fuzzing campaign results
    - Vulnerability scan results
@@ -1462,7 +1462,7 @@ ENCRYPTED-LOG-v1:<nonce>:<ciphertext>:<mac>
 
 - **Security Team**: security@example.mil
 - **Compliance Officer**: compliance@example.mil
-- **Project Repository**: https://gitlab.com/192d-wing/usg-est-client
+- **Project Repository**: https://github.com/192d-Wing/usg-est-client
 
 ---
 

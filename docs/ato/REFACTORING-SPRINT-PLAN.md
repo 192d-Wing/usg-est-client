@@ -474,7 +474,7 @@ fi
 
 ### CI Dashboard
 
-Configure in GitLab CI/CD (`.gitlab-ci.yml`):
+Configure in GitHub Actions (`.github/workflows/ci.yml`):
 
 ```yaml
 unwrap-tracking:
@@ -652,7 +652,7 @@ git push origin main
 
 3. **Test Infrastructure**
    - Windows Server licenses: Available via MSDN
-   - CI/CD capacity: GitLab CI/CD runners sufficient
+   - CI/CD capacity: GitHub Actions runners sufficient
 
 ### Internal Dependencies
 
@@ -782,7 +782,7 @@ Week 9: Buffer + Documentation
 | `src/auto_enroll/config.rs` | 10 | MEDIUM | 4 |
 | `src/operations/serverkeygen.rs` | 10 | MEDIUM | 4 |
 
-**Full inventory:** See CI dashboard in GitLab pipeline artifacts (`unwrap-tracking` job)
+**Full inventory:** See CI dashboard in GitHub Actions pipeline artifacts (`unwrap-tracking` job)
 
 ---
 

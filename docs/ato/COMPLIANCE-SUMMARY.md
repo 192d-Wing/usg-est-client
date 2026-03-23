@@ -131,7 +131,7 @@ The USG EST Client has undergone comprehensive evaluation against NIST SP 800-53
 ### System and Information Integrity (SI) - 4 Controls
 | Control | Status | Implementation |
 |---------|--------|----------------|
-| SI-2 | ✅ Satisfied | `.gitlab-ci.yml`, `docs/ato/security-update-sla.md` |
+| SI-2 | ✅ Satisfied | `.github/workflows/ci.yml`, `docs/ato/security-update-sla.md` |
 | SI-3 | ✅ Satisfied | `src/validation.rs`, Rust memory safety |
 | SI-7 | ✅ Satisfied | `docs/ato/code-signing-implementation.md` |
 | SI-10 | ✅ Satisfied | `src/validation.rs`, `src/config.rs` |
@@ -152,7 +152,7 @@ The USG EST Client has undergone comprehensive evaluation against NIST SP 800-53
 ### Risk Assessment (RA) - 1 Control
 | Control | Status | Implementation |
 |---------|--------|----------------|
-| RA-5 | ✅ Satisfied | `.gitlab-ci.yml`, `fuzz/` |
+| RA-5 | ✅ Satisfied | `.github/workflows/ci.yml`, `fuzz/` |
 
 ---
 
@@ -417,7 +417,7 @@ Most "other than satisfied" controls are due to:
    - Test critical security functions
 
 3. **Evidence Collection**:
-   - Source code: GitLab repository
+   - Source code: GitHub repository
    - Test results: CI/CD pipeline artifacts
    - Scan results: Automated security scan reports
    - Documentation: `docs/ato/` directory
@@ -480,7 +480,7 @@ Most "other than satisfied" controls are due to:
 - **Role**: ATO coordination, control assessment
 
 ### Development Team
-- **Repository**: https://gitlab.com/192d-wing/usg-est-client
+- **Repository**: https://github.com/192d-Wing/usg-est-client
 - **Role**: Implementation, code review
 
 ---

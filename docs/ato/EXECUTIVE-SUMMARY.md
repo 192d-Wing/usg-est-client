@@ -330,7 +330,7 @@ Five documented patterns from [ERROR-HANDLING-PATTERNS.md](../dev/ERROR-HANDLING
 - ✅ Integration tests with SoftHSM2 successful
 - ✅ Zero clippy warnings introduced
 - ✅ Pre-commit hooks prevent unwrap() regression
-- ✅ GitLab CI tracks unwrap() count per pipeline run
+- ✅ GitHub Actions tracks unwrap() count per pipeline run
 
 ### Documentation Deliverables
 
@@ -338,7 +338,7 @@ Five documented patterns from [ERROR-HANDLING-PATTERNS.md](../dev/ERROR-HANDLING
 2. **[REFACTORING-SPRINT-COMPLETION.md](REFACTORING-SPRINT-COMPLETION.md)** - Comprehensive completion report
 3. **[ERROR-HANDLING-PATTERNS.md](../dev/ERROR-HANDLING-PATTERNS.md)** - 5 remediation patterns
 4. **[PHASE2-HSM-ANALYSIS.md](../dev/PHASE2-HSM-ANALYSIS.md)** - HSM module detailed analysis
-5. **[GITLAB-CI-GUIDE.md](../dev/GITLAB-CI-GUIDE.md)** - CI/CD integration guide
+5. **[GITLAB-CI-GUIDE.md](../dev/GITLAB-CI-GUIDE.md)** - CI/CD integration guide (historical)
 
 ### Git History
 
