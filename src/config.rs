@@ -40,7 +40,7 @@
 //! - [`HttpAuth`]: HTTP Basic authentication credentials
 //! - [`TrustAnchors`]: Trust anchor configuration for server verification
 //! - [`BootstrapConfig`]: Bootstrap trust configuration for initial enrollment
-//! - [`CertificateValidationConfig`]: Certificate validation settings
+//! - `CertificateValidationConfig`: Certificate validation settings (requires `validation` feature)
 
 use std::sync::Arc;
 use std::time::Duration;

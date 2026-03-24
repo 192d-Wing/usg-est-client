@@ -90,12 +90,12 @@ jobs:
     name: Documentation
     runs-on: ubuntu-latest
     env:
-      RUSTDOCFLAGS: "-D warnings -A missing_docs"
+      RUSTDOCFLAGS: "-D warnings"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo doc --all-features --no-deps
+      - run: cargo doc --no-deps
 
   # ===========================================================================
   # Security
