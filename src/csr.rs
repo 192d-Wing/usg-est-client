@@ -1403,6 +1403,297 @@ mod tests {
 
         assert!(!csr_der.is_empty());
     }
+
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+
+    #[test]
+    fn test_builder_all_dn_attributes() {
+        use der::Decode;
+        use x509_cert::request::CertReq;
+
+        let (csr_der, _key_pair) = CsrBuilder::new()
+            .common_name("full-dn.example.com")
+            .organization("Test Organization")
+            .organizational_unit("Engineering")
+            .country("US")
+            .state("Virginia")
+            .locality("Arlington")
+            .build()
+            .unwrap();
+
+        assert!(!csr_der.is_empty());
+        let cert_req = CertReq::from_der(&csr_der).unwrap();
+        let subject = cert_req.info.subject.to_string();
+        assert!(subject.contains("full-dn.example.com"));
+        assert!(subject.contains("Test Organization"));
+        assert!(subject.contains("Engineering"));
+        assert!(subject.contains("US"));
+        assert!(subject.contains("Virginia"));
+        assert!(subject.contains("Arlington"));
+    }
+
+    #[test]
+    fn test_builder_multiple_san_dns() {
+        use der::Decode;
+        use x509_cert::request::CertReq;
+
+        let (csr_der, _key_pair) = CsrBuilder::new()
+            .common_name("multi-dns.example.com")
+            .san_dns("multi-dns.example.com")
+            .san_dns("alt1.example.com")
+            .san_dns("alt2.example.com")
+            .san_dns("alt3.example.com")
+            .build()
+            .unwrap();
+
+        assert!(!csr_der.is_empty());
+        let cert_req = CertReq::from_der(&csr_der).unwrap();
+        assert!(!cert_req.info.attributes.is_empty());
+    }
+
+    #[test]
+    fn test_builder_san_ip_v4_and_v6() {
+        use der::Decode;
+        use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+        use x509_cert::request::CertReq;
+
+        let (csr_der, _key_pair) = CsrBuilder::new()
+            .common_name("ip-san.example.com")
+            .san_ip(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)))
+            .san_ip(IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)))
+            .build()
+            .unwrap();
+
+        assert!(!csr_der.is_empty());
+        let cert_req = CertReq::from_der(&csr_der).unwrap();
+        assert!(!cert_req.info.attributes.is_empty());
+    }
+
+    #[test]
+    fn test_builder_san_email() {
+        use der::Decode;
+        use x509_cert::request::CertReq;
+
+        let (csr_der, _key_pair) = CsrBuilder::new()
+            .common_name("email-san.example.com")
+            .san_email("admin@example.com")
+            .build()
+            .unwrap();
+
+        assert!(!csr_der.is_empty());
+        let cert_req = CertReq::from_der(&csr_der).unwrap();
+        assert!(!cert_req.info.attributes.is_empty());
+    }
+
+    #[test]
+    fn test_builder_san_uri() {
+        use der::Decode;
+        use x509_cert::request::CertReq;
+
+        let (csr_der, _key_pair) = CsrBuilder::new()
+            .common_name("uri-san.example.com")
+            .san_uri("https://example.com/device/001")
+            .build()
+            .unwrap();
+
+        assert!(!csr_der.is_empty());
+        let cert_req = CertReq::from_der(&csr_der).unwrap();
+        assert!(!cert_req.info.attributes.is_empty());
+    }
+
+    #[test]
+    fn test_builder_all_key_usage_flags() {
+        use der::Decode;
+        use x509_cert::request::CertReq;
+
+        let (csr_der, _key_pair) = CsrBuilder::new()
+            .common_name("key-usage.example.com")
+            .key_usage_digital_signature()
+            .key_usage_key_encipherment()
+            .key_usage_key_agreement()
+            .build()
+            .unwrap();
+
+        assert!(!csr_der.is_empty());
+        let cert_req = CertReq::from_der(&csr_der).unwrap();
+        assert!(!cert_req.info.attributes.is_empty());
+    }
+
+    #[test]
+    fn test_builder_all_eku_flags() {
+        use der::Decode;
+        use x509_cert::request::CertReq;
+
+        let (csr_der, _key_pair) = CsrBuilder::new()
+            .common_name("eku.example.com")
+            .extended_key_usage_client_auth()
+            .extended_key_usage_server_auth()
+            .build()
+            .unwrap();
+
+        assert!(!csr_der.is_empty());
+        let cert_req = CertReq::from_der(&csr_der).unwrap();
+        assert!(!cert_req.info.attributes.is_empty());
+    }
+
+    #[test]
+    fn test_builder_combined_key_usage_and_eku() {
+        use der::Decode;
+        use x509_cert::request::CertReq;
+
+        let (csr_der, _key_pair) = CsrBuilder::new()
+            .common_name("combined.example.com")
+            .key_usage_digital_signature()
+            .key_usage_key_encipherment()
+            .key_usage_key_agreement()
+            .extended_key_usage_client_auth()
+            .extended_key_usage_server_auth()
+            .build()
+            .unwrap();
+
+        assert!(!csr_der.is_empty());
+        let cert_req = CertReq::from_der(&csr_der).unwrap();
+        let subject = cert_req.info.subject.to_string();
+        assert!(subject.contains("combined.example.com"));
+        assert!(!cert_req.info.attributes.is_empty());
+        assert!(!cert_req.signature.as_bytes().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_build_with_key_reusing_keypair() {
+        use der::Decode;
+        use rcgen::KeyPair;
+        use x509_cert::request::CertReq;
+
+        let key_pair = KeyPair::generate().unwrap();
+
+        let csr_der = CsrBuilder::new()
+            .common_name("reuse-key.example.com")
+            .organization("Reuse Key Org")
+            .san_dns("reuse-key.example.com")
+            .key_usage_digital_signature()
+            .extended_key_usage_client_auth()
+            .build_with_key(&key_pair)
+            .unwrap();
+
+        assert!(!csr_der.is_empty());
+        let cert_req = CertReq::from_der(&csr_der).unwrap();
+        let subject = cert_req.info.subject.to_string();
+        assert!(subject.contains("reuse-key.example.com"));
+        assert!(!cert_req.signature.as_bytes().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_challenge_password_does_not_break_builder() {
+        use der::Decode;
+        use x509_cert::request::CertReq;
+
+        let (csr_der, _key_pair) = CsrBuilder::new()
+            .common_name("challenge.example.com")
+            .challenge_password("s3cret-passw0rd")
+            .san_dns("challenge.example.com")
+            .key_usage_digital_signature()
+            .build()
+            .unwrap();
+
+        assert!(!csr_der.is_empty());
+        let cert_req = CertReq::from_der(&csr_der).unwrap();
+        let subject = cert_req.info.subject.to_string();
+        assert!(subject.contains("challenge.example.com"));
+    }
+
+    #[test]
+    fn test_with_attributes_does_not_break_builder() {
+        use crate::types::CsrAttributes;
+        use der::Decode;
+        use x509_cert::request::CertReq;
+
+        let attrs = CsrAttributes::default();
+        let (csr_der, _key_pair) = CsrBuilder::new()
+            .common_name("attrs.example.com")
+            .with_attributes(&attrs)
+            .san_dns("attrs.example.com")
+            .build()
+            .unwrap();
+
+        assert!(!csr_der.is_empty());
+        let cert_req = CertReq::from_der(&csr_der).unwrap();
+        let subject = cert_req.info.subject.to_string();
+        assert!(subject.contains("attrs.example.com"));
+    }
+
+    #[test]
+    fn test_default_trait_implementation() {
+        use der::Decode;
+        use x509_cert::request::CertReq;
+
+        let builder: CsrBuilder = Default::default();
+        let (csr_der, _key_pair) = builder
+            .common_name("default-trait.example.com")
+            .build()
+            .unwrap();
+
+        assert!(!csr_der.is_empty());
+        let cert_req = CertReq::from_der(&csr_der).unwrap();
+        let subject = cert_req.info.subject.to_string();
+        assert!(subject.contains("default-trait.example.com"));
+    }
+
+    #[test]
+    fn test_generate_device_csr_with_organization() {
+        use der::Decode;
+        use x509_cert::request::CertReq;
+
+        let (csr_der, _key_pair) =
+            generate_device_csr("device-org.example.com", Some("Federal Agency"))
+                .unwrap();
+
+        assert!(!csr_der.is_empty());
+        let cert_req = CertReq::from_der(&csr_der).unwrap();
+        let subject = cert_req.info.subject.to_string();
+        assert!(subject.contains("device-org.example.com"));
+        assert!(subject.contains("Federal Agency"));
+    }
+
+    #[test]
+    fn test_generate_device_csr_without_organization() {
+        use der::Decode;
+        use x509_cert::request::CertReq;
+
+        let (csr_der, _key_pair) =
+            generate_device_csr("device-no-org.example.com", None)
+                .unwrap();
+
+        assert!(!csr_der.is_empty());
+        let cert_req = CertReq::from_der(&csr_der).unwrap();
+        let subject = cert_req.info.subject.to_string();
+        assert!(subject.contains("device-no-org.example.com"));
+        // Should not contain any organization
+        assert!(!subject.contains("O="));
+    }
+
+    #[test]
+    fn test_generate_server_csr_with_multiple_sans() {
+        use der::Decode;
+        use x509_cert::request::CertReq;
+
+        let san_names = &[
+            "www.example.com",
+            "example.com",
+            "api.example.com",
+            "cdn.example.com",
+        ];
+        let (csr_der, _key_pair) =
+            generate_server_csr("www.example.com", san_names).unwrap();
+
+        assert!(!csr_der.is_empty());
+        let cert_req = CertReq::from_der(&csr_der).unwrap();
+        let subject = cert_req.info.subject.to_string();
+        assert!(subject.contains("www.example.com"));
+        // SANs are encoded in the extension request attribute
+        assert!(!cert_req.info.attributes.is_empty());
+        assert!(!cert_req.signature.as_bytes().unwrap().is_empty());
+    }
 }
 
 #[cfg(all(test, feature = "csr-gen", feature = "hsm"))]
