@@ -101,12 +101,12 @@ check_prerequisites() {
     print_success "Docker daemon is running"
 
     # Check we're in project root
-    if [ ! -f "Dockerfile.ci" ]; then
-        print_error "Dockerfile.ci not found"
+    if [ ! -f "cicd/Dockerfile.ci" ]; then
+        print_error "cicd/Dockerfile.ci not found"
         echo "Run this script from the project root directory"
         exit 1
     fi
-    print_success "Found Dockerfile.ci"
+    print_success "Found cicd/Dockerfile.ci"
 
     echo ""
 }
@@ -165,7 +165,7 @@ build_image() {
     fi
 
     echo "Image: ${FULL_IMAGE}"
-    echo "Dockerfile: Dockerfile.ci"
+    echo "Dockerfile: cicd/Dockerfile.ci"
     if [ "$USE_BUILDX" = true ]; then
         echo "Platforms: linux/amd64"
     fi
@@ -177,7 +177,7 @@ build_image() {
         set -x
         docker buildx build $BUILD_ARGS \
             --platform linux/amd64 \
-            -f Dockerfile.ci \
+            -f cicd/Dockerfile.ci \
             -t "${FULL_IMAGE}" \
             --load \
             .
@@ -186,7 +186,7 @@ build_image() {
         # Standard build for current platform
         set -x
         docker build $BUILD_ARGS \
-            -f Dockerfile.ci \
+            -f cicd/Dockerfile.ci \
             -t "${FULL_IMAGE}" \
             .
         set +x
@@ -341,7 +341,7 @@ push_image() {
         # Build and push multi-platform image directly
         docker buildx build \
             --platform linux/amd64 \
-            -f Dockerfile.ci \
+            -f cicd/Dockerfile.ci \
             -t "${FULL_IMAGE}" \
             --push \
             .

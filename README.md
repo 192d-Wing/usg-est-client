@@ -7,6 +7,7 @@
 ## CI/CD & Security
 
 [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/192d-Wing/usg-est-client/ci.yml?branch=main)](https://github.com/192d-Wing/usg-est-client/actions)
+[![codecov](https://codecov.io/gh/192d-Wing/usg-est-client/graph/badge.svg)](https://codecov.io/gh/192d-Wing/usg-est-client)
 [![Security Audit](https://img.shields.io/badge/security-cargo--audit-success.svg)](https://github.com/192d-Wing/usg-est-client/actions)
 [![License Check](https://img.shields.io/badge/licenses-cargo--deny-success.svg)](deny.toml)
 
