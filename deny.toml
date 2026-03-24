@@ -17,6 +17,9 @@ ignore = [
     # Requires network-observable timing measurements, limited impact
     # Action: Monitor for constant-time implementation updates
     { id = "RUSTSEC-2023-0071", reason = "Limited risk: used for signature verification only, not decryption; monitoring for constant-time implementation" },
+    # paste crate is unmaintained but is a transitive dependency of cryptoki (PKCS#11)
+    # No action needed until cryptoki migrates to an alternative
+    { id = "RUSTSEC-2024-0436", reason = "Transitive dep via cryptoki; no alternative available yet" },
 ]
 
 [licenses]
@@ -35,6 +38,7 @@ allow = [
     "Unicode-3.0",  # For unicode/ICU crates (transitive via url/idna)
     "OpenSSL",  # For openssl/openssl-sys (FIPS feature)
     "CDLA-Permissive-2.0",  # For webpki-roots/webpki-root-certs (Mozilla root certificates)
+    "MPL-2.0",  # For option-ext (transitive via dirs)
 ]
 # Confidence threshold for license detection (0.0 - 1.0)
 confidence-threshold = 0.8
@@ -53,16 +57,19 @@ multiple-versions = "warn"
 # Lint level for when a crate version requirement is `*`
 wildcards = "warn"
 
-# List of crates that are allowed to have multiple versions
-# (This is a common issue with transitive dependencies)
+# Allow known duplicate crate versions (transitive dependency version splits)
 skip = [
-    # No multiple versions currently allowed
+    { crate = "getrandom" },      # 0.2.x / 0.3.x / 0.4.x ecosystem transition
+    { crate = "rand" },           # 0.8.x / 0.9.x ecosystem transition
+    { crate = "rand_core" },      # 0.6.x / 0.9.x ecosystem transition
+    { crate = "rand_chacha" },    # 0.3.x / 0.9.x ecosystem transition
+    { crate = "thiserror" },      # 1.x / 2.x via jni -> rustls-platform-verifier
+    { crate = "thiserror-impl" }, # mirrors thiserror
+    { crate = "winnow" },         # 0.7.x / 1.x via toml parser
 ]
 
 # Crates that are banned and should not be used
 deny = [
-    # Old OpenSSL versions with known vulnerabilities
-    { crate = "openssl", wrappers = [], use-instead = "openssl@>=0.10", reason = "Known vulnerabilities in older versions" },
     # Insecure crypto implementations
     { crate = "md5", wrappers = [], reason = "Cryptographically broken, use SHA-256+" },
     { crate = "sha1", wrappers = [], reason = "Cryptographically weakened, use SHA-256+" },

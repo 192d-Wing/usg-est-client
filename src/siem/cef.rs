@@ -128,6 +128,7 @@ fn escape_cef_value(s: &str) -> String {
 }
 
 /// Standard CEF extension fields for EST events
+#[allow(missing_docs)]
 pub mod extensions {
     /// Source fields
     pub const SRC: &str = "src"; // Source IP

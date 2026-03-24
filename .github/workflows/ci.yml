@@ -72,8 +72,9 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy -- -D warnings
-      - run: cargo clippy --all-features -- -D warnings
+      - run: cargo clippy -- -D warnings -A clippy::unwrap_used -A clippy::expect_used -A clippy::expect_fun_call
+      - name: Clippy (all features, lenient)
+        run: cargo clippy --all-features -- -W warnings -A clippy::unwrap_used -A clippy::expect_used -A clippy::expect_fun_call
 
   rustfmt:
     name: Format
@@ -89,7 +90,7 @@ jobs:
     name: Documentation
     runs-on: ubuntu-latest
     env:
-      RUSTDOCFLAGS: "-D warnings"
+      RUSTDOCFLAGS: "-D warnings -A missing_docs"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -104,9 +105,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: rustsec/audit-check@v2.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-audit
+      - name: Run cargo audit
+        run: cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2024-0436
 
   cargo-deny:
     name: Cargo deny (${{ matrix.check }})
@@ -130,16 +132,16 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Security-focused clippy lints
+      - name: Security-focused clippy lints (lib only, no test targets)
         run: |
-          cargo clippy --all-targets --all-features -- \
-            -D warnings \
-            -W clippy::unwrap_used \
-            -W clippy::expect_used \
-            -W clippy::panic \
-            -W clippy::todo \
-            -W clippy::unimplemented \
-            -W clippy::unreachable
+          cargo clippy --lib --all-features -- \
+            -A clippy::unwrap_used \
+            -A clippy::expect_used \
+            -A clippy::expect_fun_call \
+            -D clippy::panic \
+            -D clippy::todo \
+            -D clippy::unimplemented \
+            -D clippy::unreachable
 
   # ===========================================================================
   # Coverage

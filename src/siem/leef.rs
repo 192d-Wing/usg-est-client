@@ -115,6 +115,7 @@ fn escape_leef_value(s: &str) -> String {
 }
 
 /// Standard LEEF attribute names for EST events
+#[allow(missing_docs)]
 pub mod attributes {
     /// Event classification
     pub const CAT: &str = "cat"; // Category

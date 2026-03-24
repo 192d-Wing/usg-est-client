@@ -583,7 +583,8 @@ fn parse_x509_time(x509_time: &x509_cert::time::Time) -> Result<std::time::Syste
     Ok(SystemTime::UNIX_EPOCH + duration)
 }
 
-// Non-Windows stubs
+// Non-Windows stubs - these return platform errors on non-Windows targets.
+/// Check if certificate enrollment is needed (Windows only).
 #[cfg(not(windows))]
 pub async fn needs_enrollment(
     _config: &crate::auto_enroll::AutoEnrollConfig,
@@ -593,6 +594,7 @@ pub async fn needs_enrollment(
     ))
 }
 
+/// Perform certificate enrollment (Windows only).
 #[cfg(not(windows))]
 pub async fn perform_enrollment(
     _config: &crate::auto_enroll::AutoEnrollConfig,
@@ -602,6 +604,7 @@ pub async fn perform_enrollment(
     ))
 }
 
+/// Check if certificate renewal is needed (Windows only).
 #[cfg(not(windows))]
 pub async fn check_renewal(
     _config: &crate::auto_enroll::AutoEnrollConfig,
@@ -611,6 +614,7 @@ pub async fn check_renewal(
     ))
 }
 
+/// Perform certificate renewal (Windows only).
 #[cfg(not(windows))]
 pub async fn perform_renewal(
     _config: &crate::auto_enroll::AutoEnrollConfig,

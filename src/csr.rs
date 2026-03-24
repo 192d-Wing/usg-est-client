@@ -716,7 +716,7 @@ mod builder {
     ///
     /// * `common_name` - Primary server FQDN (e.g., "www.example.com")
     /// * `san_names` - All DNS names the server certificate should be valid for
-    ///                 (should include the common_name plus any aliases)
+    ///   (should include the common_name plus any aliases)
     ///
     /// # Returns
     ///
