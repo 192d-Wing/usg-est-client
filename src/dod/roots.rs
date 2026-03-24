@@ -336,4 +336,95 @@ mod tests {
         assert_eq!(fingerprint.len(), 95); // 64 hex + 31 colons
         assert!(fingerprint.contains(':'));
     }
+
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+
+    #[test]
+    fn test_calculate_fingerprint_sha256_deterministic() {
+        let data = b"deterministic test";
+        let fp1 = calculate_fingerprint_sha256(data);
+        let fp2 = calculate_fingerprint_sha256(data);
+        assert_eq!(fp1, fp2);
+    }
+
+    #[test]
+    fn test_calculate_fingerprint_sha256_different_inputs() {
+        let fp1 = calculate_fingerprint_sha256(b"input one");
+        let fp2 = calculate_fingerprint_sha256(b"input two");
+        assert_ne!(fp1, fp2);
+    }
+
+    #[test]
+    fn test_parse_dod_root_ca_with_real_cert() {
+        // Use the test CA cert fixture as a stand-in for a root CA
+        use rustls_pki_types::CertificateDer;
+        use rustls_pki_types::pem::PemObject;
+
+        let pem = include_bytes!("../../tests/fixtures/certs/ca.pem");
+        let cert_der = CertificateDer::pem_slice_iter(pem).next().unwrap().unwrap();
+        let root = parse_dod_root_ca("Test Root CA", cert_der.as_ref()).unwrap();
+
+        assert_eq!(root.name, "Test Root CA");
+        assert!(!root.subject_dn.is_empty());
+        assert!(!root.issuer_dn.is_empty());
+        assert!(!root.not_before.is_empty());
+        assert!(!root.not_after.is_empty());
+        assert!(!root.fingerprint_sha256.is_empty());
+        assert_eq!(root.fingerprint_sha256.len(), 95);
+    }
+
+    #[test]
+    fn test_parse_dod_root_ca_invalid_der() {
+        let result = parse_dod_root_ca("Bad CA", &[0xFF, 0x01, 0x02]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_format_dn_with_real_cert() {
+        use rustls_pki_types::CertificateDer;
+        use rustls_pki_types::pem::PemObject;
+
+        let pem = include_bytes!("../../tests/fixtures/certs/ca.pem");
+        let cert_der = CertificateDer::pem_slice_iter(pem).next().unwrap().unwrap();
+        let cert = Certificate::from_der(cert_der.as_ref()).unwrap();
+        let dn = format_dn(&cert.tbs_certificate.subject);
+        // The test CA has CN=EST Test CA, O=EST Test Organization, C=US
+        assert!(dn.contains("CN="));
+        assert!(dn.contains("EST Test CA"));
+    }
+
+    #[test]
+    fn test_format_time_utc() {
+        use rustls_pki_types::CertificateDer;
+        use rustls_pki_types::pem::PemObject;
+
+        let pem = include_bytes!("../../tests/fixtures/certs/ca.pem");
+        let cert_der = CertificateDer::pem_slice_iter(pem).next().unwrap().unwrap();
+        let cert = Certificate::from_der(cert_der.as_ref()).unwrap();
+        let time_str = format_time(&cert.tbs_certificate.validity.not_before);
+        // Should produce a formatted date string containing UTC
+        assert!(time_str.contains("UTC"));
+    }
+
+    #[test]
+    fn test_validate_dod_chain_placeholder() {
+        use rustls_pki_types::CertificateDer;
+        use rustls_pki_types::pem::PemObject;
+
+        let pem = include_bytes!("../../tests/fixtures/certs/client.pem");
+        let cert_der = CertificateDer::pem_slice_iter(pem).next().unwrap().unwrap();
+        let cert = Certificate::from_der(cert_der.as_ref()).unwrap();
+        // The placeholder implementation always returns an error
+        let result = validate_dod_chain(&cert, &[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_dod_root_ca_placeholder_constants_empty() {
+        // The placeholder root CA constants should be empty
+        assert!(DOD_ROOT_CA_3.is_empty());
+        assert!(DOD_ROOT_CA_4.is_empty());
+        assert!(DOD_ROOT_CA_5.is_empty());
+        assert!(DOD_ROOT_CA_6.is_empty());
+    }
 }

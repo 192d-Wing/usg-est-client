@@ -547,4 +547,138 @@ mod tests {
         let parsed = parse_dod_policy(&oid).unwrap();
         assert_eq!(policy, parsed);
     }
+
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+
+    #[test]
+    fn test_parse_all_known_dod_policies() {
+        // Verify every known OID maps to the correct policy variant
+        assert_eq!(
+            parse_dod_policy(&DOD_PIV_AUTH),
+            Some(DodCertificatePolicy::PivAuth)
+        );
+        assert_eq!(
+            parse_dod_policy(&DOD_PIV_AUTH_HARDWARE),
+            Some(DodCertificatePolicy::PivAuthHardware)
+        );
+        assert_eq!(
+            parse_dod_policy(&DOD_COMMON_AUTH),
+            Some(DodCertificatePolicy::CommonAuth)
+        );
+        assert_eq!(
+            parse_dod_policy(&DOD_CARD_AUTH),
+            Some(DodCertificatePolicy::CardAuth)
+        );
+        assert_eq!(
+            parse_dod_policy(&DOD_CONTENT_SIGNING),
+            Some(DodCertificatePolicy::ContentSigning)
+        );
+        assert_eq!(
+            parse_dod_policy(&DOD_DEVICE),
+            Some(DodCertificatePolicy::Device)
+        );
+    }
+
+    #[test]
+    fn test_parse_unknown_dod_policy_under_arc() {
+        // An OID under the DoD arc but not a recognized policy should return Unknown
+        let unknown_oid = ObjectIdentifier::new_unwrap("2.16.840.1.101.2.1.11.99");
+        let result = parse_dod_policy(&unknown_oid);
+        assert!(matches!(result, Some(DodCertificatePolicy::Unknown(_))));
+        if let Some(DodCertificatePolicy::Unknown(oid_str)) = result {
+            assert_eq!(oid_str, "2.16.840.1.101.2.1.11.99");
+        }
+    }
+
+    #[test]
+    fn test_unknown_policy_oid_returns_none() {
+        let unknown = DodCertificatePolicy::Unknown("2.16.840.1.101.2.1.11.99".to_string());
+        assert!(unknown.oid().is_none());
+    }
+
+    #[test]
+    fn test_all_policy_oid_roundtrips() {
+        // All named policies should survive an OID roundtrip
+        let policies = vec![
+            DodCertificatePolicy::MediumAssurance,
+            DodCertificatePolicy::MediumHardware,
+            DodCertificatePolicy::HighAssurance,
+            DodCertificatePolicy::PivAuth,
+            DodCertificatePolicy::PivAuthHardware,
+            DodCertificatePolicy::CommonAuth,
+            DodCertificatePolicy::CardAuth,
+            DodCertificatePolicy::ContentSigning,
+            DodCertificatePolicy::Device,
+        ];
+        for policy in policies {
+            let oid = policy.oid().expect("named policy must have an OID");
+            let parsed = parse_dod_policy(&oid).expect("OID must parse back");
+            assert_eq!(policy, parsed);
+        }
+    }
+
+    #[test]
+    fn test_policy_description_coverage() {
+        // Every variant should return a non-empty description
+        let all = vec![
+            DodCertificatePolicy::MediumAssurance,
+            DodCertificatePolicy::MediumHardware,
+            DodCertificatePolicy::HighAssurance,
+            DodCertificatePolicy::PivAuth,
+            DodCertificatePolicy::PivAuthHardware,
+            DodCertificatePolicy::CommonAuth,
+            DodCertificatePolicy::CardAuth,
+            DodCertificatePolicy::ContentSigning,
+            DodCertificatePolicy::Device,
+            DodCertificatePolicy::Unknown("x".to_string()),
+        ];
+        for policy in all {
+            assert!(!policy.description().is_empty());
+        }
+    }
+
+    #[test]
+    fn test_dod_policy_arc_constant() {
+        assert_eq!(DOD_POLICY_ARC.to_string(), "2.16.840.1.101.2.1.11");
+    }
+
+    #[test]
+    fn test_has_dod_policy_without_extensions() {
+        // A certificate with no extensions should not have DoD policies
+        use der::Decode;
+        use rustls_pki_types::CertificateDer;
+        use rustls_pki_types::pem::PemObject;
+
+        let pem = include_bytes!("../../tests/fixtures/certs/ca.pem");
+        let cert_der = CertificateDer::pem_slice_iter(pem).next().unwrap().unwrap();
+        let cert = Certificate::from_der(cert_der.as_ref()).unwrap();
+        // CA cert does not carry DoD policies
+        assert!(!has_dod_policy(&cert));
+    }
+
+    #[test]
+    fn test_extract_dod_policies_empty_for_non_dod_cert() {
+        use der::Decode;
+        use rustls_pki_types::CertificateDer;
+        use rustls_pki_types::pem::PemObject;
+
+        let pem = include_bytes!("../../tests/fixtures/certs/client.pem");
+        let cert_der = CertificateDer::pem_slice_iter(pem).next().unwrap().unwrap();
+        let cert = Certificate::from_der(cert_der.as_ref()).unwrap();
+        let policies = extract_dod_policies(&cert);
+        assert!(policies.is_empty());
+    }
+
+    #[test]
+    fn test_validate_dod_policy_fails_for_non_dod_cert() {
+        use der::Decode;
+        use rustls_pki_types::CertificateDer;
+        use rustls_pki_types::pem::PemObject;
+
+        let pem = include_bytes!("../../tests/fixtures/certs/client.pem");
+        let cert_der = CertificateDer::pem_slice_iter(pem).next().unwrap().unwrap();
+        let cert = Certificate::from_der(cert_der.as_ref()).unwrap();
+        let result = validate_dod_policy(&cert);
+        assert!(result.is_err());
+    }
 }

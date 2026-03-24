@@ -801,4 +801,131 @@ mod tests {
         // May return error if no root CAs embedded, which is expected
         let _ = validator;
     }
+
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+
+    fn load_test_cert(pem_bytes: &[u8]) -> Certificate {
+        use der::Decode;
+        use rustls_pki_types::CertificateDer;
+        use rustls_pki_types::pem::PemObject;
+
+        let cert_der = CertificateDer::pem_slice_iter(pem_bytes)
+            .next()
+            .unwrap()
+            .unwrap();
+        Certificate::from_der(cert_der.as_ref()).unwrap()
+    }
+
+    #[test]
+    fn test_validation_options_builder_fail_on_unknown_revocation() {
+        let options = ValidationOptions::builder()
+            .fail_on_unknown_revocation(true)
+            .build();
+        assert!(options.fail_on_unknown_revocation);
+    }
+
+    #[test]
+    fn test_validation_options_builder_add_trust_anchor() {
+        let cert = load_test_cert(include_bytes!("../../tests/fixtures/certs/ca.pem"));
+        let options = ValidationOptions::builder()
+            .add_trust_anchor(cert)
+            .build();
+        assert_eq!(options.trust_anchors.len(), 1);
+    }
+
+    #[test]
+    fn test_validation_result_max_assurance_empty() {
+        let result = ValidationResult {
+            valid: true,
+            chain: Vec::new(),
+            root_ca: None,
+            policies: Vec::new(),
+            warnings: Vec::new(),
+        };
+        assert_eq!(result.max_assurance_level(), 0);
+    }
+
+    #[test]
+    fn test_is_self_signed() {
+        let ca = load_test_cert(include_bytes!("../../tests/fixtures/certs/ca.pem"));
+        // The test CA cert is self-signed (subject == issuer)
+        assert!(is_self_signed(&ca));
+    }
+
+    #[test]
+    fn test_is_not_self_signed() {
+        let client = load_test_cert(include_bytes!("../../tests/fixtures/certs/client.pem"));
+        // Client cert is issued by CA, not self-signed
+        assert!(!is_self_signed(&client));
+    }
+
+    #[test]
+    fn test_certificates_match_same() {
+        let ca = load_test_cert(include_bytes!("../../tests/fixtures/certs/ca.pem"));
+        assert!(certificates_match(&ca, &ca));
+    }
+
+    #[test]
+    fn test_certificates_match_different() {
+        let ca = load_test_cert(include_bytes!("../../tests/fixtures/certs/ca.pem"));
+        let client = load_test_cert(include_bytes!("../../tests/fixtures/certs/client.pem"));
+        assert!(!certificates_match(&ca, &client));
+    }
+
+    #[test]
+    fn test_format_dn_with_cert() {
+        let ca = load_test_cert(include_bytes!("../../tests/fixtures/certs/ca.pem"));
+        let dn = format_dn(&ca.tbs_certificate.subject);
+        assert!(dn.contains("CN="));
+    }
+
+    #[test]
+    fn test_is_dod_certificate_false_for_test_cert() {
+        let ca = load_test_cert(include_bytes!("../../tests/fixtures/certs/ca.pem"));
+        assert!(!is_dod_certificate(&ca));
+    }
+
+    #[test]
+    fn test_validator_validate_self_signed_no_anchors() {
+        // With no trust anchors, a self-signed cert should be accepted with a warning
+        let ca = load_test_cert(include_bytes!("../../tests/fixtures/certs/ca.pem"));
+        let options = ValidationOptions::builder().allow_expired(true).build();
+        let validator = DodChainValidator::with_options(options).unwrap();
+        let result = validator.validate(&ca, &[]);
+        // Should succeed since no trust anchors and cert is self-signed
+        assert!(result.is_ok());
+        let vr = result.unwrap();
+        assert!(vr.valid);
+        assert!(vr
+            .root_ca
+            .as_ref()
+            .unwrap()
+            .contains("Self-signed"));
+    }
+
+    #[test]
+    fn test_validator_validate_with_custom_trust_anchor() {
+        let ca = load_test_cert(include_bytes!("../../tests/fixtures/certs/ca.pem"));
+        let client = load_test_cert(include_bytes!("../../tests/fixtures/certs/client.pem"));
+
+        let options = ValidationOptions::builder()
+            .add_trust_anchor(ca.clone())
+            .allow_expired(true)
+            .build();
+        let validator = DodChainValidator::with_options(options).unwrap();
+        // Pass CA as intermediate so build_chain can find the issuer;
+        // validate_to_root then matches the chain tail against trust_anchors.
+        let result = validator.validate(&client, &[ca]);
+        assert!(result.is_ok());
+        let vr = result.unwrap();
+        assert!(vr.valid);
+    }
+
+    #[test]
+    fn test_parse_x509_time() {
+        let ca = load_test_cert(include_bytes!("../../tests/fixtures/certs/ca.pem"));
+        let not_before = &ca.tbs_certificate.validity.not_before;
+        let parsed = DodChainValidator::parse_x509_time(not_before);
+        assert!(parsed.is_ok());
+    }
 }

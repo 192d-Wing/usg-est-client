@@ -1095,4 +1095,433 @@ mod tests {
         assert_eq!(config.timeout, Duration::from_secs(30));
         assert!(!config.channel_binding);
     }
+
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+
+    // --- Trust anchor configuration tests ---
+
+    #[test]
+    fn test_trust_webpki_roots() {
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .trust_webpki_roots()
+            .build()
+            .unwrap();
+
+        assert!(matches!(config.trust_anchors, TrustAnchors::WebPki));
+    }
+
+    #[test]
+    fn test_trust_explicit_ca_certs() {
+        let ca_pem = include_bytes!("../tests/fixtures/certs/ca.pem").to_vec();
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .trust_explicit(vec![ca_pem.clone()])
+            .build()
+            .unwrap();
+
+        match &config.trust_anchors {
+            TrustAnchors::Explicit(certs) => {
+                assert_eq!(certs.len(), 1);
+                assert_eq!(certs[0], ca_pem);
+            }
+            _ => panic!("Expected Explicit trust anchors"),
+        }
+    }
+
+    #[test]
+    fn test_trust_explicit_multiple_certs() {
+        let ca_pem = include_bytes!("../tests/fixtures/certs/ca.pem").to_vec();
+        let server_pem = include_bytes!("../tests/fixtures/certs/server.pem").to_vec();
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .trust_explicit(vec![ca_pem, server_pem])
+            .build()
+            .unwrap();
+
+        match &config.trust_anchors {
+            TrustAnchors::Explicit(certs) => assert_eq!(certs.len(), 2),
+            _ => panic!("Expected Explicit trust anchors"),
+        }
+    }
+
+    #[test]
+    fn test_trust_bootstrap() {
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .trust_bootstrap(|_fingerprint| true)
+            .build()
+            .unwrap();
+
+        assert!(matches!(config.trust_anchors, TrustAnchors::Bootstrap(_)));
+    }
+
+    #[test]
+    fn test_trust_bootstrap_with_ttl() {
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .trust_bootstrap_with_ttl(|_fp| false, Duration::from_secs(3600))
+            .build()
+            .unwrap();
+
+        match &config.trust_anchors {
+            TrustAnchors::Bootstrap(bc) => {
+                // Verify the fingerprint verifier callback works
+                assert!(!(bc.verify_fingerprint)(&[0u8; 32]));
+                // expires_at should be roughly now + 1 hour
+                assert!(bc.expires_at > std::time::Instant::now());
+            }
+            _ => panic!("Expected Bootstrap trust anchors"),
+        }
+    }
+
+    #[test]
+    fn test_trust_insecure_accept_any() {
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .trust_any_insecure()
+            .build()
+            .unwrap();
+
+        assert!(matches!(
+            config.trust_anchors,
+            TrustAnchors::InsecureAcceptAny
+        ));
+    }
+
+    // --- Client identity configuration tests ---
+
+    #[test]
+    fn test_client_identity_new() {
+        let cert_pem = include_bytes!("../tests/fixtures/certs/client.pem").to_vec();
+        let key_pem = include_bytes!("../tests/fixtures/certs/client-key.pem").to_vec();
+
+        let identity = ClientIdentity::new(cert_pem.clone(), key_pem.clone());
+        assert_eq!(identity.cert_pem, cert_pem);
+        assert_eq!(identity.key_pem, key_pem);
+    }
+
+    #[test]
+    fn test_client_identity_in_builder() {
+        let cert_pem = include_bytes!("../tests/fixtures/certs/client.pem").to_vec();
+        let key_pem = include_bytes!("../tests/fixtures/certs/client-key.pem").to_vec();
+
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .client_identity(ClientIdentity::new(cert_pem.clone(), key_pem.clone()))
+            .build()
+            .unwrap();
+
+        assert!(config.client_identity.is_some());
+        let ci = config.client_identity.unwrap();
+        assert_eq!(ci.cert_pem, cert_pem);
+    }
+
+    #[test]
+    fn test_client_identity_pem_builder_method() {
+        let cert_pem = include_bytes!("../tests/fixtures/certs/client.pem").to_vec();
+        let key_pem = include_bytes!("../tests/fixtures/certs/client-key.pem").to_vec();
+
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .client_identity_pem(cert_pem.clone(), key_pem.clone())
+            .build()
+            .unwrap();
+
+        assert!(config.client_identity.is_some());
+        let ci = config.client_identity.unwrap();
+        assert_eq!(ci.cert_pem, cert_pem);
+        assert_eq!(ci.key_pem, key_pem);
+    }
+
+    // --- HTTP auth configuration tests ---
+
+    #[test]
+    fn test_http_auth_new() {
+        let auth = HttpAuth::new("user", "pass");
+        assert_eq!(auth.username, "user");
+        assert_eq!(auth.password, "pass");
+    }
+
+    #[test]
+    fn test_http_auth_in_builder() {
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .http_auth("admin", "secret123")
+            .build()
+            .unwrap();
+
+        assert!(config.http_auth.is_some());
+        let auth = config.http_auth.unwrap();
+        assert_eq!(auth.username, "admin");
+        assert_eq!(auth.password, "secret123");
+    }
+
+    #[test]
+    fn test_http_auth_zeroize() {
+        use zeroize::Zeroize;
+        let mut auth = HttpAuth::new("user", "secret");
+        auth.zeroize();
+        assert!(auth.username.is_empty());
+        assert!(auth.password.is_empty());
+    }
+
+    // --- Channel binding and CSR verification tests ---
+
+    #[test]
+    fn test_enable_channel_binding() {
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .enable_channel_binding()
+            .build()
+            .unwrap();
+
+        assert!(config.channel_binding);
+    }
+
+    #[test]
+    fn test_verify_csr_signatures() {
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .verify_csr_signatures()
+            .build()
+            .unwrap();
+
+        assert!(config.verify_csr_signatures);
+    }
+
+    #[test]
+    fn test_channel_binding_default_false() {
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .build()
+            .unwrap();
+
+        assert!(!config.channel_binding);
+        assert!(!config.verify_csr_signatures);
+    }
+
+    // --- Additional headers tests ---
+
+    #[test]
+    fn test_add_header() {
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .add_header("X-Custom", "value1")
+            .add_header("X-Another", "value2")
+            .build()
+            .unwrap();
+
+        assert_eq!(config.additional_headers.len(), 2);
+        assert_eq!(config.additional_headers[0].0, "X-Custom");
+        assert_eq!(config.additional_headers[0].1, "value1");
+        assert_eq!(config.additional_headers[1].0, "X-Another");
+        assert_eq!(config.additional_headers[1].1, "value2");
+    }
+
+    #[test]
+    fn test_no_additional_headers_by_default() {
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .build()
+            .unwrap();
+
+        assert!(config.additional_headers.is_empty());
+    }
+
+    // --- Builder error cases ---
+
+    #[test]
+    fn test_builder_missing_url_error() {
+        let result = EstClientConfig::builder().build();
+        assert_eq!(result.unwrap_err(), "server_url is required");
+    }
+
+    #[test]
+    fn test_builder_invalid_url_scheme() {
+        let result = EstClientConfig::builder().server_url("ftp://est.example.com");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_builder_http_url_allowed() {
+        // HTTP is allowed (but generates a warning)
+        let config = EstClientConfig::builder()
+            .server_url("http://localhost:8080")
+            .unwrap()
+            .build()
+            .unwrap();
+
+        assert_eq!(config.server_url.scheme(), "http");
+    }
+
+    #[test]
+    fn test_builder_url_port_zero_rejected() {
+        let result = EstClientConfig::builder().server_url("https://est.example.com:0");
+        assert!(result.is_err());
+    }
+
+    // --- Timeout configuration tests ---
+
+    #[test]
+    fn test_custom_timeout() {
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .timeout(Duration::from_secs(120))
+            .build()
+            .unwrap();
+
+        assert_eq!(config.timeout, Duration::from_secs(120));
+    }
+
+    #[test]
+    fn test_default_timeout_30s() {
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .build()
+            .unwrap();
+
+        assert_eq!(config.timeout, Duration::from_secs(30));
+    }
+
+    // --- CA label tests ---
+
+    #[test]
+    fn test_ca_label_set() {
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .ca_label("corp-ca")
+            .build()
+            .unwrap();
+
+        assert_eq!(config.ca_label.as_deref(), Some("corp-ca"));
+    }
+
+    #[test]
+    fn test_ca_label_none_by_default() {
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .build()
+            .unwrap();
+
+        assert!(config.ca_label.is_none());
+    }
+
+    // --- server_url_parsed test ---
+
+    #[test]
+    fn test_server_url_parsed() {
+        let url = Url::parse("https://custom.example.com:9443").unwrap();
+        let config = EstClientConfig::builder()
+            .server_url_parsed(url.clone())
+            .build()
+            .unwrap();
+
+        assert_eq!(config.server_url, url);
+    }
+
+    // --- Debug and Default trait tests ---
+
+    #[test]
+    fn test_config_debug_does_not_leak_secrets() {
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .client_identity_pem(b"cert-data".to_vec(), b"secret-key".to_vec())
+            .http_auth("admin", "super-secret")
+            .build()
+            .unwrap();
+
+        let debug_str = format!("{:?}", config);
+        // Debug should show presence but not raw key/password data
+        assert!(debug_str.contains("client_identity: true"));
+        assert!(debug_str.contains("http_auth: true"));
+        assert!(!debug_str.contains("secret-key"));
+        assert!(!debug_str.contains("super-secret"));
+    }
+
+    #[test]
+    fn test_trust_anchors_debug() {
+        let ca_pem = include_bytes!("../tests/fixtures/certs/ca.pem").to_vec();
+
+        assert_eq!(format!("{:?}", TrustAnchors::WebPki), "WebPki");
+        assert_eq!(
+            format!("{:?}", TrustAnchors::Explicit(vec![ca_pem])),
+            "Explicit(1 certs)"
+        );
+        assert_eq!(
+            format!("{:?}", TrustAnchors::InsecureAcceptAny),
+            "InsecureAcceptAny"
+        );
+
+        let bootstrap = TrustAnchors::Bootstrap(BootstrapConfig {
+            verify_fingerprint: Arc::new(|_| true),
+            expires_at: std::time::Instant::now() + Duration::from_secs(60),
+        });
+        assert_eq!(format!("{:?}", bootstrap), "Bootstrap(...)");
+    }
+
+    // --- Default trust anchors fallback ---
+
+    #[test]
+    fn test_default_trust_anchors_is_webpki() {
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .build()
+            .unwrap();
+
+        assert!(matches!(config.trust_anchors, TrustAnchors::WebPki));
+    }
+
+    // --- build_url with different operations ---
+
+    #[test]
+    fn test_build_url_simpleenroll() {
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com:8443")
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let url = config.build_url("simpleenroll");
+        assert_eq!(
+            url.as_str(),
+            "https://est.example.com:8443/.well-known/est/simpleenroll"
+        );
+    }
+
+    #[test]
+    fn test_build_url_serverkeygen_with_label() {
+        let config = EstClientConfig::builder()
+            .server_url("https://est.example.com")
+            .unwrap()
+            .ca_label("test-ca")
+            .build()
+            .unwrap();
+
+        let url = config.build_url("serverkeygen");
+        assert_eq!(
+            url.as_str(),
+            "https://est.example.com/.well-known/est/test-ca/serverkeygen"
+        );
+    }
 }

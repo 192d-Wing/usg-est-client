@@ -683,4 +683,117 @@ mod tests {
         assert!(PivSlot::KeyManagement.use_case().contains("Encryption"));
         assert!(PivSlot::CardAuthentication.use_case().contains("Physical"));
     }
+
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+
+    #[test]
+    fn test_piv_slot_pkcs11_ids() {
+        assert_eq!(PivSlot::Authentication.pkcs11_id(), &[0x01]);
+        assert_eq!(PivSlot::DigitalSignature.pkcs11_id(), &[0x02]);
+        assert_eq!(PivSlot::KeyManagement.pkcs11_id(), &[0x03]);
+        assert_eq!(PivSlot::CardAuthentication.pkcs11_id(), &[0x04]);
+        assert_eq!(PivSlot::RetiredKeyManagement(0).pkcs11_id(), &[0x05]);
+    }
+
+    #[test]
+    fn test_piv_slot_from_slot_id_retired_range() {
+        // Retired Key Management spans 0x82..=0x95
+        for n in 0u8..=19 {
+            let id = 0x82 + n;
+            let slot = PivSlot::from_slot_id(id);
+            assert_eq!(slot, Some(PivSlot::RetiredKeyManagement(n)));
+        }
+        // 0x96 is out of range
+        assert_eq!(PivSlot::from_slot_id(0x96), None);
+    }
+
+    #[test]
+    fn test_piv_slot_retired_requires_pin() {
+        assert!(PivSlot::RetiredKeyManagement(0).requires_pin());
+    }
+
+    #[test]
+    fn test_piv_slot_retired_cannot_use_for_est() {
+        assert!(!PivSlot::RetiredKeyManagement(0).can_use_for_est());
+    }
+
+    #[test]
+    fn test_piv_slot_retired_display() {
+        let slot = PivSlot::RetiredKeyManagement(3);
+        let display = slot.to_string();
+        assert!(display.contains("Retired Key Management"));
+        assert!(display.contains("0x85"));
+    }
+
+    #[test]
+    fn test_parse_cac_certificate() {
+        use der::Decode;
+        use rustls_pki_types::CertificateDer;
+        use rustls_pki_types::pem::PemObject;
+
+        let pem = include_bytes!("../../tests/fixtures/certs/client.pem");
+        let cert_der = CertificateDer::pem_slice_iter(pem).next().unwrap().unwrap();
+        let cert = Certificate::from_der(cert_der.as_ref()).unwrap();
+
+        let cac_cert = parse_cac_certificate(cert, PivSlot::Authentication);
+
+        assert_eq!(cac_cert.slot, PivSlot::Authentication);
+        assert!(!cac_cert.subject.is_empty());
+        assert!(!cac_cert.issuer.is_empty());
+        assert!(!cac_cert.serial.is_empty());
+        assert!(!cac_cert.not_before.is_empty());
+        assert!(!cac_cert.not_after.is_empty());
+        assert!(cac_cert.is_valid); // check_validity placeholder returns true
+        assert!(!cac_cert.key_algorithm.is_empty());
+    }
+
+    #[test]
+    fn test_cac_certificate_can_use_for_est() {
+        use der::Decode;
+        use rustls_pki_types::CertificateDer;
+        use rustls_pki_types::pem::PemObject;
+
+        let pem = include_bytes!("../../tests/fixtures/certs/client.pem");
+        let cert_der = CertificateDer::pem_slice_iter(pem).next().unwrap().unwrap();
+        let cert = Certificate::from_der(cert_der.as_ref()).unwrap();
+
+        // Authentication slot + valid => can use for EST
+        let cac_auth = parse_cac_certificate(cert.clone(), PivSlot::Authentication);
+        assert!(cac_auth.can_use_for_est());
+
+        // KeyManagement slot => cannot use for EST regardless of validity
+        let cac_km = parse_cac_certificate(cert, PivSlot::KeyManagement);
+        assert!(!cac_km.can_use_for_est());
+    }
+
+    #[test]
+    fn test_cac_certificate_requires_pin() {
+        use der::Decode;
+        use rustls_pki_types::CertificateDer;
+        use rustls_pki_types::pem::PemObject;
+
+        let pem = include_bytes!("../../tests/fixtures/certs/client.pem");
+        let cert_der = CertificateDer::pem_slice_iter(pem).next().unwrap().unwrap();
+        let cert = Certificate::from_der(cert_der.as_ref()).unwrap();
+
+        let auth = parse_cac_certificate(cert.clone(), PivSlot::Authentication);
+        assert!(auth.requires_pin());
+
+        let card_auth = parse_cac_certificate(cert, PivSlot::CardAuthentication);
+        assert!(!card_auth.requires_pin());
+    }
+
+    #[test]
+    fn test_format_key_algorithm_ecc() {
+        use der::Decode;
+        use rustls_pki_types::CertificateDer;
+        use rustls_pki_types::pem::PemObject;
+
+        let pem = include_bytes!("../../tests/fixtures/certs/client.pem");
+        let cert_der = CertificateDer::pem_slice_iter(pem).next().unwrap().unwrap();
+        let cert = Certificate::from_der(cert_der.as_ref()).unwrap();
+        let algo = format_key_algorithm(&cert.tbs_certificate.subject_public_key_info);
+        // The test fixture uses ECC P-256
+        assert_eq!(algo, "ECC");
+    }
 }

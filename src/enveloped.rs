@@ -823,3 +823,566 @@ mod tests {
         assert_eq!(&decrypted, plaintext);
     }
 }
+
+#[cfg(all(test, feature = "enveloped"))]
+mod enveloped_tests {
+    use super::*;
+
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+    // and panics in tests provide clear failure messages.
+
+    /// Helper: encrypt plaintext with AES-CBC using given key size variant
+    fn encrypt_aes_cbc(
+        plaintext: &[u8],
+        key: &[u8],
+        iv: &[u8],
+        algorithm: EncryptionAlgorithm,
+    ) -> Vec<u8> {
+        use cbc::cipher::{BlockEncryptMut, KeyIvInit};
+
+        let buf_size = plaintext.len() + algorithm.block_size();
+        let mut buffer = plaintext.to_vec();
+        buffer.resize(buf_size, 0);
+
+        match algorithm {
+            EncryptionAlgorithm::Aes128Cbc => {
+                type Enc = cbc::Encryptor<aes::Aes128>;
+                let cipher = Enc::new_from_slices(key, iv).unwrap();
+                cipher
+                    .encrypt_padded_mut::<cbc::cipher::block_padding::Pkcs7>(
+                        &mut buffer,
+                        plaintext.len(),
+                    )
+                    .unwrap()
+                    .to_vec()
+            }
+            EncryptionAlgorithm::Aes192Cbc => {
+                type Enc = cbc::Encryptor<aes::Aes192>;
+                let cipher = Enc::new_from_slices(key, iv).unwrap();
+                cipher
+                    .encrypt_padded_mut::<cbc::cipher::block_padding::Pkcs7>(
+                        &mut buffer,
+                        plaintext.len(),
+                    )
+                    .unwrap()
+                    .to_vec()
+            }
+            EncryptionAlgorithm::Aes256Cbc => {
+                type Enc = cbc::Encryptor<aes::Aes256>;
+                let cipher = Enc::new_from_slices(key, iv).unwrap();
+                cipher
+                    .encrypt_padded_mut::<cbc::cipher::block_padding::Pkcs7>(
+                        &mut buffer,
+                        plaintext.len(),
+                    )
+                    .unwrap()
+                    .to_vec()
+            }
+            EncryptionAlgorithm::TripleDesCbc => {
+                type Enc = cbc::Encryptor<des::TdesEde3>;
+                let cipher = Enc::new_from_slices(key, iv).unwrap();
+                cipher
+                    .encrypt_padded_mut::<cbc::cipher::block_padding::Pkcs7>(
+                        &mut buffer,
+                        plaintext.len(),
+                    )
+                    .unwrap()
+                    .to_vec()
+            }
+        }
+    }
+
+    #[test]
+    fn test_aes128_cbc_encrypt_decrypt_roundtrip() {
+        let key = [0xABu8; 16];
+        let iv = [0xCDu8; 16];
+        let plaintext = b"AES-128-CBC roundtrip test data!";
+
+        let ciphertext = encrypt_aes_cbc(plaintext, &key, &iv, EncryptionAlgorithm::Aes128Cbc);
+        let decrypted =
+            decrypt_content(&ciphertext, &key, &iv, EncryptionAlgorithm::Aes128Cbc).unwrap();
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn test_aes192_cbc_encrypt_decrypt_roundtrip() {
+        let key = [0x11u8; 24];
+        let iv = [0x22u8; 16];
+        let plaintext = b"AES-192 test";
+
+        let ciphertext = encrypt_aes_cbc(plaintext, &key, &iv, EncryptionAlgorithm::Aes192Cbc);
+        let decrypted =
+            decrypt_content(&ciphertext, &key, &iv, EncryptionAlgorithm::Aes192Cbc).unwrap();
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn test_aes256_cbc_encrypt_decrypt_roundtrip() {
+        let key = [0x33u8; 32];
+        let iv = [0x44u8; 16];
+        let plaintext = b"AES-256 test with longer payload for multi-block coverage!!";
+
+        let ciphertext = encrypt_aes_cbc(plaintext, &key, &iv, EncryptionAlgorithm::Aes256Cbc);
+        let decrypted =
+            decrypt_content(&ciphertext, &key, &iv, EncryptionAlgorithm::Aes256Cbc).unwrap();
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn test_3des_cbc_encrypt_decrypt_roundtrip() {
+        let key = [0x55u8; 24];
+        let iv = [0x66u8; 8]; // 3DES uses 8-byte IV
+        let plaintext = b"3DES roundtrip test";
+
+        let ciphertext =
+            encrypt_aes_cbc(plaintext, &key, &iv, EncryptionAlgorithm::TripleDesCbc);
+        let decrypted =
+            decrypt_content(&ciphertext, &key, &iv, EncryptionAlgorithm::TripleDesCbc).unwrap();
+        assert_eq!(&decrypted, plaintext);
+    }
+
+    #[test]
+    fn test_decrypt_content_wrong_key_fails() {
+        let key = [0xAAu8; 32];
+        let iv = [0xBBu8; 16];
+        let plaintext = b"secret data";
+
+        let ciphertext = encrypt_aes_cbc(plaintext, &key, &iv, EncryptionAlgorithm::Aes256Cbc);
+
+        // Decrypt with a different key - should fail with unpadding error
+        let wrong_key = [0xCCu8; 32];
+        let result =
+            decrypt_content(&ciphertext, &wrong_key, &iv, EncryptionAlgorithm::Aes256Cbc);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_decrypt_content_invalid_iv_size() {
+        let key = [0xAAu8; 32];
+        let bad_iv = [0xBBu8; 8]; // AES expects 16-byte IV
+        let ciphertext = vec![0u8; 32]; // dummy
+
+        let result =
+            decrypt_content(&ciphertext, &key, &bad_iv, EncryptionAlgorithm::Aes256Cbc);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_decrypt_content_corrupt_ciphertext() {
+        let key = [0xAAu8; 16];
+        let iv = [0xBBu8; 16];
+        // Corrupt data that won't have valid PKCS#7 padding
+        let corrupt = vec![0xFFu8; 32];
+
+        let result =
+            decrypt_content(&corrupt, &key, &iv, EncryptionAlgorithm::Aes128Cbc);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_decryption_key_accessors() {
+        let key_bytes = vec![0x42u8; 32];
+        let dk = DecryptionKey::new(key_bytes.clone(), EncryptionAlgorithm::Aes256Cbc).unwrap();
+        assert_eq!(dk.key_bytes(), &key_bytes[..]);
+        assert_eq!(dk.algorithm(), EncryptionAlgorithm::Aes256Cbc);
+    }
+
+    #[test]
+    fn test_decryption_key_wrong_size_aes128() {
+        // 32 bytes for AES-128 (expects 16)
+        let result = DecryptionKey::new(vec![0u8; 32], EncryptionAlgorithm::Aes128Cbc);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_decryption_key_wrong_size_3des() {
+        // 16 bytes for 3DES (expects 24)
+        let result = DecryptionKey::new(vec![0u8; 16], EncryptionAlgorithm::TripleDesCbc);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_decryption_key_clone() {
+        let dk = DecryptionKey::new(vec![0x42u8; 16], EncryptionAlgorithm::Aes128Cbc).unwrap();
+        let cloned = dk.clone();
+        assert_eq!(dk.key_bytes(), cloned.key_bytes());
+        assert_eq!(dk.algorithm(), cloned.algorithm());
+    }
+
+    // --- TLV parsing tests ---
+
+    #[test]
+    fn test_skip_tlv_header_short_form() {
+        // Tag 0x02 (INTEGER), length 3, content [0x01, 0x02, 0x03]
+        let data = [0x02, 0x03, 0x01, 0x02, 0x03];
+        let (header_len, content) = skip_tlv_header(&data).unwrap();
+        assert_eq!(header_len, 2);
+        assert_eq!(content, &[0x01, 0x02, 0x03]);
+    }
+
+    #[test]
+    fn test_skip_tlv_header_long_form() {
+        // Tag 0x30 (SEQUENCE), long form length: 0x81, 0x80 = 128 bytes
+        let mut data = vec![0x30, 0x81, 0x80];
+        data.extend(vec![0xAA; 128]);
+        let (header_len, content) = skip_tlv_header(&data).unwrap();
+        assert_eq!(header_len, 3);
+        assert_eq!(content.len(), 128);
+    }
+
+    #[test]
+    fn test_skip_tlv_header_empty_data() {
+        let result = skip_tlv_header(&[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_skip_tlv_header_too_short() {
+        let result = skip_tlv_header(&[0x02]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_skip_tlv_header_truncated_content() {
+        // Claims 10 bytes of content but only has 2
+        let data = [0x02, 0x0A, 0x01, 0x02];
+        let result = skip_tlv_header(&data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_skip_tlv_header_truncated_long_form() {
+        // Long form says 2 length octets, but only 1 available
+        let data = [0x30, 0x82, 0x01];
+        let result = skip_tlv_header(&data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_read_tlv_and_rest() {
+        // Two TLVs concatenated: INTEGER(1) + INTEGER(2)
+        let data = [0x02, 0x01, 0x01, 0x02, 0x01, 0x02];
+        let (first, rest) = read_tlv(&data).unwrap();
+        assert_eq!(first, &[0x02, 0x01, 0x01]);
+        assert_eq!(rest, &[0x02, 0x01, 0x02]);
+    }
+
+    #[test]
+    fn test_read_tlv_at() {
+        let data = [0x04, 0x02, 0xAA, 0xBB, 0x05, 0x00];
+        let (tlv, consumed) = read_tlv_at(&data).unwrap();
+        assert_eq!(tlv, &[0x04, 0x02, 0xAA, 0xBB]);
+        assert_eq!(consumed, 4);
+    }
+
+    #[test]
+    fn test_skip_tlv() {
+        let data = [0x02, 0x01, 0x05, 0x04, 0x01, 0x06];
+        let (skipped, rest) = skip_tlv(&data).unwrap();
+        assert_eq!(skipped, &[0x02, 0x01, 0x05]);
+        assert_eq!(rest, &[0x04, 0x01, 0x06]);
+    }
+
+    // --- EnvelopedData structure parsing tests ---
+
+    #[test]
+    fn test_extract_version_valid() {
+        // SEQUENCE { INTEGER(2) }
+        let data = [0x30, 0x03, 0x02, 0x01, 0x02];
+        let version = extract_version(&data).unwrap();
+        assert_eq!(version, 2);
+    }
+
+    #[test]
+    fn test_extract_version_invalid_not_sequence() {
+        let data = [0x04, 0x03, 0x02, 0x01, 0x02];
+        let result = extract_version(&data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_version_too_short() {
+        let data = [0x30, 0x01, 0x05]; // SEQUENCE { NULL }
+        let result = extract_version(&data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_version_empty_content() {
+        let data = [0x30, 0x00]; // SEQUENCE {}
+        let result = extract_version(&data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_is_encrypted_key_too_short() {
+        assert!(!is_encrypted_key(&[0x30, 0x01]));
+        assert!(!is_encrypted_key(&[]));
+    }
+
+    #[test]
+    fn test_is_encrypted_key_no_sequence() {
+        let data = vec![0x04; 20]; // OCTET STRING tag, not SEQUENCE
+        assert!(!is_encrypted_key(&data));
+    }
+
+    #[test]
+    fn test_is_encrypted_key_no_oid_match() {
+        let mut data = vec![0x30, 0x20]; // SEQUENCE
+        data.extend(vec![0x00; 30]);
+        assert!(!is_encrypted_key(&data));
+    }
+
+    // --- Algorithm extraction tests ---
+
+    #[test]
+    fn test_extract_encryption_algorithm_aes128() {
+        // AlgorithmIdentifier SEQUENCE { OID aes-128-cbc }
+        let mut data = vec![0x30]; // SEQUENCE
+        let oid_tlv_len = 2 + OID_AES_128_CBC.len();
+        data.push(oid_tlv_len as u8);
+        data.push(0x06); // OID tag
+        data.push(OID_AES_128_CBC.len() as u8);
+        data.extend_from_slice(OID_AES_128_CBC);
+
+        let alg = extract_encryption_algorithm(&data).unwrap();
+        assert_eq!(alg, EncryptionAlgorithm::Aes128Cbc);
+    }
+
+    #[test]
+    fn test_extract_encryption_algorithm_aes256() {
+        let mut data = vec![0x30];
+        let oid_tlv_len = 2 + OID_AES_256_CBC.len();
+        data.push(oid_tlv_len as u8);
+        data.push(0x06);
+        data.push(OID_AES_256_CBC.len() as u8);
+        data.extend_from_slice(OID_AES_256_CBC);
+
+        let alg = extract_encryption_algorithm(&data).unwrap();
+        assert_eq!(alg, EncryptionAlgorithm::Aes256Cbc);
+    }
+
+    #[test]
+    fn test_extract_encryption_algorithm_3des() {
+        let mut data = vec![0x30];
+        let oid_tlv_len = 2 + OID_3DES_CBC.len();
+        data.push(oid_tlv_len as u8);
+        data.push(0x06);
+        data.push(OID_3DES_CBC.len() as u8);
+        data.extend_from_slice(OID_3DES_CBC);
+
+        let alg = extract_encryption_algorithm(&data).unwrap();
+        assert_eq!(alg, EncryptionAlgorithm::TripleDesCbc);
+    }
+
+    #[test]
+    fn test_extract_encryption_algorithm_unknown_oid() {
+        // Unknown OID
+        let unknown_oid = [0x01, 0x02, 0x03, 0x04, 0x05];
+        let mut data = vec![0x30];
+        let oid_tlv_len = 2 + unknown_oid.len();
+        data.push(oid_tlv_len as u8);
+        data.push(0x06);
+        data.push(unknown_oid.len() as u8);
+        data.extend_from_slice(&unknown_oid);
+
+        let result = extract_encryption_algorithm(&data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_encryption_algorithm_not_oid_tag() {
+        // SEQUENCE { INTEGER instead of OID }
+        let data = [0x30, 0x03, 0x02, 0x01, 0x01];
+        let result = extract_encryption_algorithm(&data);
+        assert!(result.is_err());
+    }
+
+    // --- extract_algorithm_name tests ---
+
+    #[test]
+    fn test_extract_algorithm_name_rsa() {
+        // SEQUENCE { OID rsaEncryption 1.2.840.113549.1.1.1 }
+        let rsa_oid = [0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01];
+        let mut data = vec![0x30];
+        let inner_len = 2 + rsa_oid.len();
+        data.push(inner_len as u8);
+        data.push(0x06);
+        data.push(rsa_oid.len() as u8);
+        data.extend_from_slice(&rsa_oid);
+
+        assert_eq!(extract_algorithm_name(&data), "RSA");
+    }
+
+    #[test]
+    fn test_extract_algorithm_name_unknown() {
+        // SEQUENCE { OID with unknown bytes }
+        let data = [0x30, 0x05, 0x06, 0x03, 0x01, 0x02, 0x03];
+        assert_eq!(extract_algorithm_name(&data), "Unknown");
+    }
+
+    #[test]
+    fn test_extract_algorithm_name_empty_content() {
+        // SEQUENCE { } (empty)
+        let data = [0x30, 0x00];
+        assert_eq!(extract_algorithm_name(&data), "Unknown");
+    }
+
+    #[test]
+    fn test_extract_algorithm_name_invalid() {
+        // Completely invalid data
+        let data = [];
+        assert_eq!(extract_algorithm_name(&data), "Unknown");
+    }
+
+    // --- parse_enveloped_data error paths ---
+
+    #[test]
+    fn test_parse_enveloped_data_empty() {
+        let result = parse_enveloped_data(&[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_enveloped_data_not_oid() {
+        // SEQUENCE { INTEGER instead of OID }
+        let data = [0x30, 0x03, 0x02, 0x01, 0x01];
+        let result = parse_enveloped_data(&data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_enveloped_data_wrong_oid() {
+        // SEQUENCE { OID 1.2.3.4 (not EnvelopedData) }
+        let wrong_oid = [0x2A, 0x03, 0x04];
+        let mut data = vec![0x30];
+        let inner_len = 2 + wrong_oid.len();
+        data.push(inner_len as u8);
+        data.push(0x06);
+        data.push(wrong_oid.len() as u8);
+        data.extend_from_slice(&wrong_oid);
+
+        let result = parse_enveloped_data(&data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_enveloped_data_missing_content_field() {
+        // SEQUENCE { OID envelopedData } -- no [0] EXPLICIT content
+        let mut data = vec![0x30];
+        let oid_tlv_len = 2 + OID_ENVELOPED_DATA.len();
+        data.push(oid_tlv_len as u8);
+        data.push(0x06);
+        data.push(OID_ENVELOPED_DATA.len() as u8);
+        data.extend_from_slice(OID_ENVELOPED_DATA);
+
+        let result = parse_enveloped_data(&data);
+        assert!(result.is_err());
+    }
+
+    // --- parse_content_encryption_algorithm tests ---
+
+    #[test]
+    fn test_parse_content_encryption_algorithm_with_iv() {
+        // SEQUENCE { OID aes-256-cbc, OCTET STRING iv }
+        let iv_bytes = [0x01u8; 16];
+        let mut inner = Vec::new();
+        // OID
+        inner.push(0x06);
+        inner.push(OID_AES_256_CBC.len() as u8);
+        inner.extend_from_slice(OID_AES_256_CBC);
+        // IV as OCTET STRING
+        inner.push(0x04);
+        inner.push(iv_bytes.len() as u8);
+        inner.extend_from_slice(&iv_bytes);
+
+        let mut data = vec![0x30, inner.len() as u8];
+        data.extend_from_slice(&inner);
+
+        let (alg, iv) = parse_content_encryption_algorithm(&data).unwrap();
+        assert_eq!(alg, EncryptionAlgorithm::Aes256Cbc);
+        assert_eq!(iv.unwrap(), iv_bytes.to_vec());
+    }
+
+    #[test]
+    fn test_parse_content_encryption_algorithm_without_iv() {
+        // SEQUENCE { OID aes-128-cbc } -- no IV parameter
+        let mut inner = Vec::new();
+        inner.push(0x06);
+        inner.push(OID_AES_128_CBC.len() as u8);
+        inner.extend_from_slice(OID_AES_128_CBC);
+
+        let mut data = vec![0x30, inner.len() as u8];
+        data.extend_from_slice(&inner);
+
+        let (alg, iv) = parse_content_encryption_algorithm(&data).unwrap();
+        assert_eq!(alg, EncryptionAlgorithm::Aes128Cbc);
+        assert!(iv.is_none());
+    }
+
+    // --- RecipientInfo / EnvelopedData struct tests ---
+
+    #[test]
+    fn test_recipient_info_debug_and_clone() {
+        let ri = RecipientInfo {
+            identifier: vec![0x01, 0x02],
+            encrypted_key: vec![0xAA, 0xBB],
+            key_encryption_algorithm: "RSA".to_string(),
+        };
+        let cloned = ri.clone();
+        assert_eq!(cloned.identifier, ri.identifier);
+        assert_eq!(cloned.encrypted_key, ri.encrypted_key);
+        assert_eq!(cloned.key_encryption_algorithm, ri.key_encryption_algorithm);
+        // Ensure Debug impl works
+        let debug_str = format!("{:?}", ri);
+        assert!(debug_str.contains("RecipientInfo"));
+    }
+
+    #[test]
+    fn test_enveloped_data_struct_debug_and_clone() {
+        let ed = EnvelopedData {
+            version: 2,
+            recipients: vec![],
+            content_encryption_algorithm: EncryptionAlgorithm::Aes256Cbc,
+            encrypted_content: vec![0xFF; 16],
+            iv: Some(vec![0x00; 16]),
+        };
+        let cloned = ed.clone();
+        assert_eq!(cloned.version, 2);
+        assert_eq!(
+            cloned.content_encryption_algorithm,
+            EncryptionAlgorithm::Aes256Cbc
+        );
+        assert_eq!(cloned.encrypted_content.len(), 16);
+        assert!(cloned.iv.is_some());
+
+        let debug_str = format!("{:?}", ed);
+        assert!(debug_str.contains("EnvelopedData"));
+    }
+
+    #[test]
+    fn test_encryption_algorithm_equality_and_copy() {
+        let a = EncryptionAlgorithm::Aes192Cbc;
+        let b = a; // Copy
+        assert_eq!(a, b);
+        assert_ne!(a, EncryptionAlgorithm::Aes128Cbc);
+    }
+
+    #[test]
+    fn test_algorithm_from_oid_aes192() {
+        assert_eq!(
+            EncryptionAlgorithm::from_oid(OID_AES_192_CBC),
+            Some(EncryptionAlgorithm::Aes192Cbc)
+        );
+    }
+
+    #[test]
+    fn test_encryption_algorithm_as_str_aes192() {
+        assert_eq!(EncryptionAlgorithm::Aes192Cbc.as_str(), "AES-192-CBC");
+    }
+
+    #[test]
+    fn test_encryption_algorithm_block_size_aes192() {
+        assert_eq!(EncryptionAlgorithm::Aes192Cbc.block_size(), 16);
+    }
+}

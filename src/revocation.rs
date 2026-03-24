@@ -1522,38 +1522,491 @@ impl RevocationChecker {
     }
 }
 
-#[cfg(test)]
+// NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+#[cfg(all(test, feature = "revocation"))]
 mod tests {
     use super::*;
+    use der::Decode;
 
-    #[test]
-    fn test_revocation_config_builder() {
-        let config = RevocationConfig::builder()
-            .enable_crl(true)
-            .enable_ocsp(false)
-            .crl_cache_duration(Duration::from_secs(7200))
-            .fail_on_unknown(true)
-            .build();
-
-        assert!(config.enable_crl);
-        assert!(!config.enable_ocsp);
-        assert_eq!(config.crl_cache_duration, Duration::from_secs(7200));
-        assert!(config.fail_on_unknown);
+    // Helper to load a PEM certificate from fixture bytes
+    fn load_cert(pem_bytes: &[u8]) -> Certificate {
+        let pem_str = std::str::from_utf8(pem_bytes).unwrap();
+        let pem = pem_str
+            .find("-----BEGIN CERTIFICATE-----")
+            .expect("PEM header not found");
+        let pem_end = pem_str.find("-----END CERTIFICATE-----").unwrap();
+        let b64 = &pem_str[pem + 27..pem_end];
+        let cleaned = b64.replace(['\n', '\r', ' '], "");
+        let der = base64::engine::general_purpose::STANDARD
+            .decode(cleaned)
+            .unwrap();
+        Certificate::from_der(&der).unwrap()
     }
 
-    #[test]
-    fn test_revocation_status() {
-        assert!(RevocationStatus::Revoked.is_revoked());
-        assert!(!RevocationStatus::Valid.is_revoked());
-        assert!(RevocationStatus::Valid.is_valid());
-        assert!(RevocationStatus::Unknown.is_unknown());
-    }
+    static CA_PEM: &[u8] = include_bytes!("../tests/fixtures/certs/ca.pem");
+    static CLIENT_PEM: &[u8] = include_bytes!("../tests/fixtures/certs/client.pem");
+    static SERVER_PEM: &[u8] = include_bytes!("../tests/fixtures/certs/server.pem");
+
+    // -----------------------------------------------------------------------
+    // RevocationConfig default
+    // -----------------------------------------------------------------------
 
     #[test]
     fn test_default_config() {
         let config = RevocationConfig::default();
         assert!(config.enable_crl);
         assert!(config.enable_ocsp);
+        assert_eq!(config.crl_cache_duration, Duration::from_secs(3600));
+        assert_eq!(config.crl_cache_max_entries, 100);
+        assert_eq!(config.ocsp_timeout, Duration::from_secs(10));
         assert!(!config.fail_on_unknown);
+    }
+
+    // -----------------------------------------------------------------------
+    // RevocationConfigBuilder – full and partial builds
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_revocation_config_builder_all_fields() {
+        let config = RevocationConfig::builder()
+            .enable_crl(false)
+            .enable_ocsp(true)
+            .crl_cache_duration(Duration::from_secs(7200))
+            .crl_cache_max_entries(50)
+            .ocsp_timeout(Duration::from_secs(30))
+            .fail_on_unknown(true)
+            .build();
+
+        assert!(!config.enable_crl);
+        assert!(config.enable_ocsp);
+        assert_eq!(config.crl_cache_duration, Duration::from_secs(7200));
+        assert_eq!(config.crl_cache_max_entries, 50);
+        assert_eq!(config.ocsp_timeout, Duration::from_secs(30));
+        assert!(config.fail_on_unknown);
+    }
+
+    #[test]
+    fn test_revocation_config_builder_partial_uses_defaults() {
+        let config = RevocationConfig::builder()
+            .enable_crl(false)
+            .build();
+
+        // Explicitly set field
+        assert!(!config.enable_crl);
+        // Everything else should be default
+        assert!(config.enable_ocsp);
+        assert_eq!(config.crl_cache_duration, Duration::from_secs(3600));
+        assert_eq!(config.crl_cache_max_entries, 100);
+        assert_eq!(config.ocsp_timeout, Duration::from_secs(10));
+        assert!(!config.fail_on_unknown);
+    }
+
+    #[test]
+    fn test_revocation_config_builder_empty_gives_defaults() {
+        let config = RevocationConfig::builder().build();
+        let default = RevocationConfig::default();
+        assert_eq!(config.enable_crl, default.enable_crl);
+        assert_eq!(config.enable_ocsp, default.enable_ocsp);
+        assert_eq!(config.crl_cache_duration, default.crl_cache_duration);
+        assert_eq!(config.crl_cache_max_entries, default.crl_cache_max_entries);
+        assert_eq!(config.ocsp_timeout, default.ocsp_timeout);
+        assert_eq!(config.fail_on_unknown, default.fail_on_unknown);
+    }
+
+    // -----------------------------------------------------------------------
+    // RevocationStatus
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_revocation_status_valid() {
+        let s = RevocationStatus::Valid;
+        assert!(s.is_valid());
+        assert!(!s.is_revoked());
+        assert!(!s.is_unknown());
+    }
+
+    #[test]
+    fn test_revocation_status_revoked() {
+        let s = RevocationStatus::Revoked;
+        assert!(s.is_revoked());
+        assert!(!s.is_valid());
+        assert!(!s.is_unknown());
+    }
+
+    #[test]
+    fn test_revocation_status_unknown() {
+        let s = RevocationStatus::Unknown;
+        assert!(s.is_unknown());
+        assert!(!s.is_valid());
+        assert!(!s.is_revoked());
+    }
+
+    #[test]
+    fn test_revocation_status_eq_and_clone() {
+        let s1 = RevocationStatus::Valid;
+        let s2 = s1; // Copy
+        assert_eq!(s1, s2);
+
+        let s3 = RevocationStatus::Revoked;
+        assert_ne!(s1, s3);
+    }
+
+    #[test]
+    fn test_revocation_status_debug() {
+        let debug_str = format!("{:?}", RevocationStatus::Valid);
+        assert_eq!(debug_str, "Valid");
+        let debug_str = format!("{:?}", RevocationStatus::Revoked);
+        assert_eq!(debug_str, "Revoked");
+        let debug_str = format!("{:?}", RevocationStatus::Unknown);
+        assert_eq!(debug_str, "Unknown");
+    }
+
+    // -----------------------------------------------------------------------
+    // RevocationCheckResult
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_revocation_check_result_is_revoked_true() {
+        let result = RevocationCheckResult {
+            status: RevocationStatus::Revoked,
+            crl_checked: true,
+            ocsp_checked: false,
+            crl_status: Some(RevocationStatus::Revoked),
+            ocsp_status: None,
+            errors: Vec::new(),
+        };
+        assert!(result.is_revoked());
+    }
+
+    #[test]
+    fn test_revocation_check_result_is_revoked_false() {
+        let result = RevocationCheckResult {
+            status: RevocationStatus::Valid,
+            crl_checked: true,
+            ocsp_checked: true,
+            crl_status: Some(RevocationStatus::Valid),
+            ocsp_status: Some(RevocationStatus::Valid),
+            errors: Vec::new(),
+        };
+        assert!(!result.is_revoked());
+    }
+
+    #[test]
+    fn test_revocation_check_result_with_errors() {
+        let result = RevocationCheckResult {
+            status: RevocationStatus::Unknown,
+            crl_checked: false,
+            ocsp_checked: false,
+            crl_status: None,
+            ocsp_status: None,
+            errors: vec![
+                "CRL check failed: timeout".to_string(),
+                "OCSP check failed: network error".to_string(),
+            ],
+        };
+        assert!(!result.is_revoked());
+        assert_eq!(result.errors.len(), 2);
+        assert!(result.errors[0].contains("CRL"));
+        assert!(result.errors[1].contains("OCSP"));
+    }
+
+    #[test]
+    fn test_revocation_check_result_debug_and_clone() {
+        let result = RevocationCheckResult {
+            status: RevocationStatus::Valid,
+            crl_checked: true,
+            ocsp_checked: false,
+            crl_status: Some(RevocationStatus::Valid),
+            ocsp_status: None,
+            errors: vec![],
+        };
+        let cloned = result.clone();
+        assert_eq!(cloned.status, result.status);
+        assert_eq!(cloned.crl_checked, result.crl_checked);
+        assert_eq!(cloned.ocsp_checked, result.ocsp_checked);
+        let debug_str = format!("{:?}", result);
+        assert!(debug_str.contains("Valid"));
+    }
+
+    // -----------------------------------------------------------------------
+    // RevocationChecker construction
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_revocation_checker_new_default_config() {
+        let config = RevocationConfig::default();
+        let _checker = RevocationChecker::new(config);
+        // Just verifying construction doesn't panic
+    }
+
+    #[test]
+    fn test_revocation_checker_new_custom_config() {
+        let config = RevocationConfig::builder()
+            .enable_crl(false)
+            .enable_ocsp(false)
+            .ocsp_timeout(Duration::from_secs(1))
+            .crl_cache_max_entries(5)
+            .build();
+        let _checker = RevocationChecker::new(config);
+    }
+
+    // -----------------------------------------------------------------------
+    // RevocationChecker – check_revocation with both disabled
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_check_revocation_both_disabled_returns_unknown() {
+        let config = RevocationConfig::builder()
+            .enable_crl(false)
+            .enable_ocsp(false)
+            .fail_on_unknown(false)
+            .build();
+        let checker = RevocationChecker::new(config);
+
+        let cert = load_cert(CLIENT_PEM);
+        let issuer = load_cert(CA_PEM);
+
+        let result = checker.check_revocation(&cert, &issuer).await.unwrap();
+        assert!(result.status.is_unknown());
+        assert!(!result.crl_checked);
+        assert!(!result.ocsp_checked);
+        assert!(result.crl_status.is_none());
+        assert!(result.ocsp_status.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_check_revocation_both_disabled_fail_on_unknown() {
+        let config = RevocationConfig::builder()
+            .enable_crl(false)
+            .enable_ocsp(false)
+            .fail_on_unknown(true)
+            .build();
+        let checker = RevocationChecker::new(config);
+
+        let cert = load_cert(CLIENT_PEM);
+        let issuer = load_cert(CA_PEM);
+
+        let result = checker.check_revocation(&cert, &issuer).await;
+        assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // RevocationChecker – clear_cache
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_clear_cache() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        // Insert a dummy entry into the cache
+        {
+            let cache = checker.crl_cache.write().await;
+            // We can't easily create a real CrlCacheEntry without a CRL,
+            // so just verify the cache is accessible and clearable
+            assert!(cache.is_empty());
+        }
+        checker.clear_cache().await;
+        let cache = checker.crl_cache.read().await;
+        assert!(cache.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // parse_crl – error paths
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_crl_invalid_data() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        let result = checker.parse_crl(b"not a crl");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_crl_invalid_der() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        let result = checker.parse_crl(&[0x30, 0x03, 0x01, 0x02, 0x03]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_crl_invalid_pem_base64() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        let bad_pem = b"-----BEGIN X509 CRL-----\n!!!invalid!!!\n-----END X509 CRL-----";
+        let result = checker.parse_crl(bad_pem);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_crl_pem_valid_base64_invalid_der() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        let bad_pem = b"-----BEGIN X509 CRL-----\nYWJj\n-----END X509 CRL-----";
+        let result = checker.parse_crl(bad_pem);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_crl_not_utf8_not_der() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        // Start with something that's not valid DER and not valid UTF-8
+        let data: Vec<u8> = vec![0xFF, 0xFE, 0xFD, 0xFC, 0xFB];
+        let result = checker.parse_crl(&data);
+        assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // parse_ocsp_response – error paths via SimpleDerParser
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_ocsp_response_empty_data() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        let result = checker.parse_ocsp_response(&[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_ocsp_response_not_a_sequence() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        // Tag 0x01 (BOOLEAN) instead of 0x30 (SEQUENCE)
+        let result = checker.parse_ocsp_response(&[0x01, 0x01, 0x00]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_ocsp_response_malformed_status() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        // SEQUENCE { ENUMERATED { 1 } } -> malformedRequest
+        let data = [0x30, 0x03, 0x0A, 0x01, 0x01];
+        let result = checker.parse_ocsp_response(&data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_ocsp_response_internal_error_status() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        // SEQUENCE { ENUMERATED { 2 } } -> internalError
+        let data = [0x30, 0x03, 0x0A, 0x01, 0x02];
+        let result = checker.parse_ocsp_response(&data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_ocsp_response_try_later_returns_unknown() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        // SEQUENCE { ENUMERATED { 3 } } -> tryLater
+        let data = [0x30, 0x03, 0x0A, 0x01, 0x03];
+        let result = checker.parse_ocsp_response(&data);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_unknown());
+    }
+
+    #[test]
+    fn test_parse_ocsp_response_sig_required() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        // SEQUENCE { ENUMERATED { 5 } } -> sigRequired
+        let data = [0x30, 0x03, 0x0A, 0x01, 0x05];
+        let result = checker.parse_ocsp_response(&data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_ocsp_response_unauthorized() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        // SEQUENCE { ENUMERATED { 6 } } -> unauthorized
+        let data = [0x30, 0x03, 0x0A, 0x01, 0x06];
+        let result = checker.parse_ocsp_response(&data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_ocsp_response_unknown_status_code() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        // SEQUENCE { ENUMERATED { 9 } } -> unknown error code
+        let data = [0x30, 0x03, 0x0A, 0x01, 0x09];
+        let result = checker.parse_ocsp_response(&data);
+        assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // SimpleDerParser – length encoding edge cases (via parse_ocsp_response)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_der_parser_long_form_length_too_many_octets() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        // SEQUENCE with long-form length: 0x85 means 5 octets for length (>4, rejected)
+        let data = [0x30, 0x85, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let result = checker.parse_ocsp_response(&data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_der_parser_zero_length_octets() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        // SEQUENCE with long-form length: 0x80 means indefinite (0 octets, rejected)
+        let data = [0x30, 0x80];
+        let result = checker.parse_ocsp_response(&data);
+        assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // extract_crl_urls / extract_ocsp_url – certificates without extensions
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_extract_crl_urls_from_test_cert() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        let cert = load_cert(CLIENT_PEM);
+        // Our test certs may or may not have CRL distribution points;
+        // the important thing is the function doesn't error
+        let urls = checker.extract_crl_urls(&cert).unwrap();
+        // Result can be empty if cert has no CRL DPs
+        assert!(urls.is_empty() || urls.iter().all(|u| u.starts_with("http")));
+    }
+
+    #[test]
+    fn test_extract_ocsp_url_from_test_cert() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        let cert = load_cert(CLIENT_PEM);
+        let url = checker.extract_ocsp_url(&cert).unwrap();
+        // Our test cert may not have OCSP URL
+        if let Some(u) = &url {
+            assert!(u.starts_with("http"));
+        }
+    }
+
+    #[test]
+    fn test_extract_crl_urls_from_ca_cert() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        let cert = load_cert(CA_PEM);
+        let urls = checker.extract_crl_urls(&cert).unwrap();
+        // CA self-signed certs typically have no CRL DPs
+        assert!(urls.is_empty() || urls.iter().all(|u| u.starts_with("http")));
+    }
+
+    #[test]
+    fn test_extract_ocsp_url_from_server_cert() {
+        let checker = RevocationChecker::new(RevocationConfig::default());
+        let cert = load_cert(SERVER_PEM);
+        let url = checker.extract_ocsp_url(&cert).unwrap();
+        if let Some(u) = &url {
+            assert!(u.starts_with("http"));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // RevocationConfig Clone and Debug
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_revocation_config_clone_and_debug() {
+        let config = RevocationConfig::builder()
+            .enable_crl(true)
+            .enable_ocsp(false)
+            .build();
+        let cloned = config.clone();
+        assert_eq!(cloned.enable_crl, config.enable_crl);
+        assert_eq!(cloned.enable_ocsp, config.enable_ocsp);
+        let debug_str = format!("{:?}", config);
+        assert!(debug_str.contains("RevocationConfig"));
     }
 }

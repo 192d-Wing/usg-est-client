@@ -1921,4 +1921,524 @@ mod tests {
         let subtree = vec![0xFF, 0xFF];
         assert!(!validator.dn_is_within_subtree(&subject, &subtree));
     }
+
+    // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
+
+    // -----------------------------------------------------------------------
+    // Certificate-based tests using fixtures from tests/fixtures/certs/
+    // -----------------------------------------------------------------------
+
+    fn load_cert_from_pem(pem_bytes: &[u8]) -> Certificate {
+        use der::Decode;
+        let pem_str = std::str::from_utf8(pem_bytes).unwrap();
+        let pem = pem_str
+            .lines()
+            .filter(|l| !l.starts_with("-----"))
+            .collect::<String>();
+        use base64::Engine;
+        let der_bytes = base64::engine::general_purpose::STANDARD
+            .decode(&pem)
+            .unwrap();
+        Certificate::from_der(&der_bytes).unwrap()
+    }
+
+    fn ca_cert() -> Certificate {
+        load_cert_from_pem(include_bytes!(
+            "../tests/fixtures/certs/ca.pem"
+        ))
+    }
+
+    fn client_cert() -> Certificate {
+        load_cert_from_pem(include_bytes!(
+            "../tests/fixtures/certs/client.pem"
+        ))
+    }
+
+    fn server_cert() -> Certificate {
+        load_cert_from_pem(include_bytes!(
+            "../tests/fixtures/certs/server.pem"
+        ))
+    }
+
+    fn testrfc7030_ca_cert() -> Certificate {
+        load_cert_from_pem(include_bytes!(
+            "../tests/fixtures/certs/testrfc7030-ca.pem"
+        ))
+    }
+
+    // --- CertificateValidator construction ---
+
+    #[test]
+    fn test_validator_new_with_trust_anchors() {
+        let ca = ca_cert();
+        let validator = CertificateValidator::new(vec![ca.clone()]);
+        assert_eq!(validator.trust_anchors.len(), 1);
+        assert_eq!(validator.config.max_chain_length, 10);
+    }
+
+    #[test]
+    fn test_validator_with_custom_config() {
+        let ca = ca_cert();
+        let config = ValidationConfig {
+            max_chain_length: 5,
+            check_revocation: true,
+            enforce_name_constraints: false,
+            enforce_policy_constraints: false,
+            allow_expired: true,
+        };
+        let validator = CertificateValidator::with_config(vec![ca.clone()], config);
+        assert_eq!(validator.config.max_chain_length, 5);
+        assert!(validator.config.check_revocation);
+        assert!(!validator.config.enforce_name_constraints);
+        assert!(!validator.config.enforce_policy_constraints);
+        assert!(validator.config.allow_expired);
+    }
+
+    // --- is_self_signed ---
+
+    #[test]
+    fn test_ca_is_self_signed() {
+        let ca = ca_cert();
+        let validator = CertificateValidator::new(vec![]);
+        assert!(validator.is_self_signed(&ca));
+    }
+
+    #[test]
+    fn test_client_is_not_self_signed() {
+        let client = client_cert();
+        let validator = CertificateValidator::new(vec![]);
+        assert!(!validator.is_self_signed(&client));
+    }
+
+    #[test]
+    fn test_server_is_not_self_signed() {
+        let server = server_cert();
+        let validator = CertificateValidator::new(vec![]);
+        assert!(!validator.is_self_signed(&server));
+    }
+
+    // --- is_trusted_root ---
+
+    #[test]
+    fn test_ca_is_trusted_root() {
+        let ca = ca_cert();
+        let validator = CertificateValidator::new(vec![ca.clone()]);
+        assert!(validator.is_trusted_root(&ca));
+    }
+
+    #[test]
+    fn test_untrusted_ca_is_not_trusted_root() {
+        let ca = ca_cert();
+        let rfc_ca = testrfc7030_ca_cert();
+        let validator = CertificateValidator::new(vec![ca]);
+        assert!(!validator.is_trusted_root(&rfc_ca));
+    }
+
+    #[test]
+    fn test_client_cert_is_not_trusted_root() {
+        let ca = ca_cert();
+        let client = client_cert();
+        let validator = CertificateValidator::new(vec![ca]);
+        assert!(!validator.is_trusted_root(&client));
+    }
+
+    // --- find_issuer ---
+
+    #[test]
+    fn test_find_issuer_for_client() {
+        let ca = ca_cert();
+        let client = client_cert();
+        let validator = CertificateValidator::new(vec![]);
+        let issuer = validator.find_issuer(&client, &[ca.clone()]);
+        assert!(issuer.is_some());
+    }
+
+    #[test]
+    fn test_find_issuer_not_found() {
+        let rfc_ca = testrfc7030_ca_cert();
+        let client = client_cert();
+        let validator = CertificateValidator::new(vec![]);
+        let issuer = validator.find_issuer(&client, &[rfc_ca]);
+        assert!(issuer.is_none());
+    }
+
+    // --- build_chain ---
+
+    #[test]
+    fn test_build_chain_client_to_ca() {
+        let ca = ca_cert();
+        let client = client_cert();
+        let validator = CertificateValidator::new(vec![ca.clone()]);
+        let chain = validator.build_chain(&client, &[ca]).unwrap();
+        // Client -> CA (2 certs)
+        assert_eq!(chain.len(), 2);
+    }
+
+    #[test]
+    fn test_build_chain_server_to_ca() {
+        let ca = ca_cert();
+        let server = server_cert();
+        let validator = CertificateValidator::new(vec![ca.clone()]);
+        let chain = validator.build_chain(&server, &[ca]).unwrap();
+        assert_eq!(chain.len(), 2);
+    }
+
+    #[test]
+    fn test_build_chain_self_signed_ca() {
+        let ca = ca_cert();
+        let validator = CertificateValidator::new(vec![ca.clone()]);
+        let chain = validator.build_chain(&ca, &[]).unwrap();
+        // Self-signed CA is just 1 cert
+        assert_eq!(chain.len(), 1);
+    }
+
+    #[test]
+    fn test_build_chain_no_issuer_found() {
+        let client = client_cert();
+        // No trust anchors or intermediates that can issue for this client
+        let validator = CertificateValidator::new(vec![]);
+        let result = validator.build_chain(&client, &[]);
+        assert!(result.is_err());
+    }
+
+    // --- validate (full chain validation) ---
+
+    #[test]
+    fn test_validate_client_chain_allow_expired() {
+        let ca = ca_cert();
+        let client = client_cert();
+        let config = ValidationConfig {
+            allow_expired: true,
+            enforce_name_constraints: false,
+            enforce_policy_constraints: false,
+            ..ValidationConfig::default()
+        };
+        let validator = CertificateValidator::with_config(vec![ca.clone()], config);
+        let result = validator.validate(&client, &[ca]).unwrap();
+        // Chain builds; signature may or may not verify depending on algo support,
+        // but chain should be non-empty
+        assert!(!result.chain.is_empty());
+    }
+
+    #[test]
+    fn test_validate_server_chain_allow_expired() {
+        let ca = ca_cert();
+        let server = server_cert();
+        let config = ValidationConfig {
+            allow_expired: true,
+            enforce_name_constraints: false,
+            enforce_policy_constraints: false,
+            ..ValidationConfig::default()
+        };
+        let validator = CertificateValidator::with_config(vec![ca.clone()], config);
+        let result = validator.validate(&server, &[ca]).unwrap();
+        assert!(!result.chain.is_empty());
+    }
+
+    #[test]
+    fn test_validate_untrusted_root_produces_error() {
+        let ca = ca_cert();
+        let client = client_cert();
+        let rfc_ca = testrfc7030_ca_cert();
+        // Trust only the RFC CA, but the client chains to the other CA
+        let config = ValidationConfig {
+            allow_expired: true,
+            enforce_name_constraints: false,
+            enforce_policy_constraints: false,
+            ..ValidationConfig::default()
+        };
+        let validator = CertificateValidator::with_config(vec![rfc_ca], config);
+        let result = validator.validate(&client, &[ca]);
+        // Should either fail to build chain or report untrusted root
+        match result {
+            Ok(vr) => {
+                assert!(
+                    !vr.is_valid || vr.errors.iter().any(|e| e.contains("not in trust store")),
+                    "Expected validation failure for untrusted root"
+                );
+            }
+            Err(_) => {
+                // Chain build failure is also acceptable
+            }
+        }
+    }
+
+    #[test]
+    fn test_validate_chain_too_long() {
+        let ca = ca_cert();
+        let client = client_cert();
+        let config = ValidationConfig {
+            max_chain_length: 1,
+            allow_expired: true,
+            enforce_name_constraints: false,
+            enforce_policy_constraints: false,
+            ..ValidationConfig::default()
+        };
+        let validator = CertificateValidator::with_config(vec![ca.clone()], config);
+        let result = validator.validate(&client, &[ca]).unwrap();
+        // Chain has 2 certs but max is 1, so should report error
+        let has_chain_length_error = result
+            .errors
+            .iter()
+            .any(|e| e.contains("chain too long") || e.contains("Certificate chain"));
+        assert!(has_chain_length_error, "Expected chain too long error, got: {:?}", result.errors);
+    }
+
+    #[test]
+    fn test_validate_revocation_warning() {
+        let ca = ca_cert();
+        let config = ValidationConfig {
+            check_revocation: true,
+            allow_expired: true,
+            enforce_name_constraints: false,
+            enforce_policy_constraints: false,
+            ..ValidationConfig::default()
+        };
+        let validator = CertificateValidator::with_config(vec![ca.clone()], config);
+        let result = validator.validate(&ca, &[]).unwrap();
+        assert!(
+            result.warnings.iter().any(|w| w.contains("Revocation")),
+            "Expected revocation warning"
+        );
+    }
+
+    // --- check_basic_constraints ---
+
+    #[test]
+    fn test_check_basic_constraints_on_ca() {
+        let ca = ca_cert();
+        let validator = CertificateValidator::new(vec![]);
+        // CA should have cA=TRUE
+        let result = validator.check_basic_constraints(&ca);
+        assert!(result.is_ok(), "CA cert should pass basic constraints check");
+    }
+
+    #[test]
+    fn test_check_basic_constraints_on_client() {
+        let client = client_cert();
+        let validator = CertificateValidator::new(vec![]);
+        // Client (end-entity) should fail basic constraints check (no cA=TRUE)
+        let result = validator.check_basic_constraints(&client);
+        assert!(result.is_err(), "Client cert should fail basic constraints (not a CA)");
+    }
+
+    // --- check_validity_period ---
+
+    #[test]
+    fn test_check_validity_period_valid_certs() {
+        // Our test certs have notBefore=1975, notAfter=4096 so they should be valid now
+        let ca = ca_cert();
+        let validator = CertificateValidator::new(vec![]);
+        let result = validator.check_validity_period(&ca);
+        assert!(result.is_ok(), "CA cert with wide validity should pass: {:?}", result);
+    }
+
+    #[test]
+    fn test_check_validity_period_client_valid() {
+        let client = client_cert();
+        let validator = CertificateValidator::new(vec![]);
+        let result = validator.check_validity_period(&client);
+        assert!(result.is_ok(), "Client cert with wide validity should pass: {:?}", result);
+    }
+
+    // --- get_subject_cn ---
+
+    #[test]
+    fn test_get_subject_cn_ca() {
+        let ca = ca_cert();
+        let cn = get_subject_cn(&ca);
+        assert!(cn.is_some(), "CA cert should have a CN");
+        assert_eq!(cn.unwrap(), "EST Test CA");
+    }
+
+    #[test]
+    fn test_get_subject_cn_client() {
+        let client = client_cert();
+        let cn = get_subject_cn(&client);
+        assert!(cn.is_some(), "Client cert should have a CN");
+        assert_eq!(cn.unwrap(), "test-client.example.com");
+    }
+
+    #[test]
+    fn test_get_subject_cn_server() {
+        let server = server_cert();
+        let cn = get_subject_cn(&server);
+        assert!(cn.is_some(), "Server cert should have a CN");
+        assert_eq!(cn.unwrap(), "est.example.com");
+    }
+
+    #[test]
+    fn test_get_subject_cn_rfc7030_ca() {
+        let rfc_ca = testrfc7030_ca_cert();
+        let cn = get_subject_cn(&rfc_ca);
+        assert!(cn.is_some());
+        assert_eq!(cn.unwrap(), "estExampleCA");
+    }
+
+    // --- is_ca_certificate ---
+
+    #[test]
+    fn test_is_ca_certificate_true_for_ca() {
+        let ca = ca_cert();
+        assert!(is_ca_certificate(&ca));
+    }
+
+    #[test]
+    fn test_is_ca_certificate_false_for_client() {
+        let client = client_cert();
+        assert!(!is_ca_certificate(&client));
+    }
+
+    #[test]
+    fn test_is_ca_certificate_false_for_server() {
+        let server = server_cert();
+        assert!(!is_ca_certificate(&server));
+    }
+
+    #[test]
+    fn test_is_ca_certificate_true_for_rfc7030_ca() {
+        let rfc_ca = testrfc7030_ca_cert();
+        assert!(is_ca_certificate(&rfc_ca));
+    }
+
+    // --- URI constraint edge cases ---
+
+    #[test]
+    fn test_uri_constraint_no_scheme() {
+        let validator = CertificateValidator::new(vec![]);
+        // URI without a recognized scheme uses the full string as-is (no host extraction),
+        // so "example.com/path" does not match constraint "example.com"
+        assert!(!validator.uri_matches_constraint("example.com/path", "example.com"));
+        // But an exact bare domain does match
+        assert!(validator.uri_matches_constraint("example.com", "example.com"));
+        assert!(!validator.uri_matches_constraint("other.com", "example.com"));
+    }
+
+    // --- DNS constraint edge cases ---
+
+    #[test]
+    fn test_dns_constraint_prevents_partial_label_match() {
+        let validator = CertificateValidator::new(vec![]);
+        // "evilexample.com" should NOT match constraint "example.com"
+        assert!(!validator.dns_matches_constraint("evilexample.com", "example.com"));
+        // But "sub.example.com" should
+        assert!(validator.dns_matches_constraint("sub.example.com", "example.com"));
+    }
+
+    #[test]
+    fn test_dns_constraint_dot_prefix_prevents_partial_label() {
+        let validator = CertificateValidator::new(vec![]);
+        // ".example.com" should not match "evilexample.com"
+        assert!(!validator.dns_matches_constraint("evilexample.com", ".example.com"));
+        // But it should match "sub.example.com"
+        assert!(validator.dns_matches_constraint("sub.example.com", ".example.com"));
+        // And the bare domain itself
+        assert!(validator.dns_matches_constraint("example.com", ".example.com"));
+    }
+
+    // --- TLV parsing edge cases ---
+
+    #[test]
+    fn test_parse_tlv_two_byte_length() {
+        let validator = CertificateValidator::new(vec![]);
+        // 0x82 length encoding: 2-byte length
+        let mut data = vec![0x30, 0x82, 0x01, 0x00]; // tag=SEQUENCE, len=256
+        data.extend(vec![0xAA; 256]);
+        let (len, value) = validator.parse_tlv(&data).unwrap();
+        assert_eq!(len, 256);
+        assert_eq!(value.len(), 256);
+    }
+
+    #[test]
+    fn test_parse_tlv_truncated_value() {
+        let validator = CertificateValidator::new(vec![]);
+        // Claims length 10 but only 2 bytes of value
+        let data = [0x02, 0x0A, 0x01, 0x02];
+        let result = validator.parse_tlv(&data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_tlv_unsupported_length_encoding() {
+        let validator = CertificateValidator::new(vec![]);
+        // 0x83 = 3-byte length encoding (unsupported)
+        let data = [0x30, 0x83, 0x00, 0x00, 0x01];
+        let result = validator.parse_tlv(&data);
+        assert!(result.is_err());
+    }
+
+    // --- parse_policy_constraints ---
+
+    #[test]
+    fn test_parse_policy_constraints_empty_sequence() {
+        let validator = CertificateValidator::new(vec![]);
+        // Empty SEQUENCE
+        let bytes = [0x30, 0x00];
+        let mut require = None;
+        let mut inhibit = None;
+        let result = validator.parse_policy_constraints(&bytes, &mut require, &mut inhibit);
+        assert!(result.is_ok());
+        assert!(require.is_none());
+        assert!(inhibit.is_none());
+    }
+
+    #[test]
+    fn test_parse_policy_constraints_require_explicit() {
+        let validator = CertificateValidator::new(vec![]);
+        // SEQUENCE { [0] INTEGER 2 }
+        let bytes = [0x30, 0x03, 0x80, 0x01, 0x02];
+        let mut require = None;
+        let mut inhibit = None;
+        let result = validator.parse_policy_constraints(&bytes, &mut require, &mut inhibit);
+        assert!(result.is_ok());
+        assert_eq!(require, Some(2));
+        assert!(inhibit.is_none());
+    }
+
+    #[test]
+    fn test_parse_policy_constraints_inhibit_mapping() {
+        let validator = CertificateValidator::new(vec![]);
+        // SEQUENCE { [1] INTEGER 3 }
+        let bytes = [0x30, 0x03, 0x81, 0x01, 0x03];
+        let mut require = None;
+        let mut inhibit = None;
+        let result = validator.parse_policy_constraints(&bytes, &mut require, &mut inhibit);
+        assert!(result.is_ok());
+        assert!(require.is_none());
+        assert_eq!(inhibit, Some(3));
+    }
+
+    #[test]
+    fn test_parse_policy_constraints_both() {
+        let validator = CertificateValidator::new(vec![]);
+        // SEQUENCE { [0] INTEGER 1, [1] INTEGER 5 }
+        let bytes = [0x30, 0x06, 0x80, 0x01, 0x01, 0x81, 0x01, 0x05];
+        let mut require = None;
+        let mut inhibit = None;
+        let result = validator.parse_policy_constraints(&bytes, &mut require, &mut inhibit);
+        assert!(result.is_ok());
+        assert_eq!(require, Some(1));
+        assert_eq!(inhibit, Some(5));
+    }
+
+    #[test]
+    fn test_parse_policy_constraints_invalid_not_sequence() {
+        let validator = CertificateValidator::new(vec![]);
+        // Not a SEQUENCE (tag 0x02 = INTEGER)
+        let bytes = [0x02, 0x01, 0x00];
+        let mut require = None;
+        let mut inhibit = None;
+        let result = validator.parse_policy_constraints(&bytes, &mut require, &mut inhibit);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_policy_constraints_empty_input() {
+        let validator = CertificateValidator::new(vec![]);
+        let bytes: [u8; 0] = [];
+        let mut require = None;
+        let mut inhibit = None;
+        let result = validator.parse_policy_constraints(&bytes, &mut require, &mut inhibit);
+        assert!(result.is_err());
+    }
 }
