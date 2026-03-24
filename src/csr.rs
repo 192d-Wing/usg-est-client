@@ -1645,8 +1645,7 @@ mod tests {
         use x509_cert::request::CertReq;
 
         let (csr_der, _key_pair) =
-            generate_device_csr("device-org.example.com", Some("Federal Agency"))
-                .unwrap();
+            generate_device_csr("device-org.example.com", Some("Federal Agency")).unwrap();
 
         assert!(!csr_der.is_empty());
         let cert_req = CertReq::from_der(&csr_der).unwrap();
@@ -1660,9 +1659,7 @@ mod tests {
         use der::Decode;
         use x509_cert::request::CertReq;
 
-        let (csr_der, _key_pair) =
-            generate_device_csr("device-no-org.example.com", None)
-                .unwrap();
+        let (csr_der, _key_pair) = generate_device_csr("device-no-org.example.com", None).unwrap();
 
         assert!(!csr_der.is_empty());
         let cert_req = CertReq::from_der(&csr_der).unwrap();
@@ -1683,8 +1680,7 @@ mod tests {
             "api.example.com",
             "cdn.example.com",
         ];
-        let (csr_der, _key_pair) =
-            generate_server_csr("www.example.com", san_names).unwrap();
+        let (csr_der, _key_pair) = generate_server_csr("www.example.com", san_names).unwrap();
 
         assert!(!csr_der.is_empty());
         let cert_req = CertReq::from_der(&csr_der).unwrap();

@@ -166,8 +166,8 @@ mod tests {
     // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
     use super::*;
     use der::Decode;
-    use rustls_pki_types::pem::PemObject;
     use rustls_pki_types::CertificateDer;
+    use rustls_pki_types::pem::PemObject;
 
     /// Load the test CA certificate from the fixtures directory.
     fn test_certificate() -> x509_cert::Certificate {
@@ -188,7 +188,10 @@ mod tests {
     #[test]
     fn enrollment_response_pending_creates_pending_variant() {
         let resp = EnrollmentResponse::pending(60);
-        assert!(matches!(resp, EnrollmentResponse::Pending { retry_after: 60 }));
+        assert!(matches!(
+            resp,
+            EnrollmentResponse::Pending { retry_after: 60 }
+        ));
     }
 
     #[test]
