@@ -37,7 +37,7 @@ cms = "0.2"
 pkcs8 = { version = "0.10.2", features = ["encryption", "pem"] }
 spki = "0.7.3"
 const-oid = { version = "0.9", features = ["db"] }
-sha2 = "0.10.9"
+sha2 = "0.11.0"
 rsa = { version = "0.9", features = ["sha2"] }
 p256 = { version = "0.13", features = ["ecdsa"] }
 p384 = { version = "0.13", features = ["ecdsa"] }
