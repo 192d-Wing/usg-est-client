@@ -78,7 +78,7 @@ chrono = { version = "0.4", optional = true }
 # PKCS#11 support (optional, for HSM integration)
 cryptoki = { version = "0.11", optional = true }
 hex = { version = "0.4", optional = true }
-uuid = { version = "1.19", features = ["v4"], optional = true }
+uuid = { version = "1.23", features = ["v4"], optional = true }
 
 # Metrics exporters (optional, for metrics feature)
 prometheus = { version = "0.14", optional = true }
