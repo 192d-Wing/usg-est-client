@@ -76,7 +76,7 @@ time = { version = "0.3", optional = true, features = [
 chrono = { version = "0.4", optional = true }
 
 # PKCS#11 support (optional, for HSM integration)
-cryptoki = { version = "0.11", optional = true }
+cryptoki = { version = "0.12", optional = true }
 hex = { version = "0.4", optional = true }
 uuid = { version = "1.19", features = ["v4"], optional = true }
 
