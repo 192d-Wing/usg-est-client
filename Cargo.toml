@@ -35,7 +35,7 @@ x509-cert = "0.2"
 der = { version = "0.7.10", features = ["alloc", "pem"] }
 cms = "0.2"
 pkcs8 = { version = "0.10.2", features = ["encryption", "pem"] }
-spki = "0.7.3"
+spki = "0.8.0"
 const-oid = { version = "0.9", features = ["db"] }
 sha2 = "0.10.9"
 rsa = { version = "0.9", features = ["sha2"] }
