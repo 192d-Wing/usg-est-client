@@ -16,7 +16,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(ossl300)'] }
 
 [dependencies]
 # Async runtime
-tokio = { version = "1.48", features = ["rt-multi-thread", "sync"] }
+tokio = { version = "1.51", features = ["rt-multi-thread", "sync"] }
 async-trait = "0.1.89"
 
 # HTTP client (rustls is default, native-tls available as optional backend)
@@ -118,7 +118,7 @@ windows = { version = "0.62", features = [
 windows-service = { version = "0.8", optional = true }
 
 [dev-dependencies]
-tokio = { version = "1.48", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.51", features = ["rt-multi-thread", "macros"] }
 tracing-subscriber = "0.3.22"
 wiremock = "0.6.5"
 tempfile = "3.24"
