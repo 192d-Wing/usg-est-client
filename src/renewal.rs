@@ -675,7 +675,7 @@ impl RenewalScheduler {
 
     /// Calculate time until certificate expiration.
     fn time_until_expiry(cert: &Certificate) -> Result<Duration> {
-        let not_after = &cert.tbs_certificate.validity.not_after;
+        let not_after = &cert.tbs_certificate().validity().not_after;
 
         // Parse X.509 time to SystemTime
         let expiry_time = Self::parse_x509_time(not_after)?;

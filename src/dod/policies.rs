@@ -280,7 +280,7 @@ const CERTIFICATE_POLICIES_OID: ObjectIdentifier = ObjectIdentifier::new_unwrap(
 /// ```
 pub fn validate_dod_policy(cert: &Certificate) -> Result<DodCertificatePolicy> {
     // Get certificate extensions
-    let extensions = cert.tbs_certificate.extensions.as_ref().ok_or_else(|| {
+    let extensions = cert.tbs_certificate().extensions().as_ref().ok_or_else(|| {
         EstError::CertificateValidation("No extensions in certificate".to_string())
     })?;
 
@@ -301,7 +301,7 @@ pub fn validate_dod_policy(cert: &Certificate) -> Result<DodCertificatePolicy> {
 ///
 /// Returns all DoD policies found in the certificate, not just the primary one.
 pub fn extract_dod_policies(cert: &Certificate) -> Vec<DodCertificatePolicy> {
-    let extensions = match cert.tbs_certificate.extensions.as_ref() {
+    let extensions = match cert.tbs_certificate().extensions().as_ref() {
         Some(exts) => exts,
         None => return Vec::new(),
     };

@@ -416,23 +416,23 @@ fn detect_pkcs11_middleware() -> Option<String> {
 /// Parse a certificate from CAC into CacCertificate struct
 fn parse_cac_certificate(certificate: Certificate, slot: PivSlot) -> CacCertificate {
     // Extract subject DN
-    let subject = format_dn(&certificate.tbs_certificate.subject);
+    let subject = format_dn(&certificate.tbs_certificate().subject());
 
     // Extract issuer DN
-    let issuer = format_dn(&certificate.tbs_certificate.issuer);
+    let issuer = format_dn(&certificate.tbs_certificate().issuer());
 
     // Extract serial number
-    let serial = hex::encode(certificate.tbs_certificate.serial_number.as_bytes());
+    let serial = hex::encode(certificate.tbs_certificate().serial_number().as_bytes());
 
     // Extract validity period
-    let not_before = format_time(&certificate.tbs_certificate.validity.not_before);
-    let not_after = format_time(&certificate.tbs_certificate.validity.not_after);
+    let not_before = format_time(&certificate.tbs_certificate().validity().not_before);
+    let not_after = format_time(&certificate.tbs_certificate().validity().not_after);
 
     // Check if certificate is currently valid
-    let is_valid = check_validity(&certificate.tbs_certificate.validity);
+    let is_valid = check_validity(&certificate.tbs_certificate().validity());
 
     // Extract key algorithm
-    let key_algorithm = format_key_algorithm(&certificate.tbs_certificate.subject_public_key_info);
+    let key_algorithm = format_key_algorithm(&certificate.tbs_certificate().subject_public_key_info());
 
     CacCertificate {
         slot,
@@ -457,26 +457,24 @@ fn format_dn(name: &x509_cert::name::Name) -> String {
     const OU: der::asn1::ObjectIdentifier = der::asn1::ObjectIdentifier::new_unwrap("2.5.4.11");
     const C: der::asn1::ObjectIdentifier = der::asn1::ObjectIdentifier::new_unwrap("2.5.4.6");
 
-    for rdn in name.0.iter() {
-        for atv in rdn.0.iter() {
-            let oid = &atv.oid;
-            let value = &atv.value;
+    for atv in name.iter() {
+        let oid = &atv.oid;
+        let value = &atv.value;
 
-            let attr_name = if *oid == CN {
-                "CN"
-            } else if *oid == O {
-                "O"
-            } else if *oid == OU {
-                "OU"
-            } else if *oid == C {
-                "C"
-            } else {
-                continue;
-            };
+        let attr_name = if *oid == CN {
+            "CN"
+        } else if *oid == O {
+            "O"
+        } else if *oid == OU {
+            "OU"
+        } else if *oid == C {
+            "C"
+        } else {
+            continue;
+        };
 
-            if let Ok(s) = std::str::from_utf8(value.value()) {
-                components.push(format!("{}={}", attr_name, s));
-            }
+        if let Ok(s) = std::str::from_utf8(value.value()) {
+            components.push(format!("{}={}", attr_name, s));
         }
     }
 
@@ -792,7 +790,7 @@ mod tests {
         let pem = include_bytes!("../../tests/fixtures/certs/client.pem");
         let cert_der = CertificateDer::pem_slice_iter(pem).next().unwrap().unwrap();
         let cert = Certificate::from_der(cert_der.as_ref()).unwrap();
-        let algo = format_key_algorithm(&cert.tbs_certificate.subject_public_key_info);
+        let algo = format_key_algorithm(&cert.tbs_certificate().subject_public_key_info());
         // The test fixture uses ECC P-256
         assert_eq!(algo, "ECC");
     }

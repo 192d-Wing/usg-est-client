@@ -168,7 +168,7 @@ async fn test_live_get_cacerts() {
     for (i, cert) in certs.iter().enumerate() {
         println!(
             "CA Certificate {}: Subject = {:?}",
-            i, cert.tbs_certificate.subject
+            i, cert.tbs_certificate().subject()
         );
     }
 }
@@ -246,16 +246,16 @@ async fn test_live_simple_enroll() {
         Ok(EnrollmentResponse::Issued { certificate }) => {
             println!(
                 "Enrollment successful! Certificate subject: {:?}",
-                certificate.tbs_certificate.subject
+                certificate.tbs_certificate().subject()
             );
             println!(
                 "Certificate serial: {:?}",
-                certificate.tbs_certificate.serial_number
+                certificate.tbs_certificate().serial_number()
             );
             println!(
                 "Certificate validity: {:?} - {:?}",
-                certificate.tbs_certificate.validity.not_before,
-                certificate.tbs_certificate.validity.not_after
+                certificate.tbs_certificate().validity().not_before,
+                certificate.tbs_certificate().validity().not_after
             );
         }
         Ok(EnrollmentResponse::Pending { retry_after }) => {
@@ -464,15 +464,15 @@ async fn test_live_full_enrollment_workflow() {
     match auth_client.simple_enroll(&csr_der).await {
         Ok(EnrollmentResponse::Issued { certificate }) => {
             println!("  ✓ Enrollment successful!");
-            println!("    Subject: {:?}", certificate.tbs_certificate.subject);
+            println!("    Subject: {:?}", certificate.tbs_certificate().subject());
             println!(
                 "    Serial: {:?}",
-                certificate.tbs_certificate.serial_number
+                certificate.tbs_certificate().serial_number()
             );
             println!(
                 "    Valid: {:?} to {:?}",
-                certificate.tbs_certificate.validity.not_before,
-                certificate.tbs_certificate.validity.not_after
+                certificate.tbs_certificate().validity().not_before,
+                certificate.tbs_certificate().validity().not_after
             );
         }
         Ok(EnrollmentResponse::Pending { retry_after }) => {

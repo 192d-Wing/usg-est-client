@@ -189,7 +189,7 @@ async fn main() {
             if let Some(cn) = get_cn(&certificate) {
                 println!("  Subject CN: {}", cn);
             }
-            println!("  Serial: {:?}", certificate.tbs_certificate.serial_number);
+            println!("  Serial: {:?}", certificate.tbs_certificate().serial_number());
             println!();
             println!("Save the new certificate and update your configuration.");
         }
@@ -241,13 +241,11 @@ fn parse_pem_certificate(
 fn get_cn(cert: &usg_est_client::Certificate) -> Option<String> {
     use const_oid::db::rfc4519::CN;
 
-    for rdn in cert.tbs_certificate.subject.0.iter() {
-        for atv in rdn.0.iter() {
-            if atv.oid == CN
-                && let Ok(s) = std::str::from_utf8(atv.value.value())
-            {
-                return Some(s.to_string());
-            }
+    for atv in cert.tbs_certificate().subject().iter() {
+        if atv.oid == CN
+            && let Ok(s) = std::str::from_utf8(atv.value.value())
+        {
+            return Some(s.to_string());
         }
     }
     None

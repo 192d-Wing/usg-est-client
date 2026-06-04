@@ -393,18 +393,9 @@ pub fn compute_channel_binding(session_data: &[u8]) -> String {
 ///
 /// 32 bytes of cryptographically secure random data
 pub fn generate_channel_binding_challenge() -> [u8; 32] {
-    use p256::ecdsa::SigningKey;
-    use p256::elliptic_curve::rand_core::OsRng;
-
-    // NIST 800-53: IA-5 (Authenticator Management), SC-13 (Cryptographic Protection)
-    // STIG: APSC-DV-000170 (CAT I) - FIPS-approved CSPRNG
-    // Generate a random ECDSA signing key using OS's CSPRNG (FIPS 140-2 compliant)
-    // We don't actually need the key itself, just the cryptographically secure random bytes
-    let signing_key = SigningKey::random(&mut OsRng);
-
-    // Extract the scalar (secret key) as bytes
-    // This is 32 bytes (256 bits) of cryptographically secure random data
-    signing_key.to_bytes().into()
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).expect("OS RNG failed");
+    bytes
 }
 
 #[cfg(test)]

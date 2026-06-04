@@ -1277,13 +1277,11 @@ fn compute_thumbprint(der: &[u8]) -> String {
 fn get_certificate_cn(cert: &x509_cert::Certificate) -> Option<String> {
     use const_oid::db::rfc4519::CN;
 
-    for rdn in cert.tbs_certificate.subject.0.iter() {
-        for atv in rdn.0.iter() {
-            if atv.oid == CN
-                && let Ok(s) = std::str::from_utf8(atv.value.value())
-            {
-                return Some(s.to_string());
-            }
+    for atv in cert.tbs_certificate().subject().iter() {
+        if atv.oid == CN
+            && let Ok(s) = std::str::from_utf8(atv.value.value())
+        {
+            return Some(s.to_string());
         }
     }
     None

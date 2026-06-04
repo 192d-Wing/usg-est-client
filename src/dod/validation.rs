@@ -438,10 +438,10 @@ impl DodChainValidator {
             }
 
             // Find issuer in intermediates
-            let issuer_dn = &current.tbs_certificate.issuer;
+            let issuer_dn = &current.tbs_certificate().issuer();
             let issuer = intermediates
                 .iter()
-                .find(|c| &c.tbs_certificate.subject == issuer_dn);
+                .find(|c| &c.tbs_certificate().subject() == issuer_dn);
 
             match issuer {
                 Some(issuer_cert) => {
@@ -453,7 +453,7 @@ impl DodChainValidator {
                     let root = self
                         .root_cas
                         .iter()
-                        .find(|r| &r.certificate.tbs_certificate.subject == issuer_dn);
+                        .find(|r| &r.certificate.tbs_certificate().subject() == issuer_dn);
 
                     if let Some(root_ca) = root {
                         chain.push(root_ca.certificate.clone());
@@ -462,7 +462,7 @@ impl DodChainValidator {
                         // Unable to build complete chain
                         return Err(EstError::CertificateValidation(format!(
                             "Unable to find issuer certificate for: {}",
-                            format_dn(&current.tbs_certificate.subject)
+                            format_dn(&current.tbs_certificate().subject())
                         )));
                     }
                 }
@@ -493,7 +493,7 @@ impl DodChainValidator {
         // Check against custom trust anchors
         for anchor in &self.options.trust_anchors {
             if certificates_match(anchor, last) {
-                return Ok(format_dn(&anchor.tbs_certificate.subject));
+                return Ok(format_dn(&anchor.tbs_certificate().subject()));
             }
         }
 
@@ -517,8 +517,8 @@ impl DodChainValidator {
         let now = SystemTime::now();
 
         for cert in chain {
-            let validity = &cert.tbs_certificate.validity;
-            let subject = format_dn(&cert.tbs_certificate.subject);
+            let validity = &cert.tbs_certificate().validity();
+            let subject = format_dn(&cert.tbs_certificate().subject());
 
             // Parse not_before time
             let not_before = Self::parse_x509_time(&validity.not_before)?;
@@ -669,13 +669,13 @@ impl DodChainValidator {
 /// Check if two certificates are the same
 fn certificates_match(a: &Certificate, b: &Certificate) -> bool {
     // Compare subject and serial number
-    a.tbs_certificate.subject == b.tbs_certificate.subject
-        && a.tbs_certificate.serial_number == b.tbs_certificate.serial_number
+    a.tbs_certificate().subject() == b.tbs_certificate().subject()
+        && a.tbs_certificate().serial_number() == b.tbs_certificate().serial_number()
 }
 
 /// Check if a certificate is self-signed
 fn is_self_signed(cert: &Certificate) -> bool {
-    cert.tbs_certificate.subject == cert.tbs_certificate.issuer
+    cert.tbs_certificate().subject() == cert.tbs_certificate().issuer()
 }
 
 /// Format Distinguished Name for display
@@ -687,26 +687,24 @@ fn format_dn(name: &x509_cert::name::Name) -> String {
     const OU: der::asn1::ObjectIdentifier = der::asn1::ObjectIdentifier::new_unwrap("2.5.4.11");
     const C: der::asn1::ObjectIdentifier = der::asn1::ObjectIdentifier::new_unwrap("2.5.4.6");
 
-    for rdn in name.0.iter() {
-        for atv in rdn.0.iter() {
-            let oid = &atv.oid;
-            let value = &atv.value;
+    for atv in name.iter() {
+        let oid = &atv.oid;
+        let value = &atv.value;
 
-            let attr_name = if *oid == CN {
-                "CN"
-            } else if *oid == O {
-                "O"
-            } else if *oid == OU {
-                "OU"
-            } else if *oid == C {
-                "C"
-            } else {
-                continue;
-            };
+        let attr_name = if *oid == CN {
+            "CN"
+        } else if *oid == O {
+            "O"
+        } else if *oid == OU {
+            "OU"
+        } else if *oid == C {
+            "C"
+        } else {
+            continue;
+        };
 
-            if let Ok(s) = std::str::from_utf8(value.value()) {
-                components.push(format!("{}={}", attr_name, s));
-            }
+        if let Ok(s) = std::str::from_utf8(value.value()) {
+            components.push(format!("{}={}", attr_name, s));
         }
     }
 
@@ -875,7 +873,7 @@ mod tests {
     #[test]
     fn test_format_dn_with_cert() {
         let ca = load_test_cert(include_bytes!("../../tests/fixtures/certs/ca.pem"));
-        let dn = format_dn(&ca.tbs_certificate.subject);
+        let dn = format_dn(&ca.tbs_certificate().subject());
         assert!(dn.contains("CN="));
     }
 
@@ -924,7 +922,7 @@ mod tests {
     #[test]
     fn test_parse_x509_time() {
         let ca = load_test_cert(include_bytes!("../../tests/fixtures/certs/ca.pem"));
-        let not_before = &ca.tbs_certificate.validity.not_before;
+        let not_before = &ca.tbs_certificate().validity().not_before;
         let parsed = DodChainValidator::parse_x509_time(not_before);
         assert!(parsed.is_ok());
     }

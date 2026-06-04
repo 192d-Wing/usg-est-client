@@ -954,7 +954,7 @@ mod enrollment {
     ) -> Result<ExpirationStatus> {
         use std::time::{Duration, SystemTime};
 
-        let not_after = &cert.tbs_certificate.validity.not_after;
+        let not_after = &cert.tbs_certificate().validity().not_after;
 
         // Parse X.509 time to SystemTime
         let expiry_time = parse_x509_time(not_after)?;

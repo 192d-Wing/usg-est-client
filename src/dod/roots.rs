@@ -160,14 +160,14 @@ fn parse_dod_root_ca(name: &str, der_bytes: &[u8]) -> Result<DodRootCa> {
         .map_err(|e| EstError::CertificateParsing(format!("Failed to parse {}: {}", name, e)))?;
 
     // Extract subject DN
-    let subject_dn = format_dn(&certificate.tbs_certificate.subject);
+    let subject_dn = format_dn(&certificate.tbs_certificate().subject());
 
     // Extract issuer DN
-    let issuer_dn = format_dn(&certificate.tbs_certificate.issuer);
+    let issuer_dn = format_dn(&certificate.tbs_certificate().issuer());
 
     // Extract validity period
-    let not_before = format_time(&certificate.tbs_certificate.validity.not_before);
-    let not_after = format_time(&certificate.tbs_certificate.validity.not_after);
+    let not_before = format_time(&certificate.tbs_certificate().validity().not_before);
+    let not_after = format_time(&certificate.tbs_certificate().validity().not_after);
 
     // Calculate SHA-256 fingerprint
     let fingerprint_sha256 = calculate_fingerprint_sha256(der_bytes);
@@ -197,28 +197,24 @@ fn format_dn(name: &x509_cert::name::Name) -> String {
     const OU: der::asn1::ObjectIdentifier = der::asn1::ObjectIdentifier::new_unwrap("2.5.4.11"); // organizationalUnitName
     const C: der::asn1::ObjectIdentifier = der::asn1::ObjectIdentifier::new_unwrap("2.5.4.6"); // countryName
 
-    for rdn in name.0.iter() {
-        for atv in rdn.0.iter() {
-            // Get OID and value
-            let oid = &atv.oid;
-            let value = &atv.value;
+    for atv in name.iter() {
+        let oid = &atv.oid;
+        let value = &atv.value;
 
-            let attr_name = if *oid == CN {
-                "CN"
-            } else if *oid == O {
-                "O"
-            } else if *oid == OU {
-                "OU"
-            } else if *oid == C {
-                "C"
-            } else {
-                continue; // Skip unknown attributes
-            };
+        let attr_name = if *oid == CN {
+            "CN"
+        } else if *oid == O {
+            "O"
+        } else if *oid == OU {
+            "OU"
+        } else if *oid == C {
+            "C"
+        } else {
+            continue;
+        };
 
-            // Extract string value - try to get the inner bytes
-            if let Ok(s) = std::str::from_utf8(value.value()) {
-                components.push(format!("{}={}", attr_name, s));
-            }
+        if let Ok(s) = std::str::from_utf8(value.value()) {
+            components.push(format!("{}={}", attr_name, s));
         }
     }
 
@@ -387,7 +383,7 @@ mod tests {
         let pem = include_bytes!("../../tests/fixtures/certs/ca.pem");
         let cert_der = CertificateDer::pem_slice_iter(pem).next().unwrap().unwrap();
         let cert = Certificate::from_der(cert_der.as_ref()).unwrap();
-        let dn = format_dn(&cert.tbs_certificate.subject);
+        let dn = format_dn(&cert.tbs_certificate().subject());
         // The test CA has CN=EST Test CA, O=EST Test Organization, C=US
         assert!(dn.contains("CN="));
         assert!(dn.contains("EST Test CA"));
@@ -401,7 +397,7 @@ mod tests {
         let pem = include_bytes!("../../tests/fixtures/certs/ca.pem");
         let cert_der = CertificateDer::pem_slice_iter(pem).next().unwrap().unwrap();
         let cert = Certificate::from_der(cert_der.as_ref()).unwrap();
-        let time_str = format_time(&cert.tbs_certificate.validity.not_before);
+        let time_str = format_time(&cert.tbs_certificate().validity().not_before);
         // Should produce a formatted date string containing UTC
         assert!(time_str.contains("UTC"));
     }

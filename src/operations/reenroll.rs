@@ -46,7 +46,7 @@ pub fn validate_reenroll_csr(_csr_der: &[u8], _current_cert: &Certificate) -> Re
 pub fn days_until_expiration(cert: &Certificate) -> Option<i64> {
     use std::time::SystemTime;
 
-    let not_after = &cert.tbs_certificate.validity.not_after;
+    let not_after = &cert.tbs_certificate().validity().not_after;
 
     // Convert to SystemTime
     let expiry: SystemTime = not_after.to_system_time();
@@ -71,7 +71,7 @@ pub fn should_renew(cert: &Certificate, threshold_days: i64) -> bool {
 
 /// Extract the serial number from a certificate.
 pub fn get_serial_number(cert: &Certificate) -> Vec<u8> {
-    cert.tbs_certificate.serial_number.as_bytes().to_vec()
+    cert.tbs_certificate().serial_number().as_bytes().to_vec()
 }
 
 #[cfg(test)]

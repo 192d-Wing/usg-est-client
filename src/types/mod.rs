@@ -245,8 +245,8 @@ mod tests {
         assert!(!resp.key_encrypted);
         // Verify the certificate was stored by checking it round-trips
         assert_eq!(
-            resp.certificate.tbs_certificate.serial_number,
-            cert.tbs_certificate.serial_number
+            resp.certificate.tbs_certificate().serial_number(),
+            cert.tbs_certificate().serial_number()
         );
     }
 

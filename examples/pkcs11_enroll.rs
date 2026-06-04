@@ -346,27 +346,27 @@ fn display_certificate_info(cert: &Certificate) {
     info!("   -------------------------");
 
     // Extract subject
-    let subject = cert.tbs_certificate.subject.to_string();
+    let subject = cert.tbs_certificate().subject().to_string();
     info!("   Subject: {}", subject);
 
     // Extract issuer
-    let issuer = cert.tbs_certificate.issuer.to_string();
+    let issuer = cert.tbs_certificate().issuer().to_string();
     info!("   Issuer: {}", issuer);
 
     // Extract serial number
     info!(
         "   Serial: {}",
-        hex::encode(cert.tbs_certificate.serial_number.as_bytes())
+        hex::encode(cert.tbs_certificate().serial_number().as_bytes())
     );
 
     // Extract validity
     info!("   Validity:");
     info!(
         "     Not Before: {}",
-        cert.tbs_certificate.validity.not_before
+        cert.tbs_certificate().validity().not_before
     );
     info!(
         "     Not After:  {}",
-        cert.tbs_certificate.validity.not_after
+        cert.tbs_certificate().validity().not_after
     );
 }

@@ -537,7 +537,7 @@ fn check_certificate_expiration(
     let cert = x509_cert::Certificate::from_der(cert_der)
         .map_err(|e| EstError::operational(format!("Failed to parse certificate: {}", e)))?;
 
-    let not_after = &cert.tbs_certificate.validity.not_after;
+    let not_after = &cert.tbs_certificate().validity().not_after;
 
     // Parse X.509 time to SystemTime
     let expiry_time = parse_x509_time(not_after)?;

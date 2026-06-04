@@ -617,10 +617,10 @@ impl CertificateValidator {
 
     /// Find the issuer of a certificate in the provided set.
     fn find_issuer(&self, cert: &Certificate, candidates: &[Certificate]) -> Option<Certificate> {
-        let issuer_dn = &cert.tbs_certificate.issuer;
+        let issuer_dn = &cert.tbs_certificate().issuer();
 
         for candidate in candidates {
-            let subject_dn = &candidate.tbs_certificate.subject;
+            let subject_dn = &candidate.tbs_certificate().subject();
             if subject_dn == issuer_dn {
                 return Some(candidate.clone());
             }
@@ -636,8 +636,8 @@ impl CertificateValidator {
 
     /// Check if a certificate is self-signed.
     fn is_self_signed(&self, cert: &Certificate) -> bool {
-        let subject = &cert.tbs_certificate.subject;
-        let issuer = &cert.tbs_certificate.issuer;
+        let subject = &cert.tbs_certificate().subject();
+        let issuer = &cert.tbs_certificate().issuer();
         subject == issuer
     }
 
@@ -645,15 +645,15 @@ impl CertificateValidator {
     fn is_trusted_root(&self, cert: &Certificate) -> bool {
         self.trust_anchors.iter().any(|anchor| {
             // Compare by public key or serial number
-            anchor.tbs_certificate.subject_public_key_info
-                == cert.tbs_certificate.subject_public_key_info
+            anchor.tbs_certificate().subject_public_key_info()
+                == cert.tbs_certificate().subject_public_key_info()
         })
     }
 
     /// Check certificate validity period.
     fn check_validity_period(&self, cert: &Certificate) -> Result<()> {
         let now = SystemTime::now();
-        let validity = &cert.tbs_certificate.validity;
+        let validity = &cert.tbs_certificate().validity();
 
         // Parse not_before time
         let not_before = Self::parse_time(&validity.not_before)?;
@@ -744,7 +744,7 @@ impl CertificateValidator {
         use x509_cert::ext::pkix::BasicConstraints;
 
         // Look for basic constraints extension
-        if let Some(extensions) = &cert.tbs_certificate.extensions {
+        if let Some(extensions) = &cert.tbs_certificate().extensions() {
             for ext in extensions.iter() {
                 // Basic Constraints OID: 2.5.29.19
                 let basic_constraints_oid = const_oid::db::rfc5280::ID_CE_BASIC_CONSTRAINTS;
@@ -829,7 +829,7 @@ impl CertificateValidator {
         let sig_alg_oid = &sig_alg.oid;
 
         // Get the issuer's public key
-        let issuer_spki = &issuer.tbs_certificate.subject_public_key_info;
+        let issuer_spki = &issuer.tbs_certificate().subject_public_key_info();
         let pub_key_alg = &issuer_spki.algorithm.oid;
 
         debug!(
@@ -838,7 +838,7 @@ impl CertificateValidator {
         );
 
         // Encode the TBSCertificate to get the data that was signed
-        let tbs_bytes = cert.tbs_certificate.to_der().map_err(|e| {
+        let tbs_bytes = cert.tbs_certificate().to_der().map_err(|e| {
             EstError::operational(format!("Failed to encode TBS certificate: {}", e))
         })?;
 
@@ -1051,7 +1051,7 @@ impl CertificateValidator {
         cert: &Certificate,
         accumulated: &mut AccumulatedNameConstraints,
     ) -> Result<()> {
-        let Some(extensions) = &cert.tbs_certificate.extensions else {
+        let Some(extensions) = &cert.tbs_certificate().extensions() else {
             return Ok(());
         };
 
@@ -1155,7 +1155,7 @@ impl CertificateValidator {
         if !constraints.permitted_dir_names.is_empty() || !constraints.excluded_dir_names.is_empty()
         {
             let subject_der =
-                cert.tbs_certificate.subject.to_der().map_err(|e| {
+                cert.tbs_certificate().subject().to_der().map_err(|e| {
                     EstError::operational(format!("Failed to encode subject: {}", e))
                 })?;
 
@@ -1186,7 +1186,7 @@ impl CertificateValidator {
         }
 
         // Check Subject Alternative Name extension for DNS, email, and URI constraints
-        if let Some(extensions) = &cert.tbs_certificate.extensions {
+        if let Some(extensions) = &cert.tbs_certificate().extensions() {
             let san_oid = ObjectIdentifier::new_unwrap("2.5.29.17");
 
             for ext in extensions.iter() {
@@ -1448,7 +1448,7 @@ impl CertificateValidator {
         inhibit_policy_mapping: &mut Option<usize>,
         errors: &mut Vec<String>,
     ) -> Result<()> {
-        let Some(extensions) = &cert.tbs_certificate.extensions else {
+        let Some(extensions) = &cert.tbs_certificate().extensions() else {
             return Ok(());
         };
 
@@ -1608,13 +1608,11 @@ impl CertificateValidator {
 pub fn get_subject_cn(cert: &Certificate) -> Option<String> {
     use const_oid::db::rfc4519::CN;
 
-    for rdn in cert.tbs_certificate.subject.0.iter() {
-        for atv in rdn.0.iter() {
-            if atv.oid == CN
-                && let Ok(s) = std::str::from_utf8(atv.value.value())
-            {
-                return Some(s.to_string());
-            }
+    for atv in cert.tbs_certificate().subject().iter() {
+        if atv.oid == CN
+            && let Ok(s) = std::str::from_utf8(atv.value.value())
+        {
+            return Some(s.to_string());
         }
     }
     None
@@ -1662,7 +1660,7 @@ pub fn is_ca_certificate(cert: &Certificate) -> bool {
     use der::Decode;
     use x509_cert::ext::pkix::BasicConstraints;
 
-    if let Some(extensions) = &cert.tbs_certificate.extensions {
+    if let Some(extensions) = &cert.tbs_certificate().extensions() {
         for ext in extensions.iter() {
             let basic_constraints_oid = const_oid::db::rfc5280::ID_CE_BASIC_CONSTRAINTS;
             if ext.extn_id == basic_constraints_oid {

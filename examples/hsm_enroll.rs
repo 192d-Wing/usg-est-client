@@ -318,8 +318,8 @@ async fn perform_live_enrollment(server_url: &str) {
             println!("✓ Certificate issued successfully!");
             println!();
             println!("Certificate Details:");
-            println!("  Subject: {:?}", certificate.tbs_certificate.subject);
-            println!("  Issuer: {:?}", certificate.tbs_certificate.issuer);
+            println!("  Subject: {:?}", certificate.tbs_certificate().subject());
+            println!("  Issuer: {:?}", certificate.tbs_certificate().issuer());
             println!();
             println!("In production:");
             println!("  • Save certificate to disk");

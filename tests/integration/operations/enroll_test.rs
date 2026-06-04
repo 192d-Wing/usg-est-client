@@ -63,8 +63,8 @@ async fn test_successful_enrollment() {
             // Verify we got a certificate
             assert!(
                 !certificate
-                    .tbs_certificate
-                    .serial_number
+                    .tbs_certificate()
+                    .serial_number()
                     .as_bytes()
                     .is_empty()
             );

@@ -72,8 +72,8 @@ async fn test_successful_serverkeygen() {
     assert!(
         !response
             .certificate
-            .tbs_certificate
-            .serial_number
+            .tbs_certificate()
+            .serial_number()
             .as_bytes()
             .is_empty()
     );

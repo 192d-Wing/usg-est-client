@@ -747,7 +747,7 @@ impl RevocationChecker {
         let sig_alg_oid = &crl.signature_algorithm.oid;
 
         // Get the issuer's public key
-        let issuer_spki = &issuer.tbs_certificate.subject_public_key_info;
+        let issuer_spki = &issuer.tbs_certificate().subject_public_key_info();
         let pub_key_alg = &issuer_spki.algorithm.oid;
 
         debug!(
@@ -972,7 +972,7 @@ impl RevocationChecker {
         cert: &Certificate,
         crl: &CertificateList,
     ) -> Result<RevocationStatus> {
-        let cert_serial = &cert.tbs_certificate.serial_number;
+        let cert_serial = &cert.tbs_certificate().serial_number();
 
         // Check if there are any revoked certificates
         if let Some(revoked_certs) = &crl.tbs_cert_list.revoked_certificates {
@@ -1040,7 +1040,7 @@ impl RevocationChecker {
         let mut urls = Vec::new();
 
         // Look for CRL Distribution Points extension
-        if let Some(extensions) = &cert.tbs_certificate.extensions {
+        if let Some(extensions) = &cert.tbs_certificate().extensions() {
             for ext in extensions.iter() {
                 // CRL Distribution Points OID: 2.5.29.31
                 let crl_dist_points_oid = const_oid::db::rfc5280::ID_CE_CRL_DISTRIBUTION_POINTS;
@@ -1211,7 +1211,7 @@ impl RevocationChecker {
 
         // Compute issuer name hash (SHA-256 of DER-encoded issuer DN)
         let issuer_name_der =
-            issuer.tbs_certificate.subject.to_der().map_err(|e| {
+            issuer.tbs_certificate().subject().to_der().map_err(|e| {
                 EstError::operational(format!("Failed to encode issuer name: {}", e))
             })?;
         let issuer_name_hash_bytes = Sha256::digest(&issuer_name_der);
@@ -1222,7 +1222,7 @@ impl RevocationChecker {
 
         // Compute issuer key hash (SHA-256 of issuer public key, excluding tag and length)
         let issuer_public_key_bytes = issuer
-            .tbs_certificate
+            .tbs_certificate()
             .subject_public_key_info
             .subject_public_key
             .as_bytes()
@@ -1233,7 +1233,7 @@ impl RevocationChecker {
         })?;
 
         // Get certificate serial number
-        let serial_number = cert.tbs_certificate.serial_number.clone();
+        let serial_number = cert.tbs_certificate().serial_number().clone();
 
         Ok(OcspCertId {
             hash_algorithm,
@@ -1476,7 +1476,7 @@ impl RevocationChecker {
     /// Extract OCSP responder URL from certificate.
     fn extract_ocsp_url(&self, cert: &Certificate) -> Result<Option<String>> {
         // Look for Authority Information Access extension
-        if let Some(extensions) = &cert.tbs_certificate.extensions {
+        if let Some(extensions) = &cert.tbs_certificate().extensions() {
             for ext in extensions.iter() {
                 // Authority Information Access OID: 1.3.6.1.5.5.7.1.1
                 let aia_oid = const_oid::db::rfc5280::ID_PE_AUTHORITY_INFO_ACCESS;

@@ -309,19 +309,14 @@ fn verify_ecdsa_sha256(
     data: &[u8],
     signature: &[u8],
 ) -> Result<bool> {
-    use p256::EncodedPoint;
     use p256::ecdsa::signature::Verifier;
     use p256::ecdsa::{Signature, VerifyingKey};
 
     // Extract public key bytes from SPKI
     let public_key_bytes = spki.subject_public_key.raw_bytes();
 
-    // Parse as P-256 encoded point
-    let encoded_point = EncodedPoint::from_bytes(public_key_bytes)
-        .map_err(|e| EstError::csr(format!("Failed to parse P-256 point: {}", e)))?;
-
-    // Create verifying key
-    let public_key = VerifyingKey::from_encoded_point(&encoded_point)
+    // Create verifying key from SEC1-encoded point bytes
+    let public_key = VerifyingKey::from_sec1_bytes(public_key_bytes)
         .map_err(|e| EstError::csr(format!("Failed to create P-256 verifying key: {}", e)))?;
 
     // Parse DER-encoded signature
@@ -341,19 +336,14 @@ fn verify_ecdsa_sha384(
     data: &[u8],
     signature: &[u8],
 ) -> Result<bool> {
-    use p384::EncodedPoint;
     use p384::ecdsa::signature::Verifier;
     use p384::ecdsa::{Signature, VerifyingKey};
 
     // Extract public key bytes from SPKI
     let public_key_bytes = spki.subject_public_key.raw_bytes();
 
-    // Parse as P-384 encoded point
-    let encoded_point = EncodedPoint::from_bytes(public_key_bytes)
-        .map_err(|e| EstError::csr(format!("Failed to parse P-384 point: {}", e)))?;
-
-    // Create verifying key
-    let public_key = VerifyingKey::from_encoded_point(&encoded_point)
+    // Create verifying key from SEC1-encoded point bytes
+    let public_key = VerifyingKey::from_sec1_bytes(public_key_bytes)
         .map_err(|e| EstError::csr(format!("Failed to create P-384 verifying key: {}", e)))?;
 
     // Parse DER-encoded signature

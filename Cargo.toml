@@ -16,7 +16,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(ossl300)'] }
 
 [dependencies]
 # Async runtime
-tokio = { version = "1.48", features = ["rt-multi-thread", "sync"] }
+tokio = { version = "1.52", features = ["rt-multi-thread", "sync"] }
 async-trait = "0.1.89"
 
 # HTTP client (rustls is default, native-tls available as optional backend)
@@ -26,22 +26,22 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 native-tls = { version = "0.2", optional = true }
 
 # TLS
-rustls = "0.23.35"
-rustls-pki-types = { version = "1.13", features = ["alloc"] }
+rustls = "0.23.40"
+rustls-pki-types = { version = "1.14", features = ["alloc"] }
 webpki-roots = "1.0"
 
 # Cryptography - RustCrypto ecosystem
-x509-cert = "0.2"
-der = { version = "0.7.10", features = ["alloc", "pem"] }
-cms = "0.2"
-pkcs8 = { version = "0.10.2", features = ["encryption", "pem"] }
-spki = "0.8"
-const-oid = { version = "0.9", features = ["db"] }
-sha2 = "0.10.9"
-rsa = { version = "0.9", features = ["sha2"] }
-p256 = { version = "0.13", features = ["ecdsa"] }
-p384 = { version = "0.13", features = ["ecdsa"] }
-signature = "2.2"
+x509-cert = "0.3.0-rc.4"
+der = { version = "0.8.0", features = ["alloc", "pem"] }
+cms = "0.3.0-pre.2"
+pkcs8 = { version = "0.11.0", features = ["encryption", "pem"] }
+spki = { version = "0.8", features = ["alloc"] }
+const-oid = { version = "0.10", features = ["db"] }
+sha2 = "0.11"
+rsa = { version = "0.10.0-rc.18", features = ["sha2"] }
+p256 = { version = "0.14.0-rc.9", features = ["ecdsa"] }
+p384 = { version = "0.14.0-rc.9", features = ["ecdsa"] }
+signature = "3.0"
 zeroize = { version = "1.8", features = ["alloc", "derive"] }
 
 # CSR generation (optional feature)
@@ -49,19 +49,20 @@ rcgen = { version = "0.14", optional = true }
 
 # Encoding
 base64 = "0.22.1"
+getrandom = "0.4"
 
 # Error handling
-thiserror = "2.0.17"
+thiserror = "2.0.18"
 
 # URL handling
-url = "2.5.7"
+url = "2.5.8"
 
 # Logging
 tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.22", optional = true }
+tracing-subscriber = { version = "0.3.23", optional = true }
 
 # Configuration file parsing (optional, for auto-enrollment)
-toml = { version = "0.9", optional = true }
+toml = { version = "1.1", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
 dirs = { version = "6.0", optional = true }
@@ -76,31 +77,31 @@ time = { version = "0.3", optional = true, features = [
 chrono = { version = "0.4", optional = true }
 
 # PKCS#11 support (optional, for HSM integration)
-cryptoki = { version = "0.11", optional = true }
+cryptoki = { version = "0.12", optional = true }
 hex = { version = "0.4", optional = true }
-uuid = { version = "1.19", features = ["v4"], optional = true }
+uuid = { version = "1.23", features = ["v4"], optional = true }
 
 # Metrics exporters (optional, for metrics feature)
 prometheus = { version = "0.14", optional = true }
-opentelemetry = { version = "0.31.0", optional = true, features = ["metrics"] }
-opentelemetry-prometheus = { version = "0.31.0", optional = true }
-opentelemetry_sdk = { version = "0.31.0", optional = true, features = [
+opentelemetry = { version = "0.32.0", optional = true, features = ["metrics"] }
+opentelemetry-prometheus = { version = "0.32.0", optional = true }
+opentelemetry_sdk = { version = "0.32.1", optional = true, features = [
     "metrics",
 ] }
 
 # Symmetric encryption for EnvelopedData decryption (optional)
-aes = { version = "0.8", optional = true }
-cbc = { version = "0.1", optional = true }
-des = { version = "0.8", optional = true }
+aes = { version = "0.9", optional = true }
+cbc = { version = "0.2", optional = true }
+des = { version = "0.9", optional = true }
 aes-gcm = { version = "0.10", optional = true }
-hmac = { version = "0.12", optional = true }
+hmac = { version = "0.13", optional = true }
 
 # FIPS 140-2 compliance (optional, for DoD deployment)
 openssl = { version = "0.10", optional = true, features = ["vendored"] }
 openssl-sys = { version = "0.9", optional = true, features = ["vendored"] }
 
 # CLI support (optional, for est-enroll binary)
-clap = { version = "4.5", features = ["derive"], optional = true }
+clap = { version = "4.6", features = ["derive"], optional = true }
 
 # Windows platform support (optional, Windows-only)
 [target.'cfg(windows)'.dependencies]
@@ -118,11 +119,11 @@ windows = { version = "0.62", features = [
 windows-service = { version = "0.8", optional = true }
 
 [dev-dependencies]
-tokio = { version = "1.48", features = ["rt-multi-thread", "macros"] }
-tracing-subscriber = "0.3.22"
+tokio = { version = "1.52", features = ["rt-multi-thread", "macros"] }
+tracing-subscriber = "0.3.23"
 wiremock = "0.6.5"
-tempfile = "3.24"
-clap = { version = "4.5", features = ["derive"] }
+tempfile = "3.27"
+clap = { version = "4.6", features = ["derive"] }
 
 [[bin]]
 name = "generate_fixtures"

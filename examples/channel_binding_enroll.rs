@@ -86,7 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ca_certs = client.get_ca_certs().await?;
     println!("Retrieved {} CA certificate(s)", ca_certs.len());
     for (i, cert) in ca_certs.iter().enumerate() {
-        let subject = &cert.tbs_certificate.subject;
+        let subject = &cert.tbs_certificate().subject();
         println!("  CA {}: {:?}", i + 1, subject);
     }
     println!();
@@ -130,16 +130,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("✓ Certificate issued successfully!");
                 println!();
                 println!("Certificate Details:");
-                println!("  Subject: {:?}", certificate.tbs_certificate.subject);
-                println!("  Issuer: {:?}", certificate.tbs_certificate.issuer);
-                println!("  Serial: {:?}", certificate.tbs_certificate.serial_number);
+                println!("  Subject: {:?}", certificate.tbs_certificate().subject());
+                println!("  Issuer: {:?}", certificate.tbs_certificate().issuer());
+                println!("  Serial: {:?}", certificate.tbs_certificate().serial_number());
                 println!(
                     "  Valid from: {:?}",
-                    certificate.tbs_certificate.validity.not_before
+                    certificate.tbs_certificate().validity().not_before
                 );
                 println!(
                     "  Valid to: {:?}",
-                    certificate.tbs_certificate.validity.not_after
+                    certificate.tbs_certificate().validity().not_after
                 );
                 println!();
                 println!("Channel binding provided additional security against MITM attacks!");
