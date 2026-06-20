@@ -1735,6 +1735,40 @@ mod hsm_tests {
             .expect("CSR signature must verify over its CertReqInfo (no double-hash)");
     }
 
+    /// The feature-selected default provider (software, or aws-lc-rs FIPS under
+    /// `fips-tls`) must produce a CSR whose signature verifies over its TBS.
+    #[tokio::test]
+    async fn test_default_key_provider_csr_verifies() {
+        use crate::hsm::default_key_provider;
+        use der::{Decode, Encode};
+        use p256::ecdsa::signature::Verifier;
+        use p256::ecdsa::{Signature, VerifyingKey};
+        use p256::pkcs8::DecodePublicKey;
+        use x509_cert::request::CertReq;
+
+        let provider = default_key_provider();
+        let key_handle = provider
+            .generate_key_pair(KeyAlgorithm::EcdsaP256, Some("default-provider-key"))
+            .await
+            .expect("keygen");
+
+        let csr_der = HsmCsrBuilder::new()
+            .common_name("default.example.com")
+            .build_with_provider(&provider, &key_handle)
+            .await
+            .expect("build CSR");
+
+        let req = CertReq::from_der(&csr_der).expect("parse CSR");
+        let tbs = req.info.to_der().expect("encode TBS");
+        let spki_der = req.info.public_key.to_der().expect("encode SPKI");
+        let sig_der = req.signature.as_bytes().expect("signature byte-aligned");
+
+        let vk = VerifyingKey::from_public_key_der(&spki_der).expect("parse SPKI");
+        let signature = Signature::from_der(sig_der).expect("parse signature");
+        vk.verify(&tbs, &signature)
+            .expect("default-provider CSR signature must verify");
+    }
+
     #[tokio::test]
     async fn test_hsm_csr_builder_with_software_provider() {
         let provider = SoftwareKeyProvider::new();
