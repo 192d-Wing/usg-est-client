@@ -76,22 +76,6 @@ fn test_fips_config_display() {
 }
 
 #[test]
-fn test_fips_config_with_custom_path() {
-    let config = FipsConfig::builder()
-        .enforce_fips_mode(false)
-        .fips_config_path("/etc/ssl/fipsmodule.cnf")
-        .build();
-
-    assert!(config.is_ok());
-
-    let config = config.unwrap();
-    assert_eq!(
-        config.fips_config_path,
-        Some("/etc/ssl/fipsmodule.cnf".to_string())
-    );
-}
-
-#[test]
 fn test_fips_config_validation() {
     let config = FipsConfig::builder().enforce_fips_mode(false).build();
 
@@ -101,8 +85,8 @@ fn test_fips_config_validation() {
     // Validation should succeed for non-enforced mode
     let validation_result = config.validate();
 
-    // Note: Validation may fail if OpenSSL FIPS module is not available
-    // but that's expected in test environments
+    // Note: Validation may fail if the FIPS module is not active, but that's
+    // expected in test environments
     if validation_result.is_err() {
         let err = validation_result.unwrap_err();
         println!("Validation failed (expected in non-FIPS environment): {}", err);
@@ -113,15 +97,15 @@ fn test_fips_config_validation() {
 fn test_fips_module_info() {
     let info = fips_module_info();
 
-    // Should have OpenSSL version
-    assert!(!info.openssl_version.is_empty());
-    println!("OpenSSL Version: {}", info.openssl_version);
+    // Should identify the active FIPS module
+    assert!(!info.module.is_empty());
+    println!("FIPS Module: {}", info.module);
     println!("FIPS Capable: {}", info.fips_capable);
     println!("FIPS Enabled: {}", info.fips_enabled);
 
     // Display should work
     let display = format!("{}", info);
-    assert!(display.contains("OpenSSL Version:"));
+    assert!(display.contains("FIPS Module:"));
     assert!(display.contains("FIPS Capable:"));
     assert!(display.contains("FIPS Enabled:"));
 }

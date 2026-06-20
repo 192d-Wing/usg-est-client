@@ -20,7 +20,6 @@
 //! the client can fetch CA certificates without prior trust and then
 //! verify them out-of-band (e.g., by comparing fingerprints).
 
-use sha2::{Digest, Sha256};
 use url::Url;
 use x509_cert::Certificate;
 
@@ -149,9 +148,7 @@ impl BootstrapClient {
             .to_der()
             .map_err(|e| EstError::certificate_parsing(format!("Failed to encode cert: {}", e)))?;
 
-        let mut hasher = Sha256::new();
-        hasher.update(&der);
-        Ok(hasher.finalize().into())
+        Ok(crate::fips_crypto::sha256(&der))
     }
 
     /// Format a fingerprint as a colon-separated hex string.

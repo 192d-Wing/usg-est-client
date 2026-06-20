@@ -108,6 +108,12 @@ use crate::error::{EstError, Result};
 /// - Client certificate/key parsing fails
 /// - HTTP client builder fails
 pub fn build_http_client(config: &EstClientConfig) -> Result<reqwest::Client> {
+    // Fail closed: when built for FIPS, ensure the FIPS-validated rustls provider
+    // is installed as the process default *before* reqwest builds its TLS config,
+    // so the HTTPS transport cannot silently fall back to non-validated crypto.
+    #[cfg(feature = "fips")]
+    crate::fips_tls::install_fips_provider()?;
+
     let mut builder = reqwest::Client::builder()
         .timeout(config.timeout)
         .tls_backend_rustls();
@@ -206,6 +212,11 @@ fn build_reqwest_identity(identity: &ClientIdentity) -> Result<reqwest::Identity
 /// This is used when we need more control over TLS, such as for
 /// channel binding or certificate fingerprinting.
 pub fn build_rustls_config(config: &EstClientConfig) -> Result<Arc<ClientConfig>> {
+    // Fail closed: install + require the FIPS provider before building the config
+    // (ClientConfig::builder() uses the process-default crypto provider).
+    #[cfg(feature = "fips")]
+    crate::fips_tls::install_fips_provider()?;
+
     let root_store = build_root_store(&config.trust_anchors)?;
 
     let builder = ClientConfig::builder().with_root_certificates(root_store);

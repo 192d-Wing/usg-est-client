@@ -92,10 +92,10 @@ use windows::Win32::Security::Cryptography::{
     BCRYPT_ALG_HANDLE, BCRYPT_ECCPUBLIC_BLOB, BCRYPT_HASH_HANDLE,
     BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS, BCRYPT_RSAPUBLIC_BLOB, BCRYPT_SHA256_ALGORITHM,
     BCryptCloseAlgorithmProvider, BCryptCreateHash, BCryptDestroyHash, BCryptFinishHash,
-    BCryptHashData, BCryptOpenAlgorithmProvider, CERT_KEY_SPEC, NCRYPT_FLAGS, NCRYPT_HANDLE,
-    NCRYPT_KEY_HANDLE, NCRYPT_PROV_HANDLE, NCryptCreatePersistedKey, NCryptDeleteKey,
-    NCryptExportKey, NCryptFinalizeKey, NCryptFreeObject, NCryptGetProperty, NCryptOpenKey,
-    NCryptOpenStorageProvider, NCryptSetProperty, NCryptSignHash,
+    BCryptGetFipsAlgorithmMode, BCryptHashData, BCryptOpenAlgorithmProvider, CERT_KEY_SPEC,
+    NCRYPT_FLAGS, NCRYPT_HANDLE, NCRYPT_KEY_HANDLE, NCRYPT_PROV_HANDLE, NCryptCreatePersistedKey,
+    NCryptDeleteKey, NCryptExportKey, NCryptFinalizeKey, NCryptFreeObject, NCryptGetProperty,
+    NCryptOpenKey, NCryptOpenStorageProvider, NCryptSetProperty, NCryptSignHash,
 };
 #[cfg(windows)]
 use windows::Win32::Security::OBJECT_SECURITY_INFORMATION;
@@ -160,6 +160,10 @@ pub struct CngKeyProvider {
     provider_name: String,
     /// Key generation options.
     options: KeyGenerationOptions,
+    /// When true, the provider required Windows FIPS mode at construction and
+    /// rejects non-FIPS-approved key algorithms. Set via [`CngKeyProvider::new_fips`]
+    /// / [`CngKeyProvider::with_fips_provider`].
+    require_fips: bool,
     /// Internal state for key handles (for non-Windows simulation).
     #[cfg(not(windows))]
     _keys: std::sync::Mutex<HashMap<Vec<u8>, KeyAlgorithm>>,
@@ -200,9 +204,88 @@ impl CngKeyProvider {
         Ok(Self {
             provider_name: provider_name.to_string(),
             options: KeyGenerationOptions::default(),
+            require_fips: false,
             #[cfg(not(windows))]
             _keys: std::sync::Mutex::new(HashMap::new()),
         })
+    }
+
+    /// Create a FIPS-enforcing CNG provider backed by the FIPS 140-validated
+    /// Microsoft Software Key Storage Provider.
+    ///
+    /// **Fails closed**: returns an error if the Windows FIPS algorithm policy
+    /// ("System cryptography: Use FIPS compliant algorithms for encryption,
+    /// hashing, and signing") is not enabled, so a FIPS deployment can never
+    /// silently fall back to non-validated cryptography. This mirrors the
+    /// fail-closed `fips_tls` installer on the TLS side.
+    pub fn new_fips() -> Result<Self> {
+        Self::with_fips_provider(providers::SOFTWARE)
+    }
+
+    /// Create a FIPS-enforcing CNG provider with a specific FIPS-validated
+    /// storage provider (e.g. [`providers::SOFTWARE`] or [`providers::PLATFORM`]).
+    ///
+    /// See [`new_fips`](Self::new_fips) for the fail-closed FIPS-mode requirement.
+    pub fn with_fips_provider(provider_name: &str) -> Result<Self> {
+        if !Self::is_fips_mode_enabled()? {
+            return Err(EstError::platform(
+                "Windows FIPS mode is not enabled (\"System cryptography: Use FIPS \
+                 compliant algorithms for encryption, hashing, and signing\"). \
+                 Refusing to operate a FIPS key provider on a non-FIPS system.",
+            ));
+        }
+        let mut provider = Self::with_provider(provider_name)?;
+        provider.require_fips = true;
+        Ok(provider)
+    }
+
+    /// Whether this provider enforces FIPS mode (required at construction) and
+    /// rejects non-FIPS-approved key algorithms.
+    pub fn requires_fips(&self) -> bool {
+        self.require_fips
+    }
+
+    /// Query whether the Windows FIPS algorithm policy is enabled.
+    ///
+    /// Reflects the system setting "System cryptography: Use FIPS compliant
+    /// algorithms for encryption, hashing, and signing" via the CNG
+    /// `BCryptGetFipsAlgorithmMode` API. When enabled, CNG itself restricts
+    /// operations to FIPS-approved algorithms in the FIPS 140-validated modules.
+    #[cfg(windows)]
+    pub fn is_fips_mode_enabled() -> Result<bool> {
+        let mut enabled: u8 = 0;
+        let status = unsafe { BCryptGetFipsAlgorithmMode(&mut enabled) };
+        if status.is_err() {
+            return Err(EstError::platform(format!(
+                "BCryptGetFipsAlgorithmMode failed: {:?}",
+                status
+            )));
+        }
+        Ok(enabled != 0)
+    }
+
+    /// On non-Windows targets there is no Windows FIPS policy; always `false`.
+    #[cfg(not(windows))]
+    pub fn is_fips_mode_enabled() -> Result<bool> {
+        Ok(false)
+    }
+
+    /// Reject key algorithms that are not FIPS 186-4 approved.
+    ///
+    /// Allows ECDSA P-256/P-384 and RSA with a modulus of at least 2048 bits;
+    /// rejects RSA below 2048 bits. Enforced by [`generate_key_pair`] when the
+    /// provider was built in FIPS mode.
+    ///
+    /// [`generate_key_pair`]: KeyProvider::generate_key_pair
+    fn ensure_fips_algorithm(algorithm: KeyAlgorithm) -> Result<()> {
+        match algorithm {
+            KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384 => Ok(()),
+            KeyAlgorithm::Rsa { bits } if bits >= 2048 => Ok(()),
+            KeyAlgorithm::Rsa { bits } => Err(EstError::platform(format!(
+                "RSA-{} is not FIPS-approved; the minimum FIPS 186-4 modulus is 2048 bits",
+                bits
+            ))),
+        }
     }
 
     /// Create a new CNG key provider with custom options.
@@ -565,6 +648,11 @@ impl KeyProvider for CngKeyProvider {
         algorithm: KeyAlgorithm,
         label: Option<&str>,
     ) -> Result<KeyHandle> {
+        // In FIPS mode, reject non-FIPS-approved algorithms before touching CNG.
+        if self.require_fips {
+            Self::ensure_fips_algorithm(algorithm)?;
+        }
+
         #[cfg(windows)]
         {
             use std::ffi::OsStr;
@@ -1301,6 +1389,61 @@ mod tests {
 
         let name2 = CngKeyProvider::generate_container_name(Some("Device"));
         assert!(name2.starts_with("EST-Device-"));
+    }
+
+    #[test]
+    fn test_is_fips_mode_enabled_does_not_error() {
+        // Querying the policy must always succeed (returns a bool, never panics).
+        // The value depends on the host's FIPS policy, so we only assert it runs.
+        let result = CngKeyProvider::is_fips_mode_enabled();
+        assert!(result.is_ok(), "FIPS-mode query failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_ensure_fips_algorithm() {
+        // FIPS 186-4 approved.
+        assert!(CngKeyProvider::ensure_fips_algorithm(KeyAlgorithm::EcdsaP256).is_ok());
+        assert!(CngKeyProvider::ensure_fips_algorithm(KeyAlgorithm::EcdsaP384).is_ok());
+        assert!(CngKeyProvider::ensure_fips_algorithm(KeyAlgorithm::Rsa { bits: 2048 }).is_ok());
+        assert!(CngKeyProvider::ensure_fips_algorithm(KeyAlgorithm::Rsa { bits: 3072 }).is_ok());
+        assert!(CngKeyProvider::ensure_fips_algorithm(KeyAlgorithm::Rsa { bits: 4096 }).is_ok());
+        // Below the FIPS minimum modulus.
+        assert!(CngKeyProvider::ensure_fips_algorithm(KeyAlgorithm::Rsa { bits: 1024 }).is_err());
+        assert!(CngKeyProvider::ensure_fips_algorithm(KeyAlgorithm::Rsa { bits: 512 }).is_err());
+    }
+
+    #[test]
+    fn test_new_fips_matches_system_mode() {
+        // `new_fips()` must agree with the actual FIPS policy: succeed (and report
+        // requires_fips) iff FIPS mode is on, fail closed otherwise. Host-independent.
+        let fips_on = CngKeyProvider::is_fips_mode_enabled().unwrap();
+        match CngKeyProvider::new_fips() {
+            Ok(provider) => {
+                assert!(fips_on, "new_fips() succeeded but FIPS mode is off");
+                assert!(provider.requires_fips());
+            }
+            Err(_) => {
+                assert!(!fips_on, "new_fips() failed but FIPS mode is on");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_fips_provider_rejects_weak_rsa() {
+        // A FIPS-enforcing provider must reject RSA < 2048 at generate time.
+        // Build one directly (bypassing the OS gate) so the algorithm check is
+        // exercised regardless of the host's FIPS policy.
+        let provider = CngKeyProvider {
+            provider_name: providers::SOFTWARE.to_string(),
+            options: KeyGenerationOptions::default(),
+            require_fips: true,
+            #[cfg(not(windows))]
+            _keys: std::sync::Mutex::new(HashMap::new()),
+        };
+        let result = provider
+            .generate_key_pair(KeyAlgorithm::Rsa { bits: 1024 }, Some("weak"))
+            .await;
+        assert!(result.is_err(), "FIPS provider must reject RSA-1024");
     }
 
     #[cfg(not(windows))]

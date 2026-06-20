@@ -267,7 +267,8 @@ impl KeyProvider for SoftwareKeyProvider {
         // Get the private key in PKCS#8 DER format
         let pkcs8_der = key_pair.serialize_der();
 
-        // Sign based on algorithm
+        // `data` is the raw message; the RustCrypto `Signer` impls below hash it
+        // with the algorithm's digest (SHA-256 for P-256/RSA, SHA-384 for P-384).
         match handle.algorithm() {
             KeyAlgorithm::EcdsaP256 => {
                 use p256::ecdsa::{Signature, SigningKey, signature::Signer};
@@ -595,6 +596,40 @@ mod tests {
 
         // P-256 signatures should be around 70-72 bytes in DER format
         assert!(signature.len() >= 64 && signature.len() <= 72);
+    }
+
+    /// Regression guard for the sign() contract: signing a raw message and
+    /// verifying with the provider's public key must succeed. If sign() ever
+    /// re-hashed an already-hashed input (double-hash), verification would fail.
+    #[tokio::test]
+    async fn test_sign_verify_roundtrip_p256() {
+        use p256::ecdsa::signature::Verifier;
+        use p256::ecdsa::{Signature, VerifyingKey};
+        use p256::pkcs8::DecodePublicKey;
+
+        let provider = SoftwareKeyProvider::new();
+        let handle = provider
+            .generate_key_pair(KeyAlgorithm::EcdsaP256, Some("verify-p256"))
+            .await
+            .unwrap();
+
+        // Raw message (NOT pre-hashed), per the sign() contract.
+        let message = b"to-be-signed CertificationRequestInfo bytes";
+        let sig_der = provider.sign(&handle, message).await.unwrap();
+
+        let spki_der = provider
+            .public_key(&handle)
+            .await
+            .unwrap()
+            .to_der()
+            .unwrap();
+        let verifying_key = VerifyingKey::from_public_key_der(&spki_der).unwrap();
+        let signature = Signature::from_der(&sig_der).unwrap();
+
+        // Verifier::verify hashes the message the same way the signer did.
+        verifying_key
+            .verify(message, &signature)
+            .expect("signature must verify over the raw message (no double-hash)");
     }
 
     #[tokio::test]

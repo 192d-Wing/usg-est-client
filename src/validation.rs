@@ -866,14 +866,22 @@ impl CertificateValidator {
         const ECDSA_SHA384: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.3");
         const ECDSA_SHA512: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.4");
 
-        // Perform cryptographic signature verification using FIPS-approved algorithms
+        // Perform cryptographic signature verification using FIPS-approved algorithms.
+        // Under `fips`, verification runs inside the aws-lc-rs FIPS module; the
+        // RustCrypto path is used otherwise.
         match *sig_alg_oid {
             RSA_SHA256 | RSA_SHA384 | RSA_SHA512 => {
+                #[cfg(feature = "fips")]
+                self.verify_signature_fips(*sig_alg_oid, issuer_spki, &tbs_bytes, signature)?;
+                #[cfg(not(feature = "fips"))]
                 self.verify_rsa_signature(&tbs_bytes, signature, *sig_alg_oid, issuer_spki)?;
                 debug!("RSA signature verified successfully");
                 Ok(())
             }
             ECDSA_SHA256 | ECDSA_SHA384 | ECDSA_SHA512 => {
+                #[cfg(feature = "fips")]
+                self.verify_signature_fips(*sig_alg_oid, issuer_spki, &tbs_bytes, signature)?;
+                #[cfg(not(feature = "fips"))]
                 self.verify_ecdsa_signature(&tbs_bytes, signature, *sig_alg_oid, issuer_spki)?;
                 debug!("ECDSA signature verified successfully");
                 Ok(())
@@ -888,7 +896,57 @@ impl CertificateValidator {
         }
     }
 
+    /// Verify a certificate signature inside the aws-lc-rs FIPS module.
+    ///
+    /// Used in place of the RustCrypto verifiers when built with `fips`, so
+    /// the trust-decision path runs on FIPS-validated cryptography. The issuer's
+    /// SPKI subjectPublicKey is exactly the key encoding aws-lc-rs expects (the
+    /// SEC1 point for ECDSA, the PKCS#1 RSAPublicKey for RSA).
+    #[cfg(feature = "fips")]
+    fn verify_signature_fips(
+        &self,
+        alg_oid: ObjectIdentifier,
+        issuer_spki: &spki::SubjectPublicKeyInfoOwned,
+        tbs_bytes: &[u8],
+        signature: &[u8],
+    ) -> Result<()> {
+        use aws_lc_rs::signature::{
+            self, ECDSA_P256_SHA256_ASN1, ECDSA_P384_SHA384_ASN1, RSA_PKCS1_2048_8192_SHA256,
+            RSA_PKCS1_2048_8192_SHA384, RSA_PKCS1_2048_8192_SHA512, UnparsedPublicKey,
+        };
+
+        const RSA_SHA256: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.11");
+        const RSA_SHA384: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.12");
+        const RSA_SHA512: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.13");
+        const ECDSA_SHA256: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.2");
+        const ECDSA_SHA384: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.3");
+
+        let key_bytes = issuer_spki
+            .subject_public_key
+            .as_bytes()
+            .ok_or_else(|| EstError::operational("Public key has unused bits"))?;
+
+        let alg: &'static dyn signature::VerificationAlgorithm = match alg_oid {
+            RSA_SHA256 => &RSA_PKCS1_2048_8192_SHA256,
+            RSA_SHA384 => &RSA_PKCS1_2048_8192_SHA384,
+            RSA_SHA512 => &RSA_PKCS1_2048_8192_SHA512,
+            ECDSA_SHA256 => &ECDSA_P256_SHA256_ASN1,
+            ECDSA_SHA384 => &ECDSA_P384_SHA384_ASN1,
+            other => {
+                return Err(EstError::operational(format!(
+                    "Unsupported signature algorithm for FIPS verification: {}",
+                    other
+                )));
+            }
+        };
+
+        UnparsedPublicKey::new(alg, key_bytes)
+            .verify(tbs_bytes, signature)
+            .map_err(|_| EstError::operational("FIPS signature verification failed"))
+    }
+
     /// Verify RSA signature.
+    #[cfg(not(feature = "fips"))]
     fn verify_rsa_signature(
         &self,
         tbs_bytes: &[u8],
@@ -960,6 +1018,7 @@ impl CertificateValidator {
     }
 
     /// Verify ECDSA signature.
+    #[cfg(not(feature = "fips"))]
     fn verify_ecdsa_signature(
         &self,
         tbs_bytes: &[u8],

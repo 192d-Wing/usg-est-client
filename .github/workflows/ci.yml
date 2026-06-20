@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 env:
   CARGO_TERM_COLOR: always
@@ -24,7 +24,7 @@ jobs:
         toolchain: [stable]
         include:
           - os: ubuntu-latest
-            toolchain: "1.92.0"  # MSRV
+            toolchain: "1.92.0" # MSRV
           - os: ubuntu-latest
             toolchain: beta
     steps:
@@ -34,7 +34,12 @@ jobs:
           toolchain: ${{ matrix.toolchain }}
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --verbose
+      # `--all-features` includes `fips-tls`, whose FIPS module (aws-lc-fips-sys)
+      # only builds on Linux. FIPS is a Linux/Windows(CNG) target, never macOS, so
+      # run the full feature set on Linux only; the dedicated `fips-tls` job covers
+      # the FIPS build, and `test-features` covers individual non-FIPS features.
       - run: cargo test --all-features --verbose
+        if: runner.os == 'Linux'
       - run: cargo test --no-default-features --verbose
         if: matrix.toolchain == 'stable'
 
@@ -54,6 +59,46 @@ jobs:
           - revocation
           - enveloped
           - "hsm,csr-gen"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --features "${{ matrix.features }}" --verbose
+
+  # FIPS-validated cryptography via the aws-lc-rs FIPS module (TLS + PKI).
+  # Linux-only (the FIPS module, aws-lc-fips-sys, builds on Linux x86_64/aarch64;
+  # its build deps Go + cmake are preinstalled on the GitHub-hosted ubuntu runners).
+  # NOTE: this verifies the FIPS *build* and that the provider reports FIPS mode;
+  # it is not a CMVP-validated operating environment.
+  fips:
+    name: FIPS (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Include `validation` so cert-chain signature verification, and `enveloped`
+      # so AES-CBC EnvelopedData decryption, are exercised through the aws-lc-rs
+      # FIPS module (against the real cert fixtures / known-answer crypto tests).
+      - run: cargo test --no-default-features --features fips,validation,enveloped --verbose
+      # Verify the deprecated `fips-tls` alias still resolves to `fips`.
+      - run: cargo build --no-default-features --features fips-tls
+
+  # Windows platform integration (CNG key provider incl. CNG FIPS mode, cert
+  # store, DPAPI, TPM). The `windows` feature is `cfg(windows)`-gated, so it is
+  # only compiled on a Windows runner — without this job the entire Windows
+  # module is never built or tested in CI.
+  windows:
+    name: Windows (${{ matrix.features }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [windows, "windows,validation"]
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable

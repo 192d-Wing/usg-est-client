@@ -1,34 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2025 U.S. Federal Government (in countries where recognized)
 
-//! FIPS 140-2 Cryptographic Compliance
+//! FIPS 140 cryptographic support (aws-lc-rs FIPS module).
 //!
-//! This module provides FIPS 140-2 validated cryptography support for DoD deployments.
+//! This module provides FIPS-mode configuration and policy enforcement for
+//! deployments that require FIPS 140-validated cryptography.
 //!
 //! # Overview
 //!
-//! The Federal Information Processing Standard (FIPS) 140-2 is a U.S. government computer
-//! security standard that specifies the security requirements for cryptographic modules.
-//! For deployment on DoD networks, systems must use FIPS 140-2 validated cryptographic
+//! The Federal Information Processing Standard (FIPS) 140 is a U.S. government
+//! standard specifying security requirements for cryptographic modules. For
+//! deployment on DoD networks, systems must use FIPS 140-validated cryptographic
 //! modules.
 //!
-//! ## FIPS Mode
+//! Under the `fips` feature this crate links the **aws-lc-rs FIPS** cryptographic
+//! module and routes TLS, key generation, signing, and certificate-signature
+//! verification through it. On Windows, FIPS comes from the CNG FIPS module
+//! instead (see the `windows` feature and `CngKeyProvider::new_fips`).
+//!
+//! ## FIPS mode
 //!
 //! When FIPS mode is enabled, this library:
 //!
-//! - Uses OpenSSL with FIPS module instead of rustls
-//! - Enforces FIPS-approved algorithms only
-//! - Blocks non-FIPS algorithms (3DES, MD5, SHA-1, RC4, etc.)
-//! - Validates minimum key sizes (RSA 2048+, ECC P-256+)
-//! - Performs FIPS self-tests on startup
+//! - Uses the aws-lc-rs FIPS module as the rustls TLS crypto provider
+//! - Performs PKI operations (keygen, signing, verification) in the FIPS module
+//! - Enforces FIPS-approved algorithms and minimum key sizes (RSA 2048+, P-256+)
 //!
 //! ## Requirements
 //!
-//! FIPS mode requires:
-//!
-//! - OpenSSL 3.0 or later with FIPS module installed
-//! - FIPS module configuration file (`fipsmodule.cnf`)
-//! - System-wide OpenSSL configuration enabling FIPS
+//! The `fips` feature builds the aws-lc-rs FIPS module (`aws-lc-fips-sys`), which
+//! compiles on Linux x86_64/aarch64 (build deps: Go and cmake).
 //!
 //! ## Example
 //!
@@ -54,17 +55,20 @@
 //! # }
 //! ```
 //!
-//! ## FIPS Caveat Certificates
+//! ## FIPS validation caveat
 //!
-//! The OpenSSL FIPS module is validated under CMVP certificate #4282 (OpenSSL 3.0.0).
-//! Ensure your deployment uses a FIPS-validated version of OpenSSL.
+//! Building with the `fips` feature links the aws-lc-rs FIPS module, but a build
+//! is **not by itself a CMVP-validated operating environment**. FIPS 140
+//! validation attaches to a specific module version operated per its Security
+//! Policy; the exact CMVP-validated aws-lc version and operating conditions must
+//! be confirmed for an ATO. The `aws-lc-rs` dependency is pinned to an exact
+//! version for this reason.
 //!
 //! See: <https://csrc.nist.gov/projects/cryptographic-module-validation-program>
 //!
 //! ## References
 //!
-//! - [FIPS 140-2 Standard](https://csrc.nist.gov/pubs/fips/140-2/upd2/final)
-//! - [OpenSSL FIPS Module](https://www.openssl.org/docs/fips.html)
+//! - [FIPS 140-3 Standard](https://csrc.nist.gov/pubs/fips/140-3/final)
 //! - [NIST CMVP](https://csrc.nist.gov/projects/cryptographic-module-validation-program)
 
 pub mod algorithms;
@@ -72,28 +76,25 @@ pub mod algorithms;
 use crate::error::{EstError, Result};
 use std::fmt;
 
-/// FIPS 140-2 configuration for cryptographic operations
+/// FIPS 140 configuration for cryptographic operations.
 ///
 /// Controls FIPS mode enforcement and algorithm restrictions.
 #[derive(Debug, Clone)]
 pub struct FipsConfig {
-    /// Require FIPS mode to be enabled
+    /// Require FIPS mode to be enabled.
     pub enforce_fips_mode: bool,
 
-    /// Minimum RSA key size in bits (default: 2048)
+    /// Minimum RSA key size in bits (default: 2048).
     pub min_rsa_key_size: u32,
 
-    /// Minimum ECC key size in bits (default: 256 for P-256)
+    /// Minimum ECC key size in bits (default: 256 for P-256).
     pub min_ecc_key_size: u32,
 
-    /// Block non-FIPS algorithms
+    /// Block non-FIPS algorithms.
     pub block_non_fips_algorithms: bool,
 
-    /// Require TLS 1.2 minimum (FIPS requirement)
+    /// Require TLS 1.2 minimum (FIPS requirement).
     pub require_tls_12_minimum: bool,
-
-    /// Path to OpenSSL FIPS configuration file (optional override)
-    pub fips_config_path: Option<String>,
 }
 
 impl Default for FipsConfig {
@@ -104,23 +105,22 @@ impl Default for FipsConfig {
             min_ecc_key_size: 256,
             block_non_fips_algorithms: true,
             require_tls_12_minimum: true,
-            fips_config_path: None,
         }
     }
 }
 
 impl FipsConfig {
-    /// Create a new FIPS configuration builder
+    /// Create a new FIPS configuration builder.
     pub fn builder() -> FipsConfigBuilder {
         FipsConfigBuilder::default()
     }
 
-    /// Validate that FIPS mode is properly configured
+    /// Validate that FIPS mode is properly configured.
     ///
     /// This checks that:
-    /// - OpenSSL FIPS module is available
-    /// - FIPS mode is enabled if required
-    /// - Self-tests have passed
+    /// - Minimum key sizes meet FIPS requirements
+    /// - When enforcement is required, the aws-lc-rs FIPS module is available
+    ///   and active
     pub fn validate(&self) -> Result<()> {
         #[cfg(feature = "fips")]
         {
@@ -139,19 +139,21 @@ impl FipsConfig {
 
             // Only check FIPS availability and mode when enforcement is required
             if self.enforce_fips_mode {
-                // Check if OpenSSL FIPS module is available
+                // Check the build is linked against the FIPS module
                 if !is_fips_capable()? {
                     return Err(EstError::FipsNotAvailable(
-                        "OpenSSL FIPS module is not available".to_string(),
+                        "aws-lc-rs FIPS module is not available; the build is not \
+                         linked against the FIPS module"
+                            .to_string(),
                     ));
                 }
 
-                // Check if FIPS mode is enabled
-                let fips_enabled = is_fips_enabled()?;
-
-                if !fips_enabled {
+                // Check the FIPS provider is the active rustls default
+                if !is_fips_enabled()? {
                     return Err(EstError::FipsNotEnabled(
-                        "FIPS mode is required but not enabled".to_string(),
+                        "FIPS mode is required but the FIPS crypto provider is not \
+                         active; call enable_fips_mode() at startup"
+                            .to_string(),
                     ));
                 }
             }
@@ -163,7 +165,7 @@ impl FipsConfig {
         {
             if self.enforce_fips_mode {
                 Err(EstError::FipsNotAvailable(
-                    "FIPS mode requires 'fips' feature flag".to_string(),
+                    "FIPS mode requires the 'fips' feature flag".to_string(),
                 ))
             } else {
                 Ok(())
@@ -172,7 +174,7 @@ impl FipsConfig {
     }
 }
 
-/// Builder for FIPS configuration
+/// Builder for FIPS configuration.
 #[derive(Debug, Default)]
 pub struct FipsConfigBuilder {
     enforce_fips_mode: bool,
@@ -180,11 +182,10 @@ pub struct FipsConfigBuilder {
     min_ecc_key_size: u32,
     block_non_fips_algorithms: bool,
     require_tls_12_minimum: bool,
-    fips_config_path: Option<String>,
 }
 
 impl FipsConfigBuilder {
-    /// Enforce FIPS mode (default: false)
+    /// Enforce FIPS mode (default: false).
     ///
     /// When enabled, operations will fail if FIPS mode is not active.
     pub fn enforce_fips_mode(mut self, enforce: bool) -> Self {
@@ -192,23 +193,23 @@ impl FipsConfigBuilder {
         self
     }
 
-    /// Set minimum RSA key size in bits (default: 2048)
+    /// Set minimum RSA key size in bits (default: 2048).
     ///
-    /// FIPS 140-2 requires RSA keys to be at least 2048 bits.
+    /// FIPS 140 requires RSA keys to be at least 2048 bits.
     pub fn min_rsa_key_size(mut self, bits: u32) -> Self {
         self.min_rsa_key_size = bits;
         self
     }
 
-    /// Set minimum ECC key size in bits (default: 256)
+    /// Set minimum ECC key size in bits (default: 256).
     ///
-    /// FIPS 140-2 requires ECC keys to be at least 256 bits (P-256 curve).
+    /// FIPS 140 requires ECC keys to be at least 256 bits (P-256 curve).
     pub fn min_ecc_key_size(mut self, bits: u32) -> Self {
         self.min_ecc_key_size = bits;
         self
     }
 
-    /// Block non-FIPS algorithms (default: true)
+    /// Block non-FIPS algorithms (default: true).
     ///
     /// When enabled, attempts to use non-FIPS algorithms will fail.
     pub fn block_non_fips_algorithms(mut self, block: bool) -> Self {
@@ -216,23 +217,15 @@ impl FipsConfigBuilder {
         self
     }
 
-    /// Require TLS 1.2 minimum (default: true)
+    /// Require TLS 1.2 minimum (default: true).
     ///
-    /// FIPS 140-2 requires TLS 1.2 or higher.
+    /// FIPS 140 requires TLS 1.2 or higher.
     pub fn require_tls_12_minimum(mut self, require: bool) -> Self {
         self.require_tls_12_minimum = require;
         self
     }
 
-    /// Set path to OpenSSL FIPS configuration file
-    ///
-    /// If not specified, OpenSSL will use system-wide configuration.
-    pub fn fips_config_path(mut self, path: impl Into<String>) -> Self {
-        self.fips_config_path = Some(path.into());
-        self
-    }
-
-    /// Build the FIPS configuration
+    /// Build the FIPS configuration.
     pub fn build(self) -> Result<FipsConfig> {
         let config = FipsConfig {
             enforce_fips_mode: self.enforce_fips_mode,
@@ -248,7 +241,6 @@ impl FipsConfigBuilder {
             },
             block_non_fips_algorithms: self.block_non_fips_algorithms,
             require_tls_12_minimum: self.require_tls_12_minimum,
-            fips_config_path: self.fips_config_path,
         };
 
         // Validate configuration
@@ -271,131 +263,60 @@ impl fmt::Display for FipsConfig {
     }
 }
 
-/// Check if OpenSSL FIPS module is available
+/// Check whether the build is linked against the aws-lc-rs FIPS module.
 #[cfg(feature = "fips")]
 fn is_fips_capable() -> Result<bool> {
-    use openssl::version;
-
-    // OpenSSL 3.0+ is required for FIPS module support
-    let version_text = version::version();
-    tracing::debug!("OpenSSL version: {}", version_text);
-
-    // Check if FIPS provider is available
-    match openssl::provider::Provider::try_load(None, "fips", true) {
-        Ok(_) => Ok(true),
-        Err(e) => {
-            tracing::warn!("FIPS provider not available: {}", e);
-            Ok(false)
-        }
-    }
+    // The default aws-lc-rs provider reports FIPS mode when the crate is built
+    // with the `fips` feature (i.e. linked against aws-lc-fips-sys).
+    Ok(rustls::crypto::aws_lc_rs::default_provider().fips())
 }
 
-/// Check if FIPS mode is currently enabled
+/// Check whether the FIPS crypto provider is currently active process-wide.
 #[cfg(feature = "fips")]
 fn is_fips_enabled() -> Result<bool> {
-    // In OpenSSL 3.0+, FIPS mode is controlled by the configuration file
-    // and the FIPS provider being loaded
-    #[cfg(ossl300)]
-    {
-        match openssl::fips::enabled() {
-            true => {
-                tracing::info!("FIPS mode is enabled");
-                Ok(true)
-            }
-            false => {
-                tracing::warn!("FIPS mode is NOT enabled");
-                Ok(false)
-            }
-        }
-    }
-
-    #[cfg(not(ossl300))]
-    {
-        // For OpenSSL < 3.0, FIPS mode detection is not available
-        tracing::warn!("FIPS mode detection requires OpenSSL 3.0+");
-        Ok(false)
-    }
+    Ok(crate::fips_tls::is_fips_active())
 }
 
-/// Enable FIPS mode (requires appropriate OpenSSL configuration)
+/// Enable FIPS mode by installing the aws-lc-rs FIPS provider as the process-wide
+/// rustls default.
+///
+/// This is **fail-closed**: it returns an error if the compiled-in provider is
+/// not actually in FIPS mode, so a misconfigured build cannot silently fall back
+/// to non-validated cryptography. The call is idempotent.
 ///
 /// # Errors
 ///
-/// Returns an error if FIPS mode cannot be enabled.
-///
-/// # Note
-///
-/// In OpenSSL 3.0+, FIPS mode is typically enabled via configuration file
-/// rather than programmatically. This function validates that FIPS mode
-/// is properly configured.
+/// Returns an error if the build is not linked against the FIPS module or a
+/// non-FIPS provider was already installed as the default.
 #[cfg(feature = "fips")]
 pub fn enable_fips_mode() -> Result<()> {
-    #[cfg(ossl300)]
-    {
-        if openssl::fips::enabled() {
-            tracing::info!("FIPS mode already enabled");
-            return Ok(());
-        }
-
-        // In OpenSSL 3.0+, we need to ensure the FIPS provider is loaded
-        // This is typically done via openssl.cnf configuration
-        match openssl::provider::Provider::load(None, "fips") {
-            Ok(_) => {
-                if openssl::fips::enabled() {
-                    tracing::info!("FIPS mode successfully enabled");
-                    Ok(())
-                } else {
-                    Err(EstError::FipsNotEnabled(
-                        "FIPS provider loaded but mode not enabled. Check openssl.cnf configuration."
-                            .to_string(),
-                    ))
-                }
-            }
-            Err(e) => Err(EstError::FipsNotAvailable(format!(
-                "Failed to load FIPS provider: {}",
-                e
-            ))),
-        }
-    }
-
-    #[cfg(not(ossl300))]
-    {
-        Err(EstError::FipsNotAvailable(
-            "FIPS mode requires OpenSSL 3.0+".to_string(),
-        ))
-    }
+    crate::fips_tls::install_fips_provider()
 }
 
-/// Get FIPS module information
+/// Get FIPS module information.
 #[cfg(feature = "fips")]
 pub fn fips_module_info() -> FipsModuleInfo {
-    #[cfg(ossl300)]
-    let fips_enabled = openssl::fips::enabled();
-
-    #[cfg(not(ossl300))]
-    let fips_enabled = false;
-
     FipsModuleInfo {
-        openssl_version: openssl::version::version().to_string(),
-        fips_enabled,
+        module: "aws-lc-rs FIPS module".to_string(),
+        fips_enabled: crate::fips_tls::is_fips_active(),
         fips_capable: is_fips_capable().unwrap_or(false),
     }
 }
 
-/// FIPS module information
+/// FIPS module information.
 #[derive(Debug, Clone)]
 pub struct FipsModuleInfo {
-    /// OpenSSL version string
-    pub openssl_version: String,
-    /// Whether FIPS mode is currently enabled
+    /// Identifier of the active FIPS cryptographic module.
+    pub module: String,
+    /// Whether FIPS mode is currently active.
     pub fips_enabled: bool,
-    /// Whether FIPS module is available
+    /// Whether the build is linked against the FIPS module.
     pub fips_capable: bool,
 }
 
 impl fmt::Display for FipsModuleInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "OpenSSL Version: {}", self.openssl_version)?;
+        writeln!(f, "FIPS Module: {}", self.module)?;
         writeln!(f, "FIPS Capable: {}", self.fips_capable)?;
         writeln!(f, "FIPS Enabled: {}", self.fips_enabled)?;
         Ok(())
@@ -473,7 +394,7 @@ mod tests {
     #[test]
     fn test_fips_module_info() {
         let info = fips_module_info();
-        assert!(!info.openssl_version.is_empty());
+        assert!(!info.module.is_empty());
         println!("{}", info);
     }
 }

@@ -76,6 +76,76 @@ pub mod pkcs11;
 #[cfg(feature = "pkcs11")]
 pub use pkcs11::Pkcs11KeyProvider;
 
+#[cfg(feature = "fips")]
+mod aws_lc;
+
+#[cfg(feature = "fips")]
+pub use aws_lc::AwsLcKeyProvider;
+
+/// The default [`KeyProvider`] for EST enrollment, selected by build features.
+///
+/// - With `fips` (FIPS builds, Linux): the FIPS-validated
+///   [`AwsLcKeyProvider`] — key generation and signing run inside the aws-lc-rs
+///   FIPS module.
+/// - Otherwise (`csr-gen`): the in-memory [`SoftwareKeyProvider`].
+///
+/// FIPS thus takes effect automatically: a build with `fips` gets FIPS keys
+/// without the caller choosing a provider. On Windows, use [`fips_key_provider`]
+/// for the CNG FIPS provider. Use [`default_key_provider`] to construct one.
+#[cfg(feature = "fips")]
+pub type DefaultKeyProvider = AwsLcKeyProvider;
+
+/// See [`DefaultKeyProvider`].
+#[cfg(all(not(feature = "fips"), feature = "csr-gen"))]
+pub type DefaultKeyProvider = SoftwareKeyProvider;
+
+/// Construct the feature-selected [`DefaultKeyProvider`] for EST enrollment.
+///
+/// Pair with [`crate::csr::HsmCsrBuilder::build_with_provider`] to generate a CSR
+/// whose key + signature come from the FIPS module when built with `fips`.
+#[cfg(any(feature = "fips", feature = "csr-gen"))]
+pub fn default_key_provider() -> DefaultKeyProvider {
+    DefaultKeyProvider::new()
+}
+
+/// The platform's FIPS-validated [`KeyProvider`] type.
+///
+/// - Linux `fips`: [`AwsLcKeyProvider`] — keys + signing in the aws-lc-rs FIPS
+///   module.
+/// - Windows `windows`: [`CngKeyProvider`](crate::windows::CngKeyProvider) in
+///   FIPS mode — keys + signing via Windows CNG under the system FIPS policy.
+///
+/// Construct one with [`fips_key_provider`].
+#[cfg(feature = "fips")]
+pub type FipsKeyProvider = AwsLcKeyProvider;
+
+/// See [`FipsKeyProvider`].
+#[cfg(all(not(feature = "fips"), windows, feature = "windows"))]
+pub type FipsKeyProvider = crate::windows::CngKeyProvider;
+
+/// Construct the platform's FIPS-validated key provider, **fail-closed**.
+///
+/// Selects the FIPS provider for the build/platform — the aws-lc-rs
+/// [`AwsLcKeyProvider`] under `fips` (Linux), or the Windows CNG
+/// [`CngKeyProvider`](crate::windows::CngKeyProvider) under `windows`. The CNG
+/// path errors if the Windows FIPS algorithm policy is not enabled, so a FIPS
+/// deployment can never silently run on non-validated cryptography.
+///
+/// Available when the build has a FIPS provider: the `fips` feature (Linux) or
+/// the `windows` feature (Windows). Pair with
+/// [`crate::csr::HsmCsrBuilder::build_with_provider`] to produce a CSR whose key
+/// and signature come from the FIPS module.
+#[cfg(feature = "fips")]
+pub fn fips_key_provider() -> Result<FipsKeyProvider> {
+    Ok(AwsLcKeyProvider::new())
+}
+
+/// See [`fips_key_provider`] (Windows CNG FIPS).
+#[cfg(all(not(feature = "fips"), windows, feature = "windows"))]
+pub fn fips_key_provider() -> Result<FipsKeyProvider> {
+    crate::windows::CngKeyProvider::new_fips()
+}
+
 use crate::error::Result;
 use async_trait::async_trait;
 use spki::{AlgorithmIdentifierOwned, SubjectPublicKeyInfoOwned};
@@ -221,6 +291,14 @@ pub trait KeyProvider: Send + Sync {
 
     /// Sign data using the private key identified by handle.
     ///
+    /// `data` is the **raw message** to be signed (e.g. the DER-encoded
+    /// CertificationRequestInfo). The provider applies the algorithm's hash
+    /// internally — SHA-256 for P-256/RSA, SHA-384 for P-384 — and must NOT be
+    /// given a pre-computed digest. This is required because some backends
+    /// (Windows CNG, aws-lc-rs) only expose hash-and-sign and cannot sign a bare
+    /// digest; all providers therefore hash the message themselves so signatures
+    /// are consistent and verifiable.
+    ///
     /// The signature format depends on the key algorithm:
     /// - ECDSA: DER-encoded ECDSA-Sig-Value (SEQUENCE of two INTEGERs)
     /// - RSA: PKCS#1 v1.5 signature
@@ -228,7 +306,7 @@ pub trait KeyProvider: Send + Sync {
     /// # Arguments
     ///
     /// * `handle` - The key handle
-    /// * `data` - The data to sign (typically a hash digest)
+    /// * `data` - The raw message to sign (the provider hashes it)
     ///
     /// # Returns
     ///
@@ -316,5 +394,18 @@ mod tests {
         assert_eq!(info.name, "TestProvider");
         assert!(info.supports_key_generation);
         assert!(!info.supports_key_deletion);
+    }
+
+    // On Windows, `fips_key_provider()` must be fail-closed: it succeeds iff the
+    // system FIPS policy is on, matching `CngKeyProvider::is_fips_mode_enabled`.
+    #[cfg(all(not(feature = "fips"), windows, feature = "windows"))]
+    #[test]
+    fn test_fips_key_provider_fail_closed() {
+        let fips_on = crate::windows::CngKeyProvider::is_fips_mode_enabled().unwrap();
+        assert_eq!(
+            fips_key_provider().is_ok(),
+            fips_on,
+            "fips_key_provider() must agree with the system FIPS policy"
+        );
     }
 }
