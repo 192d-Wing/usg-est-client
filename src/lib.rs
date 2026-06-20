@@ -154,6 +154,9 @@ pub mod fips;
 #[cfg(feature = "fips")]
 pub mod fips_tls;
 
+/// FIPS-aware hashing helpers (aws-lc-rs FIPS module under `fips`, else `sha2`).
+pub(crate) mod fips_crypto;
+
 #[cfg(feature = "dod-pki")]
 pub mod dod;
 

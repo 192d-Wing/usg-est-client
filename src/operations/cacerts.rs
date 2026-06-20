@@ -18,7 +18,6 @@
 //! This module provides utilities for the CA certificates distribution
 //! operation defined in RFC 7030 Section 4.1.
 
-use sha2::{Digest, Sha256};
 use x509_cert::Certificate;
 
 use crate::error::{EstError, Result};
@@ -34,9 +33,7 @@ pub fn fingerprint(cert: &Certificate) -> Result<[u8; 32]> {
         EstError::certificate_parsing(format!("Failed to encode certificate: {}", e))
     })?;
 
-    let mut hasher = Sha256::new();
-    hasher.update(&der);
-    Ok(hasher.finalize().into())
+    Ok(crate::fips_crypto::sha256(&der))
 }
 
 /// Format a fingerprint as a colon-separated hex string.
