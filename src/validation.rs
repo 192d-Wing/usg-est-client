@@ -1941,27 +1941,19 @@ mod tests {
     }
 
     fn ca_cert() -> Certificate {
-        load_cert_from_pem(include_bytes!(
-            "../tests/fixtures/certs/ca.pem"
-        ))
+        load_cert_from_pem(include_bytes!("../tests/fixtures/certs/ca.pem"))
     }
 
     fn client_cert() -> Certificate {
-        load_cert_from_pem(include_bytes!(
-            "../tests/fixtures/certs/client.pem"
-        ))
+        load_cert_from_pem(include_bytes!("../tests/fixtures/certs/client.pem"))
     }
 
     fn server_cert() -> Certificate {
-        load_cert_from_pem(include_bytes!(
-            "../tests/fixtures/certs/server.pem"
-        ))
+        load_cert_from_pem(include_bytes!("../tests/fixtures/certs/server.pem"))
     }
 
     fn testrfc7030_ca_cert() -> Certificate {
-        load_cert_from_pem(include_bytes!(
-            "../tests/fixtures/certs/testrfc7030-ca.pem"
-        ))
+        load_cert_from_pem(include_bytes!("../tests/fixtures/certs/testrfc7030-ca.pem"))
     }
 
     // --- CertificateValidator construction ---
@@ -2179,7 +2171,11 @@ mod tests {
             .errors
             .iter()
             .any(|e| e.contains("chain too long") || e.contains("Certificate chain"));
-        assert!(has_chain_length_error, "Expected chain too long error, got: {:?}", result.errors);
+        assert!(
+            has_chain_length_error,
+            "Expected chain too long error, got: {:?}",
+            result.errors
+        );
     }
 
     #[test]
@@ -2208,7 +2204,10 @@ mod tests {
         let validator = CertificateValidator::new(vec![]);
         // CA should have cA=TRUE
         let result = validator.check_basic_constraints(&ca);
-        assert!(result.is_ok(), "CA cert should pass basic constraints check");
+        assert!(
+            result.is_ok(),
+            "CA cert should pass basic constraints check"
+        );
     }
 
     #[test]
@@ -2217,7 +2216,10 @@ mod tests {
         let validator = CertificateValidator::new(vec![]);
         // Client (end-entity) should fail basic constraints check (no cA=TRUE)
         let result = validator.check_basic_constraints(&client);
-        assert!(result.is_err(), "Client cert should fail basic constraints (not a CA)");
+        assert!(
+            result.is_err(),
+            "Client cert should fail basic constraints (not a CA)"
+        );
     }
 
     // --- check_validity_period ---
@@ -2228,7 +2230,11 @@ mod tests {
         let ca = ca_cert();
         let validator = CertificateValidator::new(vec![]);
         let result = validator.check_validity_period(&ca);
-        assert!(result.is_ok(), "CA cert with wide validity should pass: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "CA cert with wide validity should pass: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -2236,7 +2242,11 @@ mod tests {
         let client = client_cert();
         let validator = CertificateValidator::new(vec![]);
         let result = validator.check_validity_period(&client);
-        assert!(result.is_ok(), "Client cert with wide validity should pass: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Client cert with wide validity should pass: {:?}",
+            result
+        );
     }
 
     // --- get_subject_cn ---

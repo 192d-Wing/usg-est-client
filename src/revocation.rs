@@ -1584,9 +1584,7 @@ mod tests {
 
     #[test]
     fn test_revocation_config_builder_partial_uses_defaults() {
-        let config = RevocationConfig::builder()
-            .enable_crl(false)
-            .build();
+        let config = RevocationConfig::builder().enable_crl(false).build();
 
         // Explicitly set field
         assert!(!config.enable_crl);

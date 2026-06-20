@@ -56,7 +56,9 @@ pub fn protect(data: &[u8], description: &str) -> Result<Vec<u8>> {
     const MAX_DPAPI_SIZE: u32 = 1024 * 1024; // 1MB max
     if data_out.cbData > MAX_DPAPI_SIZE {
         unsafe {
-            windows::Win32::System::Memory::LocalFree(data_out.pbData as isize);
+            windows::Win32::Foundation::LocalFree(Some(windows::Win32::Foundation::HLOCAL(
+                data_out.pbData as *mut core::ffi::c_void,
+            )));
         }
         return Err(EstError::platform(format!(
             "DPAPI output size {} exceeds maximum allowed {}",
@@ -70,7 +72,9 @@ pub fn protect(data: &[u8], description: &str) -> Result<Vec<u8>> {
 
     // Free DPAPI memory
     unsafe {
-        windows::Win32::System::Memory::LocalFree(data_out.pbData as isize);
+        windows::Win32::Foundation::LocalFree(Some(windows::Win32::Foundation::HLOCAL(
+            data_out.pbData as *mut core::ffi::c_void,
+        )));
     }
 
     Ok(protected)
@@ -115,7 +119,9 @@ pub fn unprotect(protected: &[u8]) -> Result<Vec<u8>> {
     const MAX_DPAPI_SIZE: u32 = 1024 * 1024; // 1MB max
     if data_out.cbData > MAX_DPAPI_SIZE {
         unsafe {
-            windows::Win32::System::Memory::LocalFree(data_out.pbData as isize);
+            windows::Win32::Foundation::LocalFree(Some(windows::Win32::Foundation::HLOCAL(
+                data_out.pbData as *mut core::ffi::c_void,
+            )));
         }
         return Err(EstError::platform(format!(
             "DPAPI output size {} exceeds maximum allowed {}",
@@ -129,7 +135,9 @@ pub fn unprotect(protected: &[u8]) -> Result<Vec<u8>> {
 
     // Free DPAPI memory
     unsafe {
-        windows::Win32::System::Memory::LocalFree(data_out.pbData as isize);
+        windows::Win32::Foundation::LocalFree(Some(windows::Win32::Foundation::HLOCAL(
+            data_out.pbData as *mut core::ffi::c_void,
+        )));
     }
 
     Ok(unprotected)

@@ -794,8 +794,7 @@ mod tests {
         // Encrypt with proper PKCS#7 padding
         type Aes256CbcEnc = cbc::Encryptor<aes::Aes256>;
         let cipher = Aes256CbcEnc::new_from_slices(&key, &iv).unwrap();
-        let ciphertext =
-            cipher.encrypt_padded_vec::<cbc::cipher::block_padding::Pkcs7>(plaintext);
+        let ciphertext = cipher.encrypt_padded_vec::<cbc::cipher::block_padding::Pkcs7>(plaintext);
 
         // Decrypt using our function
         let decryption_key =
@@ -894,8 +893,7 @@ mod enveloped_tests {
         let iv = [0x66u8; 8]; // 3DES uses 8-byte IV
         let plaintext = b"3DES roundtrip test";
 
-        let ciphertext =
-            encrypt_aes_cbc(plaintext, &key, &iv, EncryptionAlgorithm::TripleDesCbc);
+        let ciphertext = encrypt_aes_cbc(plaintext, &key, &iv, EncryptionAlgorithm::TripleDesCbc);
         let decrypted =
             decrypt_content(&ciphertext, &key, &iv, EncryptionAlgorithm::TripleDesCbc).unwrap();
         assert_eq!(&decrypted, plaintext);
@@ -911,8 +909,7 @@ mod enveloped_tests {
 
         // Decrypt with a different key - should fail with unpadding error
         let wrong_key = [0xCCu8; 32];
-        let result =
-            decrypt_content(&ciphertext, &wrong_key, &iv, EncryptionAlgorithm::Aes256Cbc);
+        let result = decrypt_content(&ciphertext, &wrong_key, &iv, EncryptionAlgorithm::Aes256Cbc);
         assert!(result.is_err());
     }
 
@@ -922,8 +919,7 @@ mod enveloped_tests {
         let bad_iv = [0xBBu8; 8]; // AES expects 16-byte IV
         let ciphertext = vec![0u8; 32]; // dummy
 
-        let result =
-            decrypt_content(&ciphertext, &key, &bad_iv, EncryptionAlgorithm::Aes256Cbc);
+        let result = decrypt_content(&ciphertext, &key, &bad_iv, EncryptionAlgorithm::Aes256Cbc);
         assert!(result.is_err());
     }
 
@@ -934,8 +930,7 @@ mod enveloped_tests {
         // Corrupt data that won't have valid PKCS#7 padding
         let corrupt = vec![0xFFu8; 32];
 
-        let result =
-            decrypt_content(&corrupt, &key, &iv, EncryptionAlgorithm::Aes128Cbc);
+        let result = decrypt_content(&corrupt, &key, &iv, EncryptionAlgorithm::Aes128Cbc);
         assert!(result.is_err());
     }
 

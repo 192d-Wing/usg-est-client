@@ -182,7 +182,11 @@ pub async fn perform_enrollment(config: &AutoEnrollConfig) -> Result<()> {
     );
 
     // Generate key pair in CNG
-    let label = format!("{}-{}", cn, time::OffsetDateTime::now_utc().unix_timestamp());
+    let label = format!(
+        "{}-{}",
+        cn,
+        time::OffsetDateTime::now_utc().unix_timestamp()
+    );
     let key_handle = cng_provider
         .generate_key_pair(key_algorithm, Some(&label))
         .await?;

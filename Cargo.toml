@@ -38,6 +38,8 @@ pkcs8 = { version = "0.11.0", features = ["encryption", "pem"] }
 spki = { version = "0.8", features = ["alloc"] }
 const-oid = { version = "0.10", features = ["db"] }
 sha2 = "0.11"
+# SHA-1 is only used for Windows certificate-store thumbprints (a Windows convention).
+sha1 = { version = "0.11", optional = true }
 rsa = { version = "0.10.0-rc.18", features = ["sha2"] }
 p256 = { version = "0.14.0-rc.12", features = ["ecdsa"] }
 p384 = { version = "0.14.0-rc.12", features = ["ecdsa"] }
@@ -115,6 +117,10 @@ windows = { version = "0.62", features = [
     "Win32_System_Services",
     "Win32_Security",
     "Win32_System_Threading",
+    "Win32_System_EventLog",
+    "Win32_System_Memory",
+    "Win32_System_SystemInformation",
+    "Win32_System_WindowsProgramming",
 ], optional = true }
 windows-service = { version = "0.8", optional = true }
 
@@ -230,7 +236,7 @@ native-tls-vendored = ["native-tls-backend", "reqwest/native-tls-vendored"]
 # Windows platform integration (certificate store, CNG, TPM)
 # Note: Only compiles on Windows targets
 # Pulls in `hsm` because the CNG key provider implements the hsm KeyProvider trait.
-windows = ["dep:windows", "auto-enroll", "hsm"]
+windows = ["dep:windows", "dep:sha1", "auto-enroll", "hsm"]
 
 # Windows service support (includes windows feature)
 # Note: Only compiles on Windows targets
