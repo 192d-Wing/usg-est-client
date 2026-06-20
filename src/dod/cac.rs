@@ -432,7 +432,8 @@ fn parse_cac_certificate(certificate: Certificate, slot: PivSlot) -> CacCertific
     let is_valid = check_validity(&certificate.tbs_certificate().validity());
 
     // Extract key algorithm
-    let key_algorithm = format_key_algorithm(&certificate.tbs_certificate().subject_public_key_info());
+    let key_algorithm =
+        format_key_algorithm(&certificate.tbs_certificate().subject_public_key_info());
 
     CacCertificate {
         slot,

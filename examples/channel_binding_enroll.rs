@@ -132,7 +132,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Certificate Details:");
                 println!("  Subject: {:?}", certificate.tbs_certificate().subject());
                 println!("  Issuer: {:?}", certificate.tbs_certificate().issuer());
-                println!("  Serial: {:?}", certificate.tbs_certificate().serial_number());
+                println!(
+                    "  Serial: {:?}",
+                    certificate.tbs_certificate().serial_number()
+                );
                 println!(
                     "  Valid from: {:?}",
                     certificate.tbs_certificate().validity().not_before
