@@ -76,6 +76,12 @@ pub mod pkcs11;
 #[cfg(feature = "pkcs11")]
 pub use pkcs11::Pkcs11KeyProvider;
 
+#[cfg(feature = "fips-tls")]
+mod aws_lc;
+
+#[cfg(feature = "fips-tls")]
+pub use aws_lc::AwsLcKeyProvider;
+
 use crate::error::Result;
 use async_trait::async_trait;
 use spki::{AlgorithmIdentifierOwned, SubjectPublicKeyInfoOwned};
@@ -221,6 +227,14 @@ pub trait KeyProvider: Send + Sync {
 
     /// Sign data using the private key identified by handle.
     ///
+    /// `data` is the **raw message** to be signed (e.g. the DER-encoded
+    /// CertificationRequestInfo). The provider applies the algorithm's hash
+    /// internally — SHA-256 for P-256/RSA, SHA-384 for P-384 — and must NOT be
+    /// given a pre-computed digest. This is required because some backends
+    /// (Windows CNG, aws-lc-rs) only expose hash-and-sign and cannot sign a bare
+    /// digest; all providers therefore hash the message themselves so signatures
+    /// are consistent and verifiable.
+    ///
     /// The signature format depends on the key algorithm:
     /// - ECDSA: DER-encoded ECDSA-Sig-Value (SEQUENCE of two INTEGERs)
     /// - RSA: PKCS#1 v1.5 signature
@@ -228,7 +242,7 @@ pub trait KeyProvider: Send + Sync {
     /// # Arguments
     ///
     /// * `handle` - The key handle
-    /// * `data` - The data to sign (typically a hash digest)
+    /// * `data` - The raw message to sign (the provider hashes it)
     ///
     /// # Returns
     ///
