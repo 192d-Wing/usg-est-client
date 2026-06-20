@@ -34,7 +34,12 @@ jobs:
           toolchain: ${{ matrix.toolchain }}
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --verbose
+      # `--all-features` includes `fips-tls`, whose FIPS module (aws-lc-fips-sys)
+      # only builds on Linux. FIPS is a Linux/Windows(CNG) target, never macOS, so
+      # run the full feature set on Linux only; the dedicated `fips-tls` job covers
+      # the FIPS build, and `test-features` covers individual non-FIPS features.
       - run: cargo test --all-features --verbose
+        if: runner.os == 'Linux'
       - run: cargo test --no-default-features --verbose
         if: matrix.toolchain == 'stable'
 
