@@ -113,128 +113,67 @@ cargo test --features fips
 
 ## FIPS Module Setup
 
-### Linux (Ubuntu/Debian)
+FIPS cryptography is provided by the crypto module the crate is built/run
+against. There is **no separate OpenSSL FIPS provider to install** — the Linux
+path statically links the aws-lc-rs FIPS module at build time, and the Windows
+path uses the operating system's CNG FIPS module under the system security
+policy.
 
-1. **Install OpenSSL 3.0+ with FIPS module:**
+### Linux (aws-lc-rs FIPS)
+
+The `fips` feature links the aws-lc-rs FIPS module (`aws-lc-fips-sys`), which is
+built from source at compile time and self-tests at startup. No system-wide FIPS
+configuration is required.
+
+1. **Install build dependencies** (the FIPS module builds via CMake + Go):
 
 ```bash
-# Ubuntu 22.04+ includes OpenSSL 3.0
 sudo apt-get update
-sudo apt-get install openssl libssl-dev
-
-# Verify version (should be 3.0+)
-openssl version
+sudo apt-get install -y cmake golang build-essential
 ```
 
-2. **Enable FIPS mode:**
+2. **Build/test with the `fips` feature:**
 
 ```bash
-# Enable FIPS provider
-sudo openssl fipsinstall -out /usr/local/ssl/fipsmodule.cnf -module /usr/lib/x86_64-linux-gnu/ossl-modules/fips.so
-
-# Update OpenSSL configuration
-sudo tee -a /usr/local/ssl/openssl.cnf << EOF
-openssl_conf = openssl_init
-
-[openssl_init]
-providers = provider_sect
-
-[provider_sect]
-fips = fips_sect
-base = base_sect
-
-[base_sect]
-activate = 1
-
-[fips_sect]
-activate = 1
-module = /usr/lib/x86_64-linux-gnu/ossl-modules/fips.so
-EOF
-
-# Set environment variable
-export OPENSSL_CONF=/usr/local/ssl/openssl.cnf
+cargo build --features fips
+cargo test --features fips
 ```
 
-3. **Verify FIPS mode:**
+Supported targets: Linux `x86_64` and `aarch64`.
 
-```bash
-openssl list -provider fips -providers
-# Should show: Providers: fips
+3. **Activate at runtime.** The FIPS rustls provider is installed **fail-closed**
+   when the EST client is constructed; you can also install it explicitly at
+   startup:
+
+```rust
+usg_est_client::fips::enable_fips_mode()?; // errors if not linked against the FIPS module
 ```
 
-### macOS (Homebrew)
+   If the build is not actually linked against the FIPS module, installation
+   returns an error rather than silently using non-FIPS cryptography.
 
-1. **Install OpenSSL 3.0+:**
+### Windows (CNG FIPS)
 
-```bash
-brew install openssl@3
+On Windows, FIPS is provided by the operating system's CNG FIPS module, governed
+by the system security policy — **not** by this crate's `fips` feature (which is
+Linux-only). Do not enable `fips` on Windows; use the `windows` feature.
 
-# Verify version
-/usr/local/opt/openssl@3/bin/openssl version
+1. **Enable the Windows FIPS policy:** turn on "System cryptography: Use FIPS
+   compliant algorithms for encryption, hashing, and signing" (Local Security
+   Policy → Local Policies → Security Options, or via Group Policy). This makes
+   CNG operate its FIPS-validated modules.
+
+2. **Build with the `windows` feature** and obtain the CNG FIPS key provider:
+
+```rust
+use usg_est_client::hsm::fips_key_provider; // CngKeyProvider in FIPS mode
+
+// Fail-closed: errors if the Windows FIPS policy is not enabled.
+let provider = fips_key_provider()?;
 ```
 
-2. **Enable FIPS mode:**
-
-```bash
-# Generate FIPS module configuration
-/usr/local/opt/openssl@3/bin/openssl fipsinstall \
-    -out /usr/local/etc/openssl@3/fipsmodule.cnf \
-    -module /usr/local/Cellar/openssl@3/3.x.x/lib/ossl-modules/fips.dylib
-
-# Update OpenSSL configuration (create if doesn't exist)
-cat >> /usr/local/etc/openssl@3/openssl.cnf << EOF
-openssl_conf = openssl_init
-
-[openssl_init]
-providers = provider_sect
-
-[provider_sect]
-fips = fips_sect
-
-[fips_sect]
-activate = 1
-module = /usr/local/Cellar/openssl@3/3.x.x/lib/ossl-modules/fips.dylib
-EOF
-
-# Set environment variable
-export OPENSSL_CONF=/usr/local/etc/openssl@3/openssl.cnf
-```
-
-### Windows
-
-1. **Download OpenSSL 3.0+ for Windows:**
-
-Download from: https://slproweb.com/products/Win32OpenSSL.html
-
-2. **Install to C:\Program Files\OpenSSL-Win64**
-
-3. **Enable FIPS mode:**
-
-```powershell
-# Open PowerShell as Administrator
-cd "C:\Program Files\OpenSSL-Win64\bin"
-
-# Generate FIPS module configuration
-.\openssl.exe fipsinstall -out C:\OpenSSL-Win64\fipsmodule.cnf -module C:\OpenSSL-Win64\bin\fips.dll
-
-# Update openssl.cnf
-Add-Content C:\OpenSSL-Win64\openssl.cnf @"
-openssl_conf = openssl_init
-
-[openssl_init]
-providers = provider_sect
-
-[provider_sect]
-fips = fips_sect
-
-[fips_sect]
-activate = 1
-module = C:\OpenSSL-Win64\bin\fips.dll
-"@
-
-# Set environment variable (system-wide)
-[System.Environment]::SetEnvironmentVariable("OPENSSL_CONF", "C:\OpenSSL-Win64\openssl.cnf", "Machine")
-```
+   `usg_est_client::windows::CngKeyProvider::is_fips_mode_enabled()` reports
+   whether the policy is currently active.
 
 ## Configuration
 
@@ -376,7 +315,7 @@ use usg_est_client::fips::fips_module_info;
 let info = fips_module_info();
 println!("{}", info);
 // Output:
-// OpenSSL Version: OpenSSL 3.0.8 7 Feb 2023
+// FIPS Module: aws-lc-rs FIPS module
 // FIPS Capable: true
 // FIPS Enabled: true
 ```
@@ -408,38 +347,35 @@ cargo test --features fips -- --ignored
 
 ### Test Coverage
 
-The FIPS implementation includes:
-- **14 unit tests** in `src/fips/mod.rs`
-- **25 algorithm validation tests** in `src/fips/algorithms.rs`
-- **13 configuration tests** in `tests/fips/fips_config_test.rs`
-- **25 integration tests** in `tests/fips/algorithm_validation_test.rs`
-
-Total: **77 FIPS-specific tests** ✅
+The FIPS implementation is covered by unit tests in `src/fips/`, configuration
+and algorithm-validation tests in `tests/fips/`, and — on the Linux `fips` CI
+job — the cert-chain verification fixtures and EnvelopedData known-answer tests
+that exercise the aws-lc-rs FIPS module directly.
 
 ## Troubleshooting
 
 ### FIPS Module Not Available
 
-**Error**: `FIPS 140-2 not available: OpenSSL FIPS module is not available`
+**Error**: `aws-lc-rs FIPS module is not available; the build is not linked against the FIPS module`
 
 **Solution**:
-1. Verify OpenSSL 3.0+ is installed: `openssl version`
-2. Check FIPS module exists:
-   - Linux: `/usr/lib/x86_64-linux-gnu/ossl-modules/fips.so`
-   - macOS: `/usr/local/Cellar/openssl@3/3.x.x/lib/ossl-modules/fips.dylib`
-   - Windows: `C:\OpenSSL-Win64\bin\fips.dll`
-3. Verify `fipsmodule.cnf` exists and is configured correctly
-4. Set `OPENSSL_CONF` environment variable
+
+1. Rebuild with the `fips` feature on Linux: `cargo build --features fips`
+2. Ensure the build dependencies are installed (CMake, Go, a C toolchain)
+3. Use a supported target (Linux `x86_64`/`aarch64`); the FIPS module does not
+   build on Windows/macOS — use the Windows CNG path on Windows
 
 ### FIPS Mode Not Enabled
 
-**Error**: `FIPS 140-2 mode not enabled: FIPS mode is required but not enabled`
+**Error**: `FIPS mode is required but the FIPS crypto provider is not active`
 
 **Solution**:
-1. Check OpenSSL configuration file (`openssl.cnf`)
-2. Verify FIPS provider is activated
-3. Run `openssl list -provider fips -providers` to confirm
-4. Check `OPENSSL_CONF` points to correct configuration file
+
+1. Call `usg_est_client::fips::enable_fips_mode()` at startup (or construct the
+   EST client, which installs the FIPS provider fail-closed)
+2. On Windows, enable the system FIPS policy ("System cryptography: Use FIPS
+   compliant algorithms ...") and check
+   `CngKeyProvider::is_fips_mode_enabled()`
 
 ### Algorithm Not Allowed
 
@@ -460,30 +396,19 @@ Total: **77 FIPS-specific tests** ✅
 2. Update configuration to use larger key sizes
 3. Request certificate re-issuance with compliant key size
 
-### OpenSSL Version Too Old
-
-**Error**: `FIPS 140-2 not available: FIPS mode requires OpenSSL 3.0+`
-
-**Solution**:
-1. Upgrade OpenSSL to version 3.0 or later
-2. On older systems, compile OpenSSL 3.0+ from source
-3. Use system package manager to install newer version
-
 ## References
 
 ### Standards and Specifications
 
-- [FIPS 140-2 Standard](https://csrc.nist.gov/pubs/fips/140-2/upd2/final)
-- [FIPS 140-3 Standard](https://csrc.nist.gov/pubs/fips/140-3/final) (successor)
+- [FIPS 140-3 Standard](https://csrc.nist.gov/pubs/fips/140-3/final)
 - [NIST CMVP](https://csrc.nist.gov/projects/cryptographic-module-validation-program)
-- [OpenSSL FIPS Module User Guide](https://www.openssl.org/docs/fips.html)
 - [NIST SP 800-131A Rev 2](https://csrc.nist.gov/pubs/sp/800/131/a/r2/final) - Transitions: Algorithms and Key Lengths
 
-### OpenSSL FIPS Documentation
+### FIPS Module Documentation
 
-- [OpenSSL 3.0 FIPS Module](https://github.com/openssl/openssl/blob/master/README-FIPS.md)
-- [OpenSSL FIPS Provider](https://www.openssl.org/docs/man3.0/man7/fips_module.html)
-- [FIPS Module Installation](https://www.openssl.org/docs/man3.0/man1/openssl-fipsinstall.html)
+- [aws-lc-rs](https://github.com/aws/aws-lc-rs) and its [FIPS documentation](https://aws.github.io/aws-lc-rs/index.html) (Linux)
+- [AWS-LC FIPS / CMVP status](https://github.com/aws/aws-lc/blob/main/crypto/fipsmodule/FIPS.md) — confirm the validated module version for an ATO
+- [Microsoft CNG FIPS mode](https://learn.microsoft.com/windows/security/security-foundations/certification/fips-140-validation) (Windows)
 
 ### DoD References
 
@@ -491,10 +416,10 @@ Total: **77 FIPS-specific tests** ✅
 - [DISA STIG Library](https://public.cyber.mil/stigs/)
 - [DoD PKI](https://public.cyber.mil/pki-pke/)
 
-### Testing and Validation
+### CMVP module status
 
-- [Caveat Certificate #4282](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4282) - OpenSSL 3.0.0
-- [Caveat Certificate #4616](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4616) - OpenSSL 3.0.8
+- [AWS-LC CMVP certificates](https://csrc.nist.gov/projects/cryptographic-module-validation-program/validated-modules/search?SearchMode=Basic&Vendor=Amazon) — verify the certificate that matches the linked aws-lc version
+- [Microsoft CNG CMVP certificates](https://learn.microsoft.com/windows/security/security-foundations/certification/fips-140-validation)
 
 ## Support
 
@@ -502,17 +427,25 @@ For FIPS-related issues:
 
 1. Check this documentation first
 2. Review [GitHub Issues](https://github.com/johnwillman/usg-est-client/issues)
-3. Consult OpenSSL FIPS documentation
+3. Consult the aws-lc-rs / Windows CNG FIPS documentation linked above
 4. Contact your organization's security team
 
 ## Changelog
 
+### FIPS migration (2026-06)
+
+- Replaced the OpenSSL FIPS path with the **aws-lc-rs FIPS module** (Linux) for
+  TLS, key generation, signing, certificate-chain verification, fingerprint
+  hashing, and EnvelopedData (AES-128/256-CBC) — and **Windows CNG FIPS** mode
+  via `CngKeyProvider::new_fips` / `hsm::fips_key_provider`.
+- Consolidated to a single `fips` feature (`fips-tls` is a deprecated alias);
+  dropped the OpenSSL dependencies; pinned `aws-lc-rs` to an exact version.
+
 ### Version 0.1.0 (2025-01-02)
 
-- Initial FIPS 140-2 implementation
-- OpenSSL 3.0+ FIPS module integration
+- Initial FIPS 140-2 implementation (OpenSSL FIPS module integration — since
+  removed; see the FIPS migration entry above)
 - Algorithm policy enforcement
-- Comprehensive test suite (77 tests)
 - Complete documentation
 
 ---
