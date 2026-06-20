@@ -6,15 +6,15 @@
 //! This module implements the enrollment and renewal workflows for
 //! automatic certificate management via EST.
 
-#[cfg(windows)]
+#[cfg(all(windows, feature = "windows"))]
 use crate::auto_enroll::config::AutoEnrollConfig;
-#[cfg(windows)]
+#[cfg(all(windows, feature = "windows"))]
 use crate::error::{EstError, Result};
-#[cfg(windows)]
+#[cfg(all(windows, feature = "windows"))]
 use crate::hsm::{KeyAlgorithm, KeyProvider};
-#[cfg(windows)]
+#[cfg(all(windows, feature = "windows"))]
 use crate::windows::cng::CngKeyProvider;
-#[cfg(windows)]
+#[cfg(all(windows, feature = "windows"))]
 use crate::windows::{CertStore, MachineIdentity};
 
 /// Check if initial enrollment is needed.
@@ -23,7 +23,7 @@ use crate::windows::{CertStore, MachineIdentity};
 /// - No certificate exists in the configured store
 /// - The existing certificate has expired
 /// - The existing certificate needs renewal
-#[cfg(windows)]
+#[cfg(all(windows, feature = "windows"))]
 pub async fn needs_enrollment(config: &AutoEnrollConfig) -> Result<bool> {
     // Get machine identity
     let identity = MachineIdentity::current()?;
@@ -84,7 +84,7 @@ pub async fn needs_enrollment(config: &AutoEnrollConfig) -> Result<bool> {
 /// 4. Submits the enrollment request to the EST server
 /// 5. Imports the issued certificate to the Windows store
 /// 6. Saves the private key (temporary workaround until CNG integration)
-#[cfg(windows)]
+#[cfg(all(windows, feature = "windows"))]
 pub async fn perform_enrollment(config: &AutoEnrollConfig) -> Result<()> {
     tracing::info!("Starting certificate enrollment");
 
@@ -256,7 +256,7 @@ pub async fn perform_enrollment(config: &AutoEnrollConfig) -> Result<()> {
 /// Check if renewal is needed for an existing certificate.
 ///
 /// Returns `true` if the certificate exists and is within the renewal threshold.
-#[cfg(windows)]
+#[cfg(all(windows, feature = "windows"))]
 pub async fn check_renewal(config: &AutoEnrollConfig) -> Result<bool> {
     // Get machine identity
     let identity = MachineIdentity::current()?;
@@ -317,7 +317,7 @@ pub async fn check_renewal(config: &AutoEnrollConfig) -> Result<bool> {
 /// 5. Archives the old certificate (if configured)
 /// 6. Imports the renewed certificate
 /// 7. Saves the new private key
-#[cfg(windows)]
+#[cfg(all(windows, feature = "windows"))]
 pub async fn perform_renewal(config: &AutoEnrollConfig) -> Result<()> {
     tracing::info!("Starting certificate renewal");
 
@@ -510,7 +510,7 @@ pub async fn perform_renewal(config: &AutoEnrollConfig) -> Result<()> {
 }
 
 /// Status of certificate expiration check.
-#[cfg(windows)]
+#[cfg(all(windows, feature = "windows"))]
 enum ExpirationStatus {
     /// Certificate has already expired.
     Expired,
@@ -526,7 +526,7 @@ enum ExpirationStatus {
 /// - `Expired` if certificate has already expired
 /// - `NeedsRenewal` if within renewal threshold
 /// - `Valid` if still valid and not within threshold
-#[cfg(windows)]
+#[cfg(all(windows, feature = "windows"))]
 fn check_certificate_expiration(
     cert_der: &[u8],
     renewal_threshold_days: u32,
@@ -569,7 +569,7 @@ fn check_certificate_expiration(
 /// Parse X.509 Time to SystemTime.
 ///
 /// Supports both UtcTime and GeneralizedTime formats.
-#[cfg(windows)]
+#[cfg(all(windows, feature = "windows"))]
 fn parse_x509_time(x509_time: &x509_cert::time::Time) -> Result<std::time::SystemTime> {
     use std::time::SystemTime;
     use x509_cert::time::Time;
@@ -585,7 +585,7 @@ fn parse_x509_time(x509_time: &x509_cert::time::Time) -> Result<std::time::Syste
 
 // Non-Windows stubs - these return platform errors on non-Windows targets.
 /// Check if certificate enrollment is needed (Windows only).
-#[cfg(not(windows))]
+#[cfg(not(all(windows, feature = "windows")))]
 pub async fn needs_enrollment(
     _config: &crate::auto_enroll::AutoEnrollConfig,
 ) -> crate::error::Result<bool> {
@@ -595,7 +595,7 @@ pub async fn needs_enrollment(
 }
 
 /// Perform certificate enrollment (Windows only).
-#[cfg(not(windows))]
+#[cfg(not(all(windows, feature = "windows")))]
 pub async fn perform_enrollment(
     _config: &crate::auto_enroll::AutoEnrollConfig,
 ) -> crate::error::Result<()> {
@@ -605,7 +605,7 @@ pub async fn perform_enrollment(
 }
 
 /// Check if certificate renewal is needed (Windows only).
-#[cfg(not(windows))]
+#[cfg(not(all(windows, feature = "windows")))]
 pub async fn check_renewal(
     _config: &crate::auto_enroll::AutoEnrollConfig,
 ) -> crate::error::Result<bool> {
@@ -615,7 +615,7 @@ pub async fn check_renewal(
 }
 
 /// Perform certificate renewal (Windows only).
-#[cfg(not(windows))]
+#[cfg(not(all(windows, feature = "windows")))]
 pub async fn perform_renewal(
     _config: &crate::auto_enroll::AutoEnrollConfig,
 ) -> crate::error::Result<()> {
@@ -626,7 +626,7 @@ pub async fn perform_renewal(
 
 #[cfg(test)]
 mod tests {
-    #[cfg(windows)]
+    #[cfg(all(windows, feature = "windows"))]
     use super::*;
 
     // Tests would go here - moved from the binary module

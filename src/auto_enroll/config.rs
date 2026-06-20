@@ -348,7 +348,7 @@ impl AutoEnrollConfig {
     ///
     /// This uses the Windows CredRead API to retrieve a stored credential.
     /// The credential is identified by the target name (typically the server URL).
-    #[cfg(windows)]
+    #[cfg(all(windows, feature = "windows"))]
     fn read_credential_manager(&self, target_name: &str) -> Result<String, EstError> {
         use windows::Win32::Foundation::ERROR_NOT_FOUND;
         use windows::Win32::Security::Credentials::{
@@ -412,7 +412,7 @@ impl AutoEnrollConfig {
     }
 
     /// Non-Windows stub for credential manager.
-    #[cfg(not(windows))]
+    #[cfg(not(all(windows, feature = "windows")))]
     fn read_credential_manager(&self, _target_name: &str) -> Result<String, EstError> {
         Err(EstError::config(
             "Windows Credential Manager is only available on Windows",
