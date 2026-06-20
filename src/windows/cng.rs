@@ -217,7 +217,7 @@ impl CngKeyProvider {
     /// ("System cryptography: Use FIPS compliant algorithms for encryption,
     /// hashing, and signing") is not enabled, so a FIPS deployment can never
     /// silently fall back to non-validated cryptography. This mirrors the
-    /// fail-closed [`crate::fips_tls`] installer on the TLS side.
+    /// fail-closed `fips_tls` installer on the TLS side.
     pub fn new_fips() -> Result<Self> {
         Self::with_fips_provider(providers::SOFTWARE)
     }
