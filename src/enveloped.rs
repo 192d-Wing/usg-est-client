@@ -593,6 +593,9 @@ pub fn decrypt_enveloped_data(
 }
 
 /// Decrypt content using symmetric encryption.
+///
+/// Under the `fips` feature, AES-CBC decryption runs in the aws-lc-rs FIPS
+/// module (see [`decrypt_content_fips`]); the RustCrypto path is used otherwise.
 #[cfg(feature = "enveloped")]
 fn decrypt_content(
     encrypted: &[u8],
@@ -600,8 +603,6 @@ fn decrypt_content(
     iv: &[u8],
     algorithm: EncryptionAlgorithm,
 ) -> Result<Vec<u8>> {
-    use cbc::cipher::{BlockModeDecrypt, KeyIvInit};
-
     // Verify IV size
     let expected_iv_size = algorithm.block_size();
     if iv.len() != expected_iv_size {
@@ -611,6 +612,26 @@ fn decrypt_content(
             iv.len()
         )));
     }
+
+    #[cfg(feature = "fips")]
+    {
+        decrypt_content_fips(encrypted, key, iv, algorithm)
+    }
+    #[cfg(not(feature = "fips"))]
+    {
+        decrypt_content_rustcrypto(encrypted, key, iv, algorithm)
+    }
+}
+
+/// RustCrypto-backed symmetric decryption (non-FIPS builds).
+#[cfg(all(feature = "enveloped", not(feature = "fips")))]
+fn decrypt_content_rustcrypto(
+    encrypted: &[u8],
+    key: &[u8],
+    iv: &[u8],
+    algorithm: EncryptionAlgorithm,
+) -> Result<Vec<u8>> {
+    use cbc::cipher::{BlockModeDecrypt, KeyIvInit};
 
     let decrypted = match algorithm {
         EncryptionAlgorithm::Aes128Cbc => {
@@ -648,6 +669,52 @@ fn decrypt_content(
     };
 
     Ok(decrypted)
+}
+
+/// aws-lc-rs FIPS-module symmetric decryption (FIPS builds).
+///
+/// Supports the FIPS-approved AES-128-CBC and AES-256-CBC. AES-192-CBC and
+/// 3DES-CBC are rejected: aws-lc-rs's cipher API does not expose them, and
+/// 3DES is not approved for this use under FIPS 140-3.
+#[cfg(all(feature = "enveloped", feature = "fips"))]
+fn decrypt_content_fips(
+    encrypted: &[u8],
+    key: &[u8],
+    iv: &[u8],
+    algorithm: EncryptionAlgorithm,
+) -> Result<Vec<u8>> {
+    use aws_lc_rs::cipher::{
+        AES_128, AES_256, DecryptionContext, PaddedBlockDecryptingKey, UnboundCipherKey,
+    };
+    use aws_lc_rs::iv::{FixedLength, IV_LEN_128_BIT};
+
+    let alg = match algorithm {
+        EncryptionAlgorithm::Aes128Cbc => &AES_128,
+        EncryptionAlgorithm::Aes256Cbc => &AES_256,
+        other => {
+            return Err(EstError::not_supported(format!(
+                "{} is not a FIPS-approved EnvelopedData cipher; use AES-128-CBC or AES-256-CBC",
+                other.as_str()
+            )));
+        }
+    };
+
+    let unbound = UnboundCipherKey::new(alg, key)
+        .map_err(|_| EstError::operational("Invalid AES key for FIPS decryption"))?;
+    let decrypting_key = PaddedBlockDecryptingKey::cbc_pkcs7(unbound)
+        .map_err(|_| EstError::operational("Failed to create FIPS AES-CBC decryptor"))?;
+
+    let iv_fixed = FixedLength::<IV_LEN_128_BIT>::try_from(iv)
+        .map_err(|_| EstError::operational("Invalid AES-CBC IV length"))?;
+    let context = DecryptionContext::Iv128(iv_fixed);
+
+    // aws-lc-rs decrypts in place and returns the unpadded plaintext slice.
+    let mut in_out = encrypted.to_vec();
+    let plaintext = decrypting_key
+        .decrypt(&mut in_out, context)
+        .map_err(|_| EstError::operational("FIPS AES-CBC decryption failed"))?;
+
+    Ok(plaintext.to_vec())
 }
 
 #[cfg(not(feature = "enveloped"))]
@@ -863,6 +930,9 @@ mod enveloped_tests {
         assert_eq!(&decrypted, plaintext);
     }
 
+    // AES-192-CBC is not exposed by the aws-lc-rs cipher API; under `fips` the
+    // FIPS path rejects it, so this RustCrypto-only roundtrip is non-FIPS.
+    #[cfg(not(feature = "fips"))]
     #[test]
     fn test_aes192_cbc_encrypt_decrypt_roundtrip() {
         let key = [0x11u8; 24];
@@ -873,6 +943,20 @@ mod enveloped_tests {
         let decrypted =
             decrypt_content(&ciphertext, &key, &iv, EncryptionAlgorithm::Aes192Cbc).unwrap();
         assert_eq!(&decrypted, plaintext);
+    }
+
+    // Under `fips`, AES-192-CBC must be rejected (not a FIPS/aws-lc cipher).
+    #[cfg(feature = "fips")]
+    #[test]
+    fn test_aes192_cbc_rejected_under_fips() {
+        let key = [0x11u8; 24];
+        let iv = [0x22u8; 16];
+        let ciphertext =
+            encrypt_aes_cbc(b"AES-192 test", &key, &iv, EncryptionAlgorithm::Aes192Cbc);
+        assert!(
+            decrypt_content(&ciphertext, &key, &iv, EncryptionAlgorithm::Aes192Cbc).is_err(),
+            "AES-192-CBC must be rejected under fips"
+        );
     }
 
     #[test]
@@ -887,6 +971,9 @@ mod enveloped_tests {
         assert_eq!(&decrypted, plaintext);
     }
 
+    // 3DES is not exposed by aws-lc-rs and not approved for this use under FIPS;
+    // under `fips` the FIPS path rejects it, so this roundtrip is non-FIPS only.
+    #[cfg(not(feature = "fips"))]
     #[test]
     fn test_3des_cbc_encrypt_decrypt_roundtrip() {
         let key = [0x55u8; 24];
@@ -897,6 +984,20 @@ mod enveloped_tests {
         let decrypted =
             decrypt_content(&ciphertext, &key, &iv, EncryptionAlgorithm::TripleDesCbc).unwrap();
         assert_eq!(&decrypted, plaintext);
+    }
+
+    // Under `fips`, 3DES-CBC must be rejected.
+    #[cfg(feature = "fips")]
+    #[test]
+    fn test_3des_cbc_rejected_under_fips() {
+        let key = [0x55u8; 24];
+        let iv = [0x66u8; 8];
+        let ciphertext =
+            encrypt_aes_cbc(b"3DES test", &key, &iv, EncryptionAlgorithm::TripleDesCbc);
+        assert!(
+            decrypt_content(&ciphertext, &key, &iv, EncryptionAlgorithm::TripleDesCbc).is_err(),
+            "3DES-CBC must be rejected under fips"
+        );
     }
 
     #[test]
