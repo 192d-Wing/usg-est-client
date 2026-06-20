@@ -68,9 +68,10 @@ use windows::Win32::Foundation::GetLastError;
 use windows::Win32::Security::Cryptography::{
     CERT_CONTEXT, CERT_FIND_HASH, CERT_FIND_SUBJECT_STR, CERT_FRIENDLY_NAME_PROP_ID,
     CERT_KEY_PROV_INFO_PROP_ID, CERT_OPEN_STORE_FLAGS, CERT_QUERY_ENCODING_TYPE,
-    CERT_STORE_ADD_REPLACE_EXISTING, CERT_STORE_PROV_SYSTEM_W, CERT_SYSTEM_STORE_CURRENT_USER,
-    CERT_SYSTEM_STORE_LOCAL_MACHINE, CRYPT_KEY_FLAGS, CRYPT_KEY_PROV_INFO, CertCloseStore,
-    CertDeleteCertificateFromStore, CertEnumCertificatesInStore, CertFindCertificateInStore,
+    CERT_SHA1_HASH_PROP_ID, CERT_STORE_ADD_REPLACE_EXISTING, CERT_STORE_PROV_SYSTEM_W,
+    CERT_SYSTEM_STORE_CURRENT_USER, CERT_SYSTEM_STORE_LOCAL_MACHINE, CRYPT_KEY_FLAGS,
+    CRYPT_KEY_PROV_INFO, CertCloseStore, CertDeleteCertificateFromStore,
+    CertEnumCertificatesInStore, CertFindCertificateInStore, CertGetCertificateContextProperty,
     CertOpenStore, CertSetCertificateContextProperty, HCERTSTORE,
 };
 
@@ -936,8 +937,6 @@ impl CertStore {
     /// Extract certificate information from a CERT_CONTEXT.
     #[cfg(windows)]
     fn extract_cert_info(&self, context: *const CERT_CONTEXT) -> Option<StoredCertificate> {
-        use sha1::{Digest, Sha1};
-
         if context.is_null() {
             return None;
         }
@@ -977,16 +976,27 @@ impl CertStore {
             let der_bytes =
                 std::slice::from_raw_parts(ctx.pbCertEncoded, ctx.cbCertEncoded as usize).to_vec();
 
-            // Calculate the SHA-1 thumbprint (the Windows certificate thumbprint convention).
-            let mut hasher = Sha1::new();
-            hasher.update(&der_bytes);
-            let hash = hasher.finalize();
-            let thumbprint = hash
-                .iter()
-                .take(20) // SHA-1 is 20 bytes
-                .map(|b| format!("{:02X}", b))
-                .collect::<Vec<_>>()
-                .join(":");
+            // Read the SHA-1 thumbprint that Windows computed for this certificate
+            // (the cert-store thumbprint convention). Using Windows' own value avoids
+            // hashing the cert ourselves (and keeps SHA-1 out of our dependency tree).
+            let mut thumb = [0u8; 20];
+            let mut thumb_len = thumb.len() as u32;
+            let thumbprint = match CertGetCertificateContextProperty(
+                context,
+                CERT_SHA1_HASH_PROP_ID,
+                Some(thumb.as_mut_ptr() as *mut core::ffi::c_void),
+                &mut thumb_len,
+            ) {
+                Ok(()) => thumb[..thumb_len as usize]
+                    .iter()
+                    .map(|b| format!("{:02X}", b))
+                    .collect::<Vec<_>>()
+                    .join(":"),
+                Err(e) => {
+                    tracing::warn!("Failed to read certificate thumbprint: {}", e);
+                    String::new()
+                }
+            };
 
             // Get subject and issuer (simplified - real impl would decode the cert)
             let _cert_info = &*ctx.pCertInfo;
