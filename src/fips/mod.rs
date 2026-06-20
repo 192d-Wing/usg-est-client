@@ -16,7 +16,7 @@
 //! Under the `fips` feature this crate links the **aws-lc-rs FIPS** cryptographic
 //! module and routes TLS, key generation, signing, and certificate-signature
 //! verification through it. On Windows, FIPS comes from the CNG FIPS module
-//! instead (see [`crate::windows`] and `CngKeyProvider::new_fips`).
+//! instead (see the `windows` feature and `CngKeyProvider::new_fips`).
 //!
 //! ## FIPS mode
 //!
