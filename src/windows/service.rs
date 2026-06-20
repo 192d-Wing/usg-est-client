@@ -81,8 +81,8 @@ use std::time::Duration;
 use windows_service::{
     define_windows_service,
     service::{
-        ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
-        ServiceType,
+        ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState as WinServiceState,
+        ServiceStatus, ServiceType,
     },
     service_control_handler::{self, ServiceControlHandlerResult, ServiceStatusHandle},
     service_dispatcher,
@@ -124,15 +124,15 @@ pub enum ServiceStateValue {
 impl ServiceStateValue {
     /// Convert to Windows ServiceState.
     #[cfg(windows)]
-    pub fn to_service_state(self) -> ServiceState {
+    pub fn to_service_state(self) -> WinServiceState {
         match self {
-            Self::Stopped => ServiceState::Stopped,
-            Self::StartPending => ServiceState::StartPending,
-            Self::StopPending => ServiceState::StopPending,
-            Self::Running => ServiceState::Running,
-            Self::ContinuePending => ServiceState::ContinuePending,
-            Self::PausePending => ServiceState::PausePending,
-            Self::Paused => ServiceState::Paused,
+            Self::Stopped => WinServiceState::Stopped,
+            Self::StartPending => WinServiceState::StartPending,
+            Self::StopPending => WinServiceState::StopPending,
+            Self::Running => WinServiceState::Running,
+            Self::ContinuePending => WinServiceState::ContinuePending,
+            Self::PausePending => WinServiceState::PausePending,
+            Self::Paused => WinServiceState::Paused,
         }
     }
 
@@ -507,7 +507,7 @@ fn run_service(_arguments: Vec<std::ffi::OsString>) -> Result<()> {
     // Report that we're starting
     let status = ServiceStatus {
         service_type: SERVICE_TYPE,
-        current_state: ServiceState::StartPending,
+        current_state: WinServiceState::StartPending,
         controls_accepted: ServiceControlAccept::empty(),
         exit_code: ServiceExitCode::Win32(0),
         checkpoint: 0,
@@ -525,7 +525,7 @@ fn run_service(_arguments: Vec<std::ffi::OsString>) -> Result<()> {
     // Report that we're running
     let status = ServiceStatus {
         service_type: SERVICE_TYPE,
-        current_state: ServiceState::Running,
+        current_state: WinServiceState::Running,
         controls_accepted: ServiceControlAccept::STOP
             | ServiceControlAccept::PAUSE_CONTINUE
             | ServiceControlAccept::SHUTDOWN,
@@ -544,7 +544,7 @@ fn run_service(_arguments: Vec<std::ffi::OsString>) -> Result<()> {
     // Report that we've stopped
     let status = ServiceStatus {
         service_type: SERVICE_TYPE,
-        current_state: ServiceState::Stopped,
+        current_state: WinServiceState::Stopped,
         controls_accepted: ServiceControlAccept::empty(),
         exit_code: ServiceExitCode::Win32(0),
         checkpoint: 0,
@@ -718,7 +718,9 @@ pub mod installer {
                 .collect(),
             account_name: config.account.account_name().map(|s| s.into()),
             account_password: match &config.account {
-                ServiceAccount::Custom { password, .. } => password.clone(),
+                ServiceAccount::Custom { password, .. } => {
+                    password.clone().map(std::ffi::OsString::from)
+                }
                 _ => None,
             },
         };
@@ -828,13 +830,14 @@ pub mod installer {
             .map_err(|e| EstError::platform(format!("Failed to query status: {}", e)))?;
 
         Ok(match status.current_state {
-            ServiceState::Stopped => ServiceStateValue::Stopped,
-            ServiceState::StartPending => ServiceStateValue::StartPending,
-            ServiceState::StopPending => ServiceStateValue::StopPending,
-            ServiceState::Running => ServiceStateValue::Running,
-            ServiceState::ContinuePending => ServiceStateValue::ContinuePending,
-            ServiceState::PausePending => ServiceStateValue::PausePending,
-            ServiceState::Paused => ServiceStateValue::Paused,
+            WinServiceState::Stopped => ServiceStateValue::Stopped,
+            WinServiceState::StartPending => ServiceStateValue::StartPending,
+            WinServiceState::StopPending => ServiceStateValue::StopPending,
+            WinServiceState::Running => ServiceStateValue::Running,
+            WinServiceState::ContinuePending => ServiceStateValue::ContinuePending,
+            WinServiceState::PausePending => ServiceStateValue::PausePending,
+            WinServiceState::Paused => ServiceStateValue::Paused,
+            _ => ServiceStateValue::Stopped,
         })
     }
 

@@ -42,7 +42,7 @@ fn main() {
 }
 
 #[cfg(windows)]
-fn main() {
+fn main() -> std::process::ExitCode {
     use std::env;
     use std::process::ExitCode;
 
@@ -205,10 +205,10 @@ fn detect_key_algorithm(
     if pem.contains("BEGIN RSA PRIVATE KEY") || pem.contains("BEGIN PRIVATE KEY") {
         // Would need to parse to determine exact size
         // For now, default to RSA-2048
-        Ok(KeyAlgorithm::Rsa2048)
+        Ok(KeyAlgorithm::Rsa { bits: 2048 })
     } else if pem.contains("BEGIN EC PRIVATE KEY") {
         // Would need to parse to determine curve
-        Ok(KeyAlgorithm::EccP256)
+        Ok(KeyAlgorithm::EcdsaP256)
     } else {
         Err("Unsupported key format".into())
     }
