@@ -191,7 +191,7 @@ struct OcspRequest {
 #[derive(Clone, Debug, Eq, PartialEq, Sequence)]
 struct TbsRequest {
     /// List of certificate status requests
-    request_list: der::asn1::SequenceOf<SingleRequest, 1>,
+    request_list: Vec<SingleRequest>,
     // We're omitting optional fields (version, requestorName, requestExtensions) for simplicity
 }
 
@@ -972,7 +972,7 @@ impl RevocationChecker {
         cert: &Certificate,
         crl: &CertificateList,
     ) -> Result<RevocationStatus> {
-        let cert_serial = &cert.tbs_certificate().serial_number();
+        let cert_serial = cert.tbs_certificate().serial_number();
 
         // Check if there are any revoked certificates
         if let Some(revoked_certs) = &crl.tbs_cert_list.revoked_certificates {
@@ -1181,10 +1181,7 @@ impl RevocationChecker {
         let single_request = SingleRequest { req_cert: cert_id };
 
         // Create request list with one request
-        let mut request_list = der::asn1::SequenceOf::<SingleRequest, 1>::new();
-        request_list
-            .add(single_request)
-            .map_err(|e| EstError::operational(format!("Failed to add request to list: {}", e)))?;
+        let request_list = vec![single_request];
 
         // Create TBS request
         let tbs_request = TbsRequest { request_list };
@@ -1223,7 +1220,7 @@ impl RevocationChecker {
         // Compute issuer key hash (SHA-256 of issuer public key, excluding tag and length)
         let issuer_public_key_bytes = issuer
             .tbs_certificate()
-            .subject_public_key_info
+            .subject_public_key_info()
             .subject_public_key
             .as_bytes()
             .ok_or_else(|| EstError::operational("Issuer public key has unused bits"))?;

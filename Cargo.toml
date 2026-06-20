@@ -39,8 +39,8 @@ spki = { version = "0.8", features = ["alloc"] }
 const-oid = { version = "0.10", features = ["db"] }
 sha2 = "0.11"
 rsa = { version = "0.10.0-rc.18", features = ["sha2"] }
-p256 = { version = "0.14.0-rc.9", features = ["ecdsa"] }
-p384 = { version = "0.14.0-rc.9", features = ["ecdsa"] }
+p256 = { version = "0.14.0-rc.12", features = ["ecdsa"] }
+p384 = { version = "0.14.0-rc.12", features = ["ecdsa"] }
 signature = "3.0"
 zeroize = { version = "1.8", features = ["alloc", "derive"] }
 
@@ -91,7 +91,7 @@ opentelemetry_sdk = { version = "0.32.1", optional = true, features = [
 
 # Symmetric encryption for EnvelopedData decryption (optional)
 aes = { version = "0.9", optional = true }
-cbc = { version = "0.2", optional = true }
+cbc = { version = "0.2", features = ["alloc"], optional = true }
 des = { version = "0.9", optional = true }
 aes-gcm = { version = "0.10", optional = true }
 hmac = { version = "0.13", optional = true }

@@ -825,7 +825,7 @@ impl CertificateValidator {
         use der::Encode;
 
         // Get the signature algorithm from the certificate
-        let sig_alg = &cert.signature_algorithm;
+        let sig_alg = cert.signature_algorithm();
         let sig_alg_oid = &sig_alg.oid;
 
         // Get the issuer's public key
@@ -843,7 +843,7 @@ impl CertificateValidator {
         })?;
 
         // Get the signature bytes
-        let signature = cert.signature.as_bytes().ok_or_else(|| {
+        let signature = cert.signature().as_bytes().ok_or_else(|| {
             EstError::operational("Certificate signature has unused bits (not byte-aligned)")
         })?;
 
