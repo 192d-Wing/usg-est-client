@@ -114,11 +114,11 @@ if let Some(ref key_path) = config.storage.key_path {
 let cng_provider = CngKeyProvider::with_provider(cng_provider_name)?;
 
 // Generate key pair in CNG
-let label = format!("{}-{}", cn, chrono::Utc::now().timestamp());
-let key_handle = cng_provider.generate_key_pair(key_algorithm, Some(&label))?;
+let label = format!("{}-{}", cn, time::OffsetDateTime::now_utc().unix_timestamp());
+let key_handle = cng_provider.generate_key_pair(key_algorithm, Some(&label)).await?;
 
-// Build CSR using CNG-backed key
-let (csr_der, _) = csr_builder.build_with_provider(&cng_provider, &key_handle)?;
+// Build CSR using CNG-backed key (HsmCsrBuilder exposes build_with_provider)
+let csr_der = csr_builder.build_with_provider(&cng_provider, &key_handle).await?;
 
 // Associate CNG private key with certificate
 let container_name = CngKeyProvider::get_container_name(&key_handle)?;

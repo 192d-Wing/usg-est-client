@@ -374,7 +374,7 @@ impl AutoEnrollConfig {
             let result = CredReadW(
                 PCWSTR::from_raw(target_wide.as_ptr()),
                 CRED_TYPE_GENERIC,
-                None, // flags (reserved, must be 0)
+                None, // flags (reserved)
                 &mut pcredential,
             );
 

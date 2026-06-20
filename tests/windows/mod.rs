@@ -7,3 +7,12 @@
 
 mod cng_tests;
 mod enrollment_cng_tests;
+
+/// Seconds since the Unix epoch, used to build unique key labels in tests.
+#[cfg(feature = "windows-service")]
+pub(crate) fn unique_ts() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}

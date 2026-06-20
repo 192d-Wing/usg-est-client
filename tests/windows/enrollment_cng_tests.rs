@@ -10,13 +10,7 @@ use usg_est_client::error::Result;
 use usg_est_client::hsm::{KeyAlgorithm, KeyProvider};
 use usg_est_client::windows::cng::{CngKeyProvider, providers};
 
-/// Seconds since the Unix epoch, used to build unique key labels in tests.
-fn unique_ts() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-}
+use super::unique_ts;
 
 /// Test that enrollment configuration properly handles CNG provider
 #[tokio::test]
