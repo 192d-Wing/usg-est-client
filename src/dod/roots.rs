@@ -240,11 +240,7 @@ fn format_time(time: &x509_cert::time::Time) -> String {
 
 /// Calculate SHA-256 fingerprint of certificate
 fn calculate_fingerprint_sha256(der_bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-
-    let mut hasher = Sha256::new();
-    hasher.update(der_bytes);
-    let result = hasher.finalize();
+    let result = crate::fips_crypto::sha256(der_bytes);
 
     // Format as hex string with colons
     result
