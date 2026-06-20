@@ -151,7 +151,7 @@ pub mod hsm;
 #[cfg(feature = "fips")]
 pub mod fips;
 
-#[cfg(feature = "fips-tls")]
+#[cfg(feature = "fips")]
 pub mod fips_tls;
 
 #[cfg(feature = "dod-pki")]

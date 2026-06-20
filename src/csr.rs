@@ -1736,7 +1736,7 @@ mod hsm_tests {
     }
 
     /// The feature-selected default provider (software, or aws-lc-rs FIPS under
-    /// `fips-tls`) must produce a CSR whose signature verifies over its TBS.
+    /// `fips`) must produce a CSR whose signature verifies over its TBS.
     #[tokio::test]
     async fn test_default_key_provider_csr_verifies() {
         use crate::hsm::default_key_provider;

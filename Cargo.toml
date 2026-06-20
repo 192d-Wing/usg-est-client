@@ -11,9 +11,6 @@ repository = "https://github.com/192d-Wing/usg-est-client"
 readme = "README.md"
 
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(ossl300)'] }
-
 [dependencies]
 # Async runtime
 tokio = { version = "1.52", features = ["rt-multi-thread", "sync"] }
@@ -27,10 +24,13 @@ native-tls = { version = "0.2", optional = true }
 
 # TLS
 rustls = "0.23.40"
-# FIPS-validated crypto module (aws-lc-rs FIPS) used as the rustls TLS provider.
-# Phase 1 of the FIPS migration; the FIPS module (aws-lc-fips-sys) builds on
-# Linux (x86_64/aarch64) only. Windows uses the CNG FIPS module instead.
-aws-lc-rs = { version = "1.13", optional = true }
+# FIPS-validated crypto module (aws-lc-rs FIPS) used as the rustls TLS provider
+# and for PKI operations (keygen, signing, verification) under the `fips` feature.
+# The FIPS module (aws-lc-fips-sys) builds on Linux (x86_64/aarch64) only; Windows
+# uses the CNG FIPS module instead. Pinned to an exact version: FIPS 140 validation
+# (CMVP) attaches to a specific module version, so the build must not silently roll
+# forward off the validated version. See docs/fips-compliance.md.
+aws-lc-rs = { version = "=1.17.0", optional = true }
 rustls-pki-types = { version = "1.14", features = ["alloc"] }
 webpki-roots = "1.0"
 
@@ -99,10 +99,6 @@ cbc = { version = "0.2", features = ["alloc"], optional = true }
 des = { version = "0.9", optional = true }
 aes-gcm = { version = "0.10", optional = true }
 hmac = { version = "0.13", optional = true }
-
-# FIPS 140-2 compliance (optional, for DoD deployment)
-openssl = { version = "0.10", optional = true, features = ["vendored"] }
-openssl-sys = { version = "0.9", optional = true, features = ["vendored"] }
 
 # CLI support (optional, for est-enroll binary)
 clap = { version = "4.6", features = ["derive"], optional = true }
@@ -244,21 +240,26 @@ windows = ["dep:windows", "auto-enroll", "hsm"]
 # Note: Only compiles on Windows targets
 windows-service = ["windows", "dep:windows-service", "tracing-subscriber"]
 
-# FIPS 140-2 cryptographic compliance (for DoD ATO)
-# Uses OpenSSL FIPS module instead of rustls for FIPS-validated cryptography
-# Requires: OpenSSL 3.0+ with FIPS module installed and configured
-# NOTE: legacy/aspirational path — see fips-tls below. Being superseded by the
-# aws-lc-rs FIPS migration; consolidation tracked for a later phase.
-fips = ["openssl", "openssl-sys", "native-tls-backend"]
-
-# FIPS-validated TLS via the aws-lc-rs FIPS cryptographic module (rustls provider).
-# Phase 1 of the FIPS migration. Linux/macOS only — enabling on Windows will not
-# build aws-lc-fips-sys; Windows uses the CNG FIPS module. Will be folded into a
-# single `fips` feature once the PKI phases (keygen/sign/verify) also route through
-# aws-lc-rs / CNG.
+# FIPS 140-validated cryptography via the aws-lc-rs FIPS module.
+# This is the unified FIPS feature: TLS (rustls provider) plus PKI operations
+# (key generation, CSR/signature signing, certificate-chain verification) all run
+# through the aws-lc-rs FIPS module.
+#
+# Linux only — `aws-lc-fips-sys` builds on Linux x86_64/aarch64 (its build deps
+# Go + cmake are preinstalled on the GitHub-hosted ubuntu runners). On Windows,
+# FIPS comes from the CNG FIPS module instead (see the `windows` feature and
+# `CngKeyProvider::new_fips`); do not enable `fips` on Windows.
+#
 # Adds `hsm` + `csr-gen` so the KeyProvider trait + HsmCsrBuilder (manual,
 # rcgen/ring-free CSR signing) are available for the FIPS AwsLcKeyProvider.
-fips-tls = ["dep:aws-lc-rs", "aws-lc-rs/fips", "rustls/fips", "hsm", "csr-gen"]
+#
+# NOTE: this build links the aws-lc-rs FIPS module but is NOT, by itself, a
+# CMVP-validated operating environment — see docs/fips-compliance.md.
+fips = ["dep:aws-lc-rs", "aws-lc-rs/fips", "rustls/fips", "hsm", "csr-gen"]
+
+# Deprecated alias for `fips`, retained for compatibility with the Phase 1-4
+# migration. Prefer `fips`.
+fips-tls = ["fips"]
 
 # DoD PKI integration (DoD Root CAs, certificate policies, CAC/PIV support)
 # Provides DoD-specific trust anchors and policy validation
