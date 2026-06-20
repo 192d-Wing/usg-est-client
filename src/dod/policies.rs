@@ -48,7 +48,6 @@
 
 use crate::error::{EstError, Result};
 use const_oid::ObjectIdentifier;
-use der::Reader;
 use x509_cert::Certificate;
 
 /// DoD Certificate Policy arc (2.16.840.1.101.2.1.11)
