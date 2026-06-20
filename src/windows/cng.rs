@@ -86,16 +86,13 @@ use crate::hsm::{KeyAlgorithm, KeyHandle, KeyMetadata, KeyProvider, ProviderInfo
 use async_trait::async_trait;
 use spki::{AlgorithmIdentifierOwned, SubjectPublicKeyInfoOwned};
 use std::collections::HashMap;
-use std::sync::Arc;
 
 #[cfg(windows)]
 use windows::Win32::Security::Cryptography::{
-    BCRYPT_ALG_HANDLE, BCRYPT_ECCPUBLIC_BLOB, BCRYPT_ECDSA_P256_ALGORITHM,
-    BCRYPT_ECDSA_P384_ALGORITHM, BCRYPT_HASH_HANDLE, BCRYPT_KEY_HANDLE,
-    BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS, BCRYPT_RSA_ALGORITHM, BCRYPT_RSAPUBLIC_BLOB,
-    BCRYPT_SHA256_ALGORITHM, BCryptCloseAlgorithmProvider, BCryptCreateHash, BCryptDestroyHash,
-    BCryptDestroyKey, BCryptExportKey, BCryptFinishHash, BCryptGenerateKeyPair, BCryptHashData,
-    BCryptOpenAlgorithmProvider, BCryptSignHash, CERT_KEY_SPEC, NCRYPT_FLAGS, NCRYPT_HANDLE,
+    BCRYPT_ALG_HANDLE, BCRYPT_ECCPUBLIC_BLOB, BCRYPT_HASH_HANDLE,
+    BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS, BCRYPT_RSAPUBLIC_BLOB, BCRYPT_SHA256_ALGORITHM,
+    BCryptCloseAlgorithmProvider, BCryptCreateHash, BCryptDestroyHash, BCryptFinishHash,
+    BCryptHashData, BCryptOpenAlgorithmProvider, CERT_KEY_SPEC, NCRYPT_FLAGS, NCRYPT_HANDLE,
     NCRYPT_KEY_HANDLE, NCRYPT_PROV_HANDLE, NCryptCreatePersistedKey, NCryptDeleteKey,
     NCryptExportKey, NCryptFinalizeKey, NCryptFreeObject, NCryptGetProperty, NCryptOpenKey,
     NCryptOpenStorageProvider, NCryptSetProperty, NCryptSignHash,
@@ -157,6 +154,7 @@ impl Default for KeyGenerationOptions {
 ///
 /// This provider uses Windows Cryptography Next Generation (CNG) APIs
 /// for key management and cryptographic operations.
+#[derive(Debug)]
 pub struct CngKeyProvider {
     /// The CNG storage provider name.
     provider_name: String,

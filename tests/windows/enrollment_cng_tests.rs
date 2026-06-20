@@ -5,23 +5,28 @@
 
 #![cfg(all(windows, feature = "windows-service"))]
 
-use usg_est_client::auto_enroll::config::{
-    AutoEnrollConfig, CertificateConfig, EstConfig, StorageConfig,
-};
+use usg_est_client::auto_enroll::AutoEnrollConfig;
 use usg_est_client::error::Result;
 use usg_est_client::hsm::{KeyAlgorithm, KeyProvider};
 use usg_est_client::windows::cng::{CngKeyProvider, providers};
 
+/// Seconds since the Unix epoch, used to build unique key labels in tests.
+fn unique_ts() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
 /// Test that enrollment configuration properly handles CNG provider
-#[test]
-fn test_enrollment_config_cng_provider_default() {
+#[tokio::test]
+async fn test_enrollment_config_cng_provider_default() {
     let toml = r#"
 [est]
 url = "https://est.example.com/.well-known/est"
 
 [certificate]
 common_name = "test-device"
-key_algorithm = "RSA-2048"
 
 [storage]
 windows_store = "LocalMachine\\My"
@@ -34,15 +39,14 @@ windows_store = "LocalMachine\\My"
 }
 
 /// Test that enrollment configuration properly parses explicit CNG provider
-#[test]
-fn test_enrollment_config_cng_provider_explicit() {
+#[tokio::test]
+async fn test_enrollment_config_cng_provider_explicit() {
     let toml = r#"
 [est]
 url = "https://est.example.com/.well-known/est"
 
 [certificate]
 common_name = "test-device"
-key_algorithm = "RSA-2048"
 
 [storage]
 windows_store = "LocalMachine\\My"
@@ -58,16 +62,15 @@ cng_provider = "Microsoft Platform Crypto Provider"
 }
 
 /// Test that deprecated key_path is still parsed but ignored
-#[test]
+#[tokio::test]
 #[allow(deprecated)]
-fn test_enrollment_config_deprecated_key_path() {
+async fn test_enrollment_config_deprecated_key_path() {
     let toml = r#"
 [est]
 url = "https://est.example.com/.well-known/est"
 
 [certificate]
 common_name = "test-device"
-key_algorithm = "RSA-2048"
 
 [storage]
 windows_store = "LocalMachine\\My"
@@ -85,14 +88,16 @@ cng_provider = "Microsoft Software Key Storage Provider"
 }
 
 /// Test key algorithm parsing from configuration
-#[test]
-fn test_key_algorithm_parsing() {
+#[tokio::test]
+async fn test_key_algorithm_parsing() {
+    use usg_est_client::auto_enroll::KeyAlgorithm as ConfigKeyAlgorithm;
+
     let test_cases = vec![
-        ("RSA-2048", KeyAlgorithm::Rsa2048),
-        ("RSA-3072", KeyAlgorithm::Rsa3072),
-        ("RSA-4096", KeyAlgorithm::Rsa4096),
-        ("ECDSA-P256", KeyAlgorithm::EccP256),
-        ("ECDSA-P384", KeyAlgorithm::EccP384),
+        ("rsa-2048", ConfigKeyAlgorithm::Rsa2048),
+        ("rsa-3072", ConfigKeyAlgorithm::Rsa3072),
+        ("rsa-4096", ConfigKeyAlgorithm::Rsa4096),
+        ("ecdsa-p256", ConfigKeyAlgorithm::EcdsaP256),
+        ("ecdsa-p384", ConfigKeyAlgorithm::EcdsaP384),
     ];
 
     for (config_str, expected_algo) in test_cases {
@@ -103,7 +108,9 @@ url = "https://est.example.com/.well-known/est"
 
 [certificate]
 common_name = "test-device"
-key_algorithm = "{}"
+
+[certificate.key]
+algorithm = "{}"
 
 [storage]
 windows_store = "LocalMachine\\My"
@@ -113,26 +120,20 @@ windows_store = "LocalMachine\\My"
 
         let config: AutoEnrollConfig = toml::from_str(&toml).expect("Failed to parse config");
 
-        // Verify algorithm is parsed correctly
-        assert_eq!(config.certificate.key_algorithm.as_str(), config_str);
-
-        // Verify we can create the actual KeyAlgorithm
-        let key_algorithm = match config.certificate.key_algorithm.as_str() {
-            "RSA-2048" => KeyAlgorithm::Rsa2048,
-            "RSA-3072" => KeyAlgorithm::Rsa3072,
-            "RSA-4096" => KeyAlgorithm::Rsa4096,
-            "ECDSA-P256" => KeyAlgorithm::EccP256,
-            "ECDSA-P384" => KeyAlgorithm::EccP384,
-            _ => panic!("Unsupported algorithm"),
-        };
-
-        assert_eq!(key_algorithm, expected_algo);
+        // Verify the key algorithm is parsed correctly from the [certificate.key] section.
+        let algo = config
+            .certificate
+            .key
+            .as_ref()
+            .expect("key section present")
+            .algorithm;
+        assert_eq!(algo, expected_algo);
     }
 }
 
 /// Test CNG provider selection logic
-#[test]
-fn test_cng_provider_selection() -> Result<()> {
+#[tokio::test]
+async fn test_cng_provider_selection() -> Result<()> {
     // Test default (None) should use SOFTWARE
     let provider_name = None::<&str>.map(|s| s).unwrap_or(providers::SOFTWARE);
     assert_eq!(provider_name, providers::SOFTWARE);
@@ -150,16 +151,18 @@ fn test_cng_provider_selection() -> Result<()> {
 }
 
 /// Test enrollment workflow key generation parameters
-#[test]
-fn test_enrollment_key_generation_parameters() -> Result<()> {
+#[tokio::test]
+async fn test_enrollment_key_generation_parameters() -> Result<()> {
     let provider = CngKeyProvider::new()?;
 
     // Test label generation (simulating enrollment workflow)
     let cn = "test-device.example.com";
-    let timestamp = chrono::Utc::now().timestamp();
+    let timestamp = unique_ts();
     let label = format!("{}-{}", cn, timestamp);
 
-    let key_handle = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some(&label))?;
+    let key_handle = provider
+        .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some(&label))
+        .await?;
 
     // Verify label is preserved in metadata
     assert_eq!(key_handle.metadata().label, Some(label.clone()));
@@ -172,18 +175,22 @@ fn test_enrollment_key_generation_parameters() -> Result<()> {
 }
 
 /// Test renewal workflow key generation (fresh keys)
-#[test]
-fn test_renewal_workflow_fresh_keys() -> Result<()> {
+#[tokio::test]
+async fn test_renewal_workflow_fresh_keys() -> Result<()> {
     let provider = CngKeyProvider::new()?;
 
     // Simulate original key
     let original_label = "device-1234567890";
-    let original_key = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some(original_label))?;
+    let original_key = provider
+        .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some(original_label))
+        .await?;
     let original_container = CngKeyProvider::get_container_name(&original_key)?;
 
     // Simulate renewal key (should be different)
-    let renewal_label = format!("{}-renewal-{}", "device", chrono::Utc::now().timestamp());
-    let renewal_key = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some(&renewal_label))?;
+    let renewal_label = format!("{}-renewal-{}", "device", unique_ts());
+    let renewal_key = provider
+        .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some(&renewal_label))
+        .await?;
     let renewal_container = CngKeyProvider::get_container_name(&renewal_key)?;
 
     // Verify they are different keys
@@ -194,8 +201,8 @@ fn test_renewal_workflow_fresh_keys() -> Result<()> {
 }
 
 /// Test that enrollment doesn't create file-based keys
-#[test]
-fn test_no_file_based_keys_created() {
+#[tokio::test]
+async fn test_no_file_based_keys_created() {
     // This is a negative test - verify that the enrollment workflow
     // does NOT create any PEM files
 
@@ -216,15 +223,17 @@ fn test_no_file_based_keys_created() {
 }
 
 /// Test CNG key container naming convention
-#[test]
-fn test_cng_container_naming_convention() -> Result<()> {
+#[tokio::test]
+async fn test_cng_container_naming_convention() -> Result<()> {
     let provider = CngKeyProvider::new()?;
 
     // Test with various labels
     let test_labels = vec!["simple", "with-dashes", "with.dots", "device.example.com"];
 
     for label in test_labels {
-        let key_handle = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some(label))?;
+        let key_handle = provider
+            .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some(label))
+            .await?;
         let container_name = CngKeyProvider::get_container_name(&key_handle)?;
 
         // Verify naming convention: EST-{label}-{timestamp}
@@ -233,7 +242,9 @@ fn test_cng_container_naming_convention() -> Result<()> {
 
         // Verify container name is unique (contains timestamp)
         std::thread::sleep(std::time::Duration::from_millis(10));
-        let key_handle2 = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some(label))?;
+        let key_handle2 = provider
+            .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some(label))
+            .await?;
         let container_name2 = CngKeyProvider::get_container_name(&key_handle2)?;
         assert_ne!(container_name, container_name2);
     }
@@ -242,8 +253,8 @@ fn test_cng_container_naming_convention() -> Result<()> {
 }
 
 /// Test configuration validation for CNG
-#[test]
-fn test_config_validation_cng() {
+#[tokio::test]
+async fn test_config_validation_cng() {
     // Valid configuration with CNG provider
     let valid_toml = r#"
 [est]
@@ -251,43 +262,50 @@ url = "https://est.example.com/.well-known/est"
 
 [certificate]
 common_name = "test-device"
-key_algorithm = "RSA-2048"
+
+[certificate.key]
+algorithm = "rsa-2048"
 
 [storage]
 windows_store = "LocalMachine\\My"
 cng_provider = "Microsoft Software Key Storage Provider"
 "#;
 
-    let result: Result<AutoEnrollConfig, _> = toml::from_str(valid_toml);
+    let result: std::result::Result<AutoEnrollConfig, _> = toml::from_str(valid_toml);
     assert!(result.is_ok());
 
-    // Invalid key algorithm
+    // Invalid key algorithm: not a known variant, so it must fail to parse.
     let invalid_toml = r#"
 [est]
 url = "https://est.example.com/.well-known/est"
 
 [certificate]
 common_name = "test-device"
-key_algorithm = "RSA-1024"
+
+[certificate.key]
+algorithm = "rsa-1024"
 
 [storage]
 windows_store = "LocalMachine\\My"
 "#;
 
-    let config: AutoEnrollConfig = toml::from_str(invalid_toml).unwrap();
-
-    // The config parses but the algorithm is invalid for enrollment
-    assert_eq!(config.certificate.key_algorithm.as_str(), "RSA-1024");
+    let result: std::result::Result<AutoEnrollConfig, _> = toml::from_str(invalid_toml);
+    assert!(
+        result.is_err(),
+        "an unknown key algorithm should fail to parse"
+    );
 }
 
 /// Test memory safety: keys are not leaked
-#[test]
-fn test_cng_key_memory_safety() -> Result<()> {
+#[tokio::test]
+async fn test_cng_key_memory_safety() -> Result<()> {
     let provider = CngKeyProvider::new()?;
 
     // Generate key
-    let label = format!("test-memory-{}", chrono::Utc::now().timestamp());
-    let key_handle = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some(&label))?;
+    let label = format!("test-memory-{}", unique_ts());
+    let key_handle = provider
+        .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some(&label))
+        .await?;
 
     // Get container name (proves key exists)
     let container_name = CngKeyProvider::get_container_name(&key_handle)?;
@@ -304,9 +322,9 @@ fn test_cng_key_memory_safety() -> Result<()> {
 }
 
 /// Test error handling: invalid algorithm
-#[test]
-fn test_error_handling_invalid_algorithm() {
-    let provider = CngKeyProvider::new().unwrap();
+#[tokio::test]
+async fn test_error_handling_invalid_algorithm() {
+    let _provider = CngKeyProvider::new().unwrap();
 
     // This would fail at runtime if we tried to use an invalid algorithm
     // The actual validation happens in the enrollment workflow when parsing config
@@ -319,20 +337,24 @@ fn test_error_handling_invalid_algorithm() {
 }
 
 /// Test CNG provider persistence across calls
-#[test]
-fn test_cng_provider_persistence() -> Result<()> {
+#[tokio::test]
+async fn test_cng_provider_persistence() -> Result<()> {
     // Create provider
     let provider1 = CngKeyProvider::with_provider(providers::SOFTWARE)?;
 
     // Generate key
-    let key1 = provider1.generate_key_pair(KeyAlgorithm::Rsa2048, Some("test1"))?;
+    let key1 = provider1
+        .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some("test1"))
+        .await?;
     let container1 = CngKeyProvider::get_container_name(&key1)?;
 
     // Create new provider instance
     let provider2 = CngKeyProvider::with_provider(providers::SOFTWARE)?;
 
     // Generate another key
-    let key2 = provider2.generate_key_pair(KeyAlgorithm::Rsa2048, Some("test2"))?;
+    let key2 = provider2
+        .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some("test2"))
+        .await?;
     let container2 = CngKeyProvider::get_container_name(&key2)?;
 
     // Both keys should exist in CNG storage
@@ -346,9 +368,9 @@ fn test_cng_provider_persistence() -> Result<()> {
 }
 
 /// Stress test: Generate many keys rapidly
-#[test]
+#[tokio::test]
 #[ignore] // Run with --ignored flag for stress tests
-fn stress_test_rapid_key_generation() -> Result<()> {
+async fn stress_test_rapid_key_generation() -> Result<()> {
     let provider = CngKeyProvider::new()?;
     let count = 50;
 
@@ -358,7 +380,9 @@ fn stress_test_rapid_key_generation() -> Result<()> {
 
     for i in 0..count {
         let label = format!("stress-test-{}", i);
-        let _key = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some(&label))?;
+        let _key = provider
+            .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some(&label))
+            .await?;
 
         if i % 10 == 0 {
             println!("  Generated {} keys", i);

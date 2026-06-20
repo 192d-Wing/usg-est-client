@@ -716,10 +716,12 @@ mod tests {
 
     #[test]
     fn test_credential_source_resolve_env() {
-        std::env::set_var("TEST_CRED_VAR", "secret_value");
+        // SAFETY: single-threaded test; no other thread reads/writes the env concurrently.
+        unsafe { std::env::set_var("TEST_CRED_VAR", "secret_value") };
         let source = CredentialSource::Environment("TEST_CRED_VAR".into());
         assert_eq!(source.resolve().unwrap(), "secret_value");
-        std::env::remove_var("TEST_CRED_VAR");
+        // SAFETY: see above.
+        unsafe { std::env::remove_var("TEST_CRED_VAR") };
     }
 
     #[test]

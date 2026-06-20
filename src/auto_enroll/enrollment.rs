@@ -258,8 +258,8 @@ pub async fn perform_enrollment(config: &AutoEnrollConfig) -> Result<()> {
 /// Returns `true` if the certificate exists and is within the renewal threshold.
 #[cfg(all(windows, feature = "windows"))]
 pub async fn check_renewal(config: &AutoEnrollConfig) -> Result<bool> {
-    // Get machine identity
-    let identity = MachineIdentity::current()?;
+    // Validate machine identity is available (fails early otherwise).
+    let _identity = MachineIdentity::current()?;
 
     // Open certificate store
     let store_path = config
@@ -321,8 +321,8 @@ pub async fn check_renewal(config: &AutoEnrollConfig) -> Result<bool> {
 pub async fn perform_renewal(config: &AutoEnrollConfig) -> Result<()> {
     tracing::info!("Starting certificate renewal");
 
-    // 1. Get machine identity
-    let identity = MachineIdentity::current()?;
+    // 1. Validate machine identity is available (fails early otherwise).
+    let _identity = MachineIdentity::current()?;
 
     // 2. Get existing certificate from store
     let store_path = config

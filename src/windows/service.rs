@@ -837,7 +837,6 @@ pub mod installer {
             WinServiceState::ContinuePending => ServiceStateValue::ContinuePending,
             WinServiceState::PausePending => ServiceStateValue::PausePending,
             WinServiceState::Paused => ServiceStateValue::Paused,
-            _ => ServiceStateValue::Stopped,
         })
     }
 

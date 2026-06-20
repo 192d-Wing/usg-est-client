@@ -130,7 +130,7 @@ pub use security::{
     SecurityAudit, SecurityAuditEvent, TlsSecurityConfig, TlsVersion,
 };
 
-use crate::error::{EstError, Result};
+use crate::error::EstError;
 
 /// Check if this code is running on a Windows system.
 ///
