@@ -229,7 +229,8 @@ native-tls-vendored = ["native-tls-backend", "reqwest/native-tls-vendored"]
 
 # Windows platform integration (certificate store, CNG, TPM)
 # Note: Only compiles on Windows targets
-windows = ["dep:windows", "auto-enroll"]
+# Pulls in `hsm` because the CNG key provider implements the hsm KeyProvider trait.
+windows = ["dep:windows", "auto-enroll", "hsm"]
 
 # Windows service support (includes windows feature)
 # Note: Only compiles on Windows targets

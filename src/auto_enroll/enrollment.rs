@@ -16,6 +16,8 @@ use crate::hsm::{KeyAlgorithm, KeyProvider};
 use crate::windows::cng::CngKeyProvider;
 #[cfg(all(windows, feature = "windows"))]
 use crate::windows::{CertStore, MachineIdentity};
+#[cfg(all(windows, feature = "windows"))]
+use der::{Decode, Encode};
 
 /// Check if initial enrollment is needed.
 ///
@@ -49,7 +51,7 @@ pub async fn needs_enrollment(config: &AutoEnrollConfig) -> Result<bool> {
             // Check expiration and renewal threshold
             let renewal_threshold_days = config.renewal.threshold_days;
 
-            match check_certificate_expiration(&cert.certificate, renewal_threshold_days)? {
+            match check_certificate_expiration(&cert.der_bytes, renewal_threshold_days)? {
                 ExpirationStatus::Expired => {
                     tracing::warn!("Certificate has expired, enrollment needed");
                     Ok(true)
@@ -96,7 +98,7 @@ pub async fn perform_enrollment(config: &AutoEnrollConfig) -> Result<()> {
     let cn = &config.certificate.common_name;
     tracing::info!("Building CSR for CN: {}", cn);
 
-    let mut csr_builder = crate::csr::CsrBuilder::new().common_name(cn);
+    let mut csr_builder = crate::csr::HsmCsrBuilder::new().common_name(cn);
 
     // Add organization details if configured
     if let Some(ref org) = config.certificate.organization {
@@ -162,19 +164,7 @@ pub async fn perform_enrollment(config: &AutoEnrollConfig) -> Result<()> {
     }
 
     // 3. Generate CNG key pair and build CSR
-    let key_algorithm = match config.certificate.key_algorithm.as_str() {
-        "RSA-2048" => KeyAlgorithm::Rsa2048,
-        "RSA-3072" => KeyAlgorithm::Rsa3072,
-        "RSA-4096" => KeyAlgorithm::Rsa4096,
-        "ECDSA-P256" => KeyAlgorithm::EccP256,
-        "ECDSA-P384" => KeyAlgorithm::EccP384,
-        algo => {
-            return Err(EstError::config(format!(
-                "Unsupported key algorithm: {}",
-                algo
-            )));
-        }
-    };
+    let key_algorithm = map_key_algorithm(config);
 
     // Create CNG provider with configured storage provider
     let cng_provider_name = config
@@ -187,17 +177,21 @@ pub async fn perform_enrollment(config: &AutoEnrollConfig) -> Result<()> {
     let cng_provider = CngKeyProvider::with_provider(cng_provider_name)?;
     tracing::info!(
         "Generating {} key pair in CNG provider: {}",
-        config.certificate.key_algorithm,
+        key_algorithm.as_str(),
         cng_provider_name
     );
 
     // Generate key pair in CNG
-    let label = format!("{}-{}", cn, chrono::Utc::now().timestamp());
-    let key_handle = cng_provider.generate_key_pair(key_algorithm, Some(&label))?;
+    let label = format!("{}-{}", cn, time::OffsetDateTime::now_utc().unix_timestamp());
+    let key_handle = cng_provider
+        .generate_key_pair(key_algorithm, Some(&label))
+        .await?;
     tracing::debug!("Generated CNG key pair with label: {}", label);
 
     // Build CSR using CNG-backed key
-    let (csr_der, _) = csr_builder.build_with_provider(&cng_provider, &key_handle)?;
+    let csr_der = csr_builder
+        .build_with_provider(&cng_provider, &key_handle)
+        .await?;
     tracing::debug!("Generated CSR ({} bytes)", csr_der.len());
 
     // 4. Create EST client and submit enrollment
@@ -209,9 +203,11 @@ pub async fn perform_enrollment(config: &AutoEnrollConfig) -> Result<()> {
 
     // 5. Handle enrollment response
     let cert_der = match response {
-        crate::types::EnrollmentResponse::Issued { certificate, .. } => {
+        crate::types::EnrollmentResponse::Issued { certificate } => {
             tracing::info!("Certificate issued successfully");
-            certificate
+            certificate.to_der().map_err(|e| {
+                EstError::operational(format!("Failed to encode issued certificate: {}", e))
+            })?
         }
         crate::types::EnrollmentResponse::Pending { retry_after } => {
             return Err(EstError::operational(format!(
@@ -278,7 +274,7 @@ pub async fn check_renewal(config: &AutoEnrollConfig) -> Result<bool> {
         Some(cert) => {
             let renewal_threshold_days = config.renewal.threshold_days;
 
-            match check_certificate_expiration(&cert.certificate, renewal_threshold_days)? {
+            match check_certificate_expiration(&cert.der_bytes, renewal_threshold_days)? {
                 ExpirationStatus::Expired => {
                     tracing::warn!("Certificate has expired, renewal required");
                     Ok(true)
@@ -354,7 +350,7 @@ pub async fn perform_renewal(config: &AutoEnrollConfig) -> Result<()> {
     // 3. Build CSR with same subject as existing certificate
     tracing::info!("Building renewal CSR for CN: {}", cn);
 
-    let mut csr_builder = crate::csr::CsrBuilder::new().common_name(cn);
+    let mut csr_builder = crate::csr::HsmCsrBuilder::new().common_name(cn);
 
     // Add organization details from config (maintaining same identity)
     if let Some(ref org) = config.certificate.organization {
@@ -420,19 +416,7 @@ pub async fn perform_renewal(config: &AutoEnrollConfig) -> Result<()> {
     }
 
     // 4. Generate NEW CNG key pair and build CSR (best practice for renewal)
-    let key_algorithm = match config.certificate.key_algorithm.as_str() {
-        "RSA-2048" => KeyAlgorithm::Rsa2048,
-        "RSA-3072" => KeyAlgorithm::Rsa3072,
-        "RSA-4096" => KeyAlgorithm::Rsa4096,
-        "ECDSA-P256" => KeyAlgorithm::EccP256,
-        "ECDSA-P384" => KeyAlgorithm::EccP384,
-        algo => {
-            return Err(EstError::config(format!(
-                "Unsupported key algorithm: {}",
-                algo
-            )));
-        }
-    };
+    let key_algorithm = map_key_algorithm(config);
 
     // Create CNG provider with configured storage provider
     let cng_provider_name = config
@@ -445,17 +429,25 @@ pub async fn perform_renewal(config: &AutoEnrollConfig) -> Result<()> {
     let cng_provider = CngKeyProvider::with_provider(cng_provider_name)?;
     tracing::info!(
         "Generating {} key pair for renewal in CNG provider: {}",
-        config.certificate.key_algorithm,
+        key_algorithm.as_str(),
         cng_provider_name
     );
 
     // Generate fresh key pair in CNG (security best practice for renewal)
-    let label = format!("{}-renewal-{}", cn, chrono::Utc::now().timestamp());
-    let key_handle = cng_provider.generate_key_pair(key_algorithm, Some(&label))?;
+    let label = format!(
+        "{}-renewal-{}",
+        cn,
+        time::OffsetDateTime::now_utc().unix_timestamp()
+    );
+    let key_handle = cng_provider
+        .generate_key_pair(key_algorithm, Some(&label))
+        .await?;
     tracing::debug!("Generated new CNG key pair with label: {}", label);
 
     // Build CSR using CNG-backed key
-    let (csr_der, _) = csr_builder.build_with_provider(&cng_provider, &key_handle)?;
+    let csr_der = csr_builder
+        .build_with_provider(&cng_provider, &key_handle)
+        .await?;
     tracing::debug!("Generated renewal CSR ({} bytes)", csr_der.len());
 
     // 5. Create EST client configured to use existing certificate for authentication
@@ -467,9 +459,11 @@ pub async fn perform_renewal(config: &AutoEnrollConfig) -> Result<()> {
 
     // 6. Handle renewal response
     let new_cert_der = match response {
-        crate::types::EnrollmentResponse::Issued { certificate, .. } => {
+        crate::types::EnrollmentResponse::Issued { certificate } => {
             tracing::info!("Renewed certificate issued successfully");
-            certificate
+            certificate.to_der().map_err(|e| {
+                EstError::operational(format!("Failed to encode renewed certificate: {}", e))
+            })?
         }
         crate::types::EnrollmentResponse::Pending { retry_after } => {
             return Err(EstError::operational(format!(
@@ -507,6 +501,29 @@ pub async fn perform_renewal(config: &AutoEnrollConfig) -> Result<()> {
 
     tracing::info!("Renewal complete - renewed certificate ready for use");
     Ok(())
+}
+
+/// Map the configured certificate key algorithm to the CNG/HSM key algorithm.
+///
+/// Defaults to the config default (ECDSA P-256) when no key section is present.
+#[cfg(all(windows, feature = "windows"))]
+fn map_key_algorithm(config: &AutoEnrollConfig) -> KeyAlgorithm {
+    use crate::auto_enroll::config::KeyAlgorithm as ConfigKeyAlgorithm;
+
+    let configured = config
+        .certificate
+        .key
+        .as_ref()
+        .map(|k| k.algorithm)
+        .unwrap_or_default();
+
+    match configured {
+        ConfigKeyAlgorithm::EcdsaP256 => KeyAlgorithm::EcdsaP256,
+        ConfigKeyAlgorithm::EcdsaP384 => KeyAlgorithm::EcdsaP384,
+        ConfigKeyAlgorithm::Rsa2048 => KeyAlgorithm::Rsa { bits: 2048 },
+        ConfigKeyAlgorithm::Rsa3072 => KeyAlgorithm::Rsa { bits: 3072 },
+        ConfigKeyAlgorithm::Rsa4096 => KeyAlgorithm::Rsa { bits: 4096 },
+    }
 }
 
 /// Status of certificate expiration check.
