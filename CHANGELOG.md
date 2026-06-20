@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-06-20
+
+FIPS migration: cryptography now runs in a FIPS-validated module — the aws-lc-rs
+FIPS module on Linux (the `fips` feature) and the Windows CNG FIPS module on
+Windows — across TLS, key generation, signing, certificate-chain verification,
+fingerprint hashing, and EnvelopedData decryption.
+
+### Changed
+
+- **BREAKING:** Consolidated FIPS support onto a single `fips` cargo feature
+  backed by the **aws-lc-rs FIPS module** (Linux). The legacy OpenSSL FIPS path
+  and its `openssl`/`openssl-sys` dependencies were removed. `fips-tls` remains
+  as a deprecated alias of `fips`.
+- **BREAKING:** Removed OpenSSL-specific public API — `FipsConfig::fips_config_path`
+  and `FipsModuleInfo::openssl_version` (replaced by `FipsModuleInfo::module`).
+- Pinned `aws-lc-rs` to an exact version (`=1.17.0`); FIPS 140 validation (CMVP)
+  attaches to a specific module version.
+
+### Added
+
+- FIPS-validated cryptography under `fips` (Linux): fail-closed TLS provider,
+  key generation + signing (`AwsLcKeyProvider`, selected by `default_key_provider`),
+  certificate-chain signature verification, certificate fingerprint hashing, and
+  EnvelopedData AES-128/256-CBC decryption — all in the aws-lc-rs FIPS module.
+- Windows CNG FIPS mode: `CngKeyProvider::new_fips()` / `is_fips_mode_enabled()`
+  (fail-closed) and the cross-platform `hsm::fips_key_provider()` entry point.
+- CI: a Windows job (compiles/tests the Windows module for the first time) and an
+  arm64 Linux build in the test matrix.
+
+### Security
+
+- Certificate-chain signature verification and symmetric/hash operations run in a
+  FIPS-validated module under `fips`. Under `fips`, non-FIPS EnvelopedData ciphers
+  (3DES, AES-192) are rejected. Note: a `fips` build links the module but is not,
+  by itself, a CMVP-validated operating environment — confirm the validated module
+  version and operating conditions for an ATO. See `docs/fips-compliance.md`.
+
 ## [1.0.1] - 2026-01-16
 
 ### Fixed
