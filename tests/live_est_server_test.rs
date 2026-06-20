@@ -168,7 +168,8 @@ async fn test_live_get_cacerts() {
     for (i, cert) in certs.iter().enumerate() {
         println!(
             "CA Certificate {}: Subject = {:?}",
-            i, cert.tbs_certificate().subject()
+            i,
+            cert.tbs_certificate().subject()
         );
     }
 }

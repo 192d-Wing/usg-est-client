@@ -42,7 +42,7 @@ fn main() {
 }
 
 #[cfg(windows)]
-fn main() {
+fn main() -> std::process::ExitCode {
     use std::env;
     use std::process::ExitCode;
 
@@ -101,9 +101,7 @@ fn print_usage(program: &str) {
 
 #[cfg(windows)]
 fn run_migration(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
-    use std::path::PathBuf;
     use usg_est_client::error::EstError;
-    use usg_est_client::hsm::{KeyAlgorithm, KeyProvider};
     use usg_est_client::windows::CertStore;
     use usg_est_client::windows::cng::{CngKeyProvider, providers};
 
@@ -142,7 +140,7 @@ fn run_migration(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     } else {
         // 2. Import key to CNG
         tracing::info!("Importing key to CNG provider: {}", provider_name);
-        let cng_provider = CngKeyProvider::with_provider(&provider_name)?;
+        let _cng_provider = CngKeyProvider::with_provider(&provider_name)?;
 
         // For now, we'd need to add an import_key method to CngKeyProvider
         // This is a placeholder showing the intended flow
@@ -205,10 +203,10 @@ fn detect_key_algorithm(
     if pem.contains("BEGIN RSA PRIVATE KEY") || pem.contains("BEGIN PRIVATE KEY") {
         // Would need to parse to determine exact size
         // For now, default to RSA-2048
-        Ok(KeyAlgorithm::Rsa2048)
+        Ok(KeyAlgorithm::Rsa { bits: 2048 })
     } else if pem.contains("BEGIN EC PRIVATE KEY") {
         // Would need to parse to determine curve
-        Ok(KeyAlgorithm::EccP256)
+        Ok(KeyAlgorithm::EcdsaP256)
     } else {
         Err("Unsupported key format".into())
     }
@@ -216,7 +214,7 @@ fn detect_key_algorithm(
 
 #[cfg(windows)]
 fn secure_delete(path: &str) -> Result<(), Box<dyn std::error::Error>> {
-    use std::fs::{File, OpenOptions};
+    use std::fs::OpenOptions;
     use std::io::{Seek, SeekFrom, Write};
 
     // Create backup first

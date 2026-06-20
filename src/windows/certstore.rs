@@ -63,17 +63,17 @@
 use crate::error::{EstError, Result};
 
 #[cfg(windows)]
-use windows::Win32::Foundation::{BOOL, GetLastError};
+use windows::Win32::Foundation::GetLastError;
 #[cfg(windows)]
 use windows::Win32::Security::Cryptography::{
     CERT_CONTEXT, CERT_FIND_HASH, CERT_FIND_SUBJECT_STR, CERT_FRIENDLY_NAME_PROP_ID,
-    CERT_KEY_PROV_INFO_PROP_ID, CERT_STORE_ADD_REPLACE_EXISTING, CERT_STORE_PROV_SYSTEM_W,
-    CERT_SYSTEM_STORE_CURRENT_USER, CERT_SYSTEM_STORE_LOCAL_MACHINE, CRYPT_KEY_PROV_INFO,
-    CertCloseStore, CertDeleteCertificateFromStore, CertEnumCertificatesInStore,
-    CertFindCertificateInStore, CertOpenStore, CertSetCertificateContextProperty, HCERTSTORE,
+    CERT_KEY_PROV_INFO_PROP_ID, CERT_OPEN_STORE_FLAGS, CERT_QUERY_ENCODING_TYPE,
+    CERT_SHA1_HASH_PROP_ID, CERT_STORE_ADD_REPLACE_EXISTING, CERT_STORE_PROV_SYSTEM_W,
+    CERT_SYSTEM_STORE_CURRENT_USER, CERT_SYSTEM_STORE_LOCAL_MACHINE, CRYPT_KEY_FLAGS,
+    CRYPT_KEY_PROV_INFO, CertCloseStore, CertDeleteCertificateFromStore,
+    CertEnumCertificatesInStore, CertFindCertificateInStore, CertGetCertificateContextProperty,
+    CertOpenStore, CertSetCertificateContextProperty, HCERTSTORE,
 };
-#[cfg(windows)]
-use windows::core::PCWSTR;
 
 use std::fmt;
 
@@ -220,9 +220,9 @@ impl CertStore {
             let handle = unsafe {
                 CertOpenStore(
                     CERT_STORE_PROV_SYSTEM_W,
-                    0,
+                    CERT_QUERY_ENCODING_TYPE(0),
                     None,
-                    location.to_flags(),
+                    CERT_OPEN_STORE_FLAGS(location.to_flags()),
                     Some(wide_name.as_ptr() as *const _),
                 )
             };
@@ -389,7 +389,7 @@ impl CertStore {
             let context = unsafe {
                 CertFindCertificateInStore(
                     self.handle,
-                    0x00000001, // X509_ASN_ENCODING | PKCS_7_ASN_ENCODING
+                    CERT_QUERY_ENCODING_TYPE(0x00000001), // X509_ASN_ENCODING | PKCS_7_ASN_ENCODING
                     0,
                     CERT_FIND_HASH,
                     Some(&hash_blob as *const _ as *const _),
@@ -436,7 +436,7 @@ impl CertStore {
             let context = unsafe {
                 CertFindCertificateInStore(
                     self.handle,
-                    0x00000001, // X509_ASN_ENCODING | PKCS_7_ASN_ENCODING
+                    CERT_QUERY_ENCODING_TYPE(0x00000001), // X509_ASN_ENCODING | PKCS_7_ASN_ENCODING
                     0,
                     CERT_FIND_SUBJECT_STR,
                     Some(wide_subject.as_ptr() as *const _),
@@ -486,12 +486,12 @@ impl CertStore {
                 CertAddEncodedCertificateToStore, CertFreeCertificateContext,
             };
 
-            let mut context: *const CERT_CONTEXT = std::ptr::null();
+            let mut context: *mut CERT_CONTEXT = std::ptr::null_mut();
 
             let result = unsafe {
                 CertAddEncodedCertificateToStore(
-                    self.handle,
-                    0x00000001, // X509_ASN_ENCODING
+                    Some(self.handle),
+                    CERT_QUERY_ENCODING_TYPE(0x00000001), // X509_ASN_ENCODING
                     cert_der,
                     CERT_STORE_ADD_REPLACE_EXISTING,
                     Some(&mut context),
@@ -517,7 +517,9 @@ impl CertStore {
                 .map(|c| c.thumbprint)
                 .unwrap_or_default();
 
-            unsafe { CertFreeCertificateContext(Some(context)) };
+            unsafe {
+                let _ = CertFreeCertificateContext(Some(context));
+            };
 
             Ok(thumbprint)
         }
@@ -558,12 +560,12 @@ impl CertStore {
                 CertAddEncodedCertificateToStore, CertFreeCertificateContext,
             };
 
-            let mut context: *const CERT_CONTEXT = std::ptr::null();
+            let mut context: *mut CERT_CONTEXT = std::ptr::null_mut();
 
             let result = unsafe {
                 CertAddEncodedCertificateToStore(
-                    self.handle,
-                    0x00000001, // X509_ASN_ENCODING
+                    Some(self.handle),
+                    CERT_QUERY_ENCODING_TYPE(0x00000001), // X509_ASN_ENCODING
                     cert_der,
                     CERT_STORE_ADD_REPLACE_EXISTING,
                     Some(&mut context),
@@ -592,7 +594,7 @@ impl CertStore {
                 pwszContainerName: windows::core::PWSTR(wide_container.as_ptr() as *mut _),
                 pwszProvName: windows::core::PWSTR(wide_provider.as_ptr() as *mut _),
                 dwProvType: 0, // PROV_RSA_AES or 0 for CNG
-                dwFlags: 0,
+                dwFlags: CRYPT_KEY_FLAGS(0),
                 cProvParam: 0,
                 rgProvParam: std::ptr::null_mut(),
                 dwKeySpec: 0, // AT_KEYEXCHANGE or 0 for CNG
@@ -609,7 +611,9 @@ impl CertStore {
 
             if prov_result.is_err() {
                 let code = unsafe { GetLastError() };
-                unsafe { CertFreeCertificateContext(Some(context)) };
+                unsafe {
+                    let _ = CertFreeCertificateContext(Some(context));
+                };
                 return Err(EstError::platform(format!(
                     "Failed to set key provider info: Windows error 0x{:08X}",
                     code.0
@@ -628,7 +632,9 @@ impl CertStore {
                 .map(|c| c.thumbprint)
                 .unwrap_or_default();
 
-            unsafe { CertFreeCertificateContext(Some(context)) };
+            unsafe {
+                let _ = CertFreeCertificateContext(Some(context));
+            };
 
             Ok(thumbprint)
         }
@@ -683,7 +689,7 @@ impl CertStore {
             let context = unsafe {
                 CertFindCertificateInStore(
                     self.handle,
-                    0x00000001,
+                    CERT_QUERY_ENCODING_TYPE(0x00000001),
                     0,
                     CERT_FIND_HASH,
                     Some(&hash_blob as *const _ as *const _),
@@ -807,7 +813,7 @@ impl CertStore {
             let cert_context = unsafe {
                 CertFindCertificateInStore(
                     self.handle,
-                    0x00000001, // X509_ASN_ENCODING
+                    CERT_QUERY_ENCODING_TYPE(0x00000001), // X509_ASN_ENCODING
                     0,
                     CERT_FIND_HASH,
                     Some(&hash_blob as *const _ as *const _),
@@ -837,11 +843,11 @@ impl CertStore {
             let key_prov_info = CRYPT_KEY_PROV_INFO {
                 pwszContainerName: PWSTR(wide_container.as_ptr() as *mut u16),
                 pwszProvName: PWSTR(wide_provider.as_ptr() as *mut u16),
-                dwProvType: 0, // 0 = CNG provider (not legacy CSP)
-                dwFlags: 0,    // No special flags
+                dwProvType: 0,               // 0 = CNG provider (not legacy CSP)
+                dwFlags: CRYPT_KEY_FLAGS(0), // No special flags
                 cProvParam: 0,
                 rgProvParam: std::ptr::null_mut(),
-                dwKeySpec: AT_KEYEXCHANGE,
+                dwKeySpec: AT_KEYEXCHANGE.0,
             };
 
             // Associate key with certificate
@@ -850,14 +856,14 @@ impl CertStore {
                     cert_context,
                     CERT_KEY_PROV_INFO_PROP_ID,
                     0,
-                    &key_prov_info as *const _ as *const _,
+                    Some(&key_prov_info as *const _ as *const _),
                 )
             };
 
             // Free certificate context
             unsafe {
                 use windows::Win32::Security::Cryptography::CertFreeCertificateContext;
-                CertFreeCertificateContext(Some(cert_context));
+                let _ = CertFreeCertificateContext(Some(cert_context));
             }
 
             if result.is_err() {
@@ -931,8 +937,6 @@ impl CertStore {
     /// Extract certificate information from a CERT_CONTEXT.
     #[cfg(windows)]
     fn extract_cert_info(&self, context: *const CERT_CONTEXT) -> Option<StoredCertificate> {
-        use sha2::{Digest, Sha1};
-
         if context.is_null() {
             return None;
         }
@@ -972,18 +976,27 @@ impl CertStore {
             let der_bytes =
                 std::slice::from_raw_parts(ctx.pbCertEncoded, ctx.cbCertEncoded as usize).to_vec();
 
-            // Calculate SHA-1 thumbprint
-            let mut hasher = sha2::Sha256::new();
-            // Note: Using SHA256 as placeholder - actual implementation would use SHA1
-            // For real thumbprint, we'd use the windows CRYPT_HASH_BLOB approach
-            hasher.update(&der_bytes);
-            let hash = hasher.finalize();
-            let thumbprint = hash
-                .iter()
-                .take(20) // SHA-1 is 20 bytes
-                .map(|b| format!("{:02X}", b))
-                .collect::<Vec<_>>()
-                .join(":");
+            // Read the SHA-1 thumbprint that Windows computed for this certificate
+            // (the cert-store thumbprint convention). Using Windows' own value avoids
+            // hashing the cert ourselves (and keeps SHA-1 out of our dependency tree).
+            let mut thumb = [0u8; 20];
+            let mut thumb_len = thumb.len() as u32;
+            let thumbprint = match CertGetCertificateContextProperty(
+                context,
+                CERT_SHA1_HASH_PROP_ID,
+                Some(thumb.as_mut_ptr() as *mut core::ffi::c_void),
+                &mut thumb_len,
+            ) {
+                Ok(()) => thumb[..thumb_len as usize]
+                    .iter()
+                    .map(|b| format!("{:02X}", b))
+                    .collect::<Vec<_>>()
+                    .join(":"),
+                Err(e) => {
+                    tracing::warn!("Failed to read certificate thumbprint: {}", e);
+                    String::new()
+                }
+            };
 
             // Get subject and issuer (simplified - real impl would decode the cert)
             let _cert_info = &*ctx.pCertInfo;
@@ -1008,7 +1021,7 @@ impl Drop for CertStore {
         #[cfg(windows)]
         {
             unsafe {
-                let _ = CertCloseStore(self.handle, 0);
+                let _ = CertCloseStore(Some(self.handle), 0);
             }
         }
     }

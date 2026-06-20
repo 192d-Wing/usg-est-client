@@ -825,9 +825,7 @@ mod tests {
     #[test]
     fn test_validation_options_builder_add_trust_anchor() {
         let cert = load_test_cert(include_bytes!("../../tests/fixtures/certs/ca.pem"));
-        let options = ValidationOptions::builder()
-            .add_trust_anchor(cert)
-            .build();
+        let options = ValidationOptions::builder().add_trust_anchor(cert).build();
         assert_eq!(options.trust_anchors.len(), 1);
     }
 
@@ -894,11 +892,7 @@ mod tests {
         assert!(result.is_ok());
         let vr = result.unwrap();
         assert!(vr.valid);
-        assert!(vr
-            .root_ca
-            .as_ref()
-            .unwrap()
-            .contains("Self-signed"));
+        assert!(vr.root_ca.as_ref().unwrap().contains("Self-signed"));
     }
 
     #[test]

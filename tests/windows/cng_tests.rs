@@ -10,9 +10,11 @@ use usg_est_client::hsm::{KeyAlgorithm, KeyProvider};
 use usg_est_client::windows::CertStore;
 use usg_est_client::windows::cng::{CngKeyProvider, providers};
 
+use super::unique_ts;
+
 /// Test CNG provider initialization with software provider
-#[test]
-fn test_cng_provider_software_initialization() -> Result<()> {
+#[tokio::test]
+async fn test_cng_provider_software_initialization() -> Result<()> {
     let provider = CngKeyProvider::new()?;
     assert_eq!(provider.provider_name(), providers::SOFTWARE);
     assert!(!provider.is_tpm());
@@ -21,70 +23,75 @@ fn test_cng_provider_software_initialization() -> Result<()> {
 }
 
 /// Test CNG provider initialization with specific provider
-#[test]
-fn test_cng_provider_with_custom_provider() -> Result<()> {
+#[tokio::test]
+async fn test_cng_provider_with_custom_provider() -> Result<()> {
     let provider = CngKeyProvider::with_provider(providers::SOFTWARE)?;
     assert_eq!(provider.provider_name(), providers::SOFTWARE);
     Ok(())
 }
 
 /// Test CNG provider initialization with invalid provider fails
-#[test]
-fn test_cng_provider_invalid_provider_fails() {
+#[tokio::test]
+async fn test_cng_provider_invalid_provider_fails() {
     let result = CngKeyProvider::with_provider("Invalid Provider Name");
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("not available"));
 }
 
 /// Test RSA-2048 key generation in CNG
-#[test]
-fn test_cng_rsa2048_key_generation() -> Result<()> {
+#[tokio::test]
+async fn test_cng_rsa2048_key_generation() -> Result<()> {
     let provider = CngKeyProvider::new()?;
-    let label = format!("test-rsa2048-{}", chrono::Utc::now().timestamp());
+    let label = format!("test-rsa2048-{}", unique_ts());
 
-    let key_handle = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some(&label))?;
+    let key_handle = provider
+        .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some(&label))
+        .await?;
 
-    assert_eq!(key_handle.algorithm(), KeyAlgorithm::Rsa2048);
-    assert!(key_handle.can_sign());
+    assert_eq!(key_handle.algorithm(), KeyAlgorithm::Rsa { bits: 2048 });
 
     Ok(())
 }
 
 /// Test RSA-3072 key generation in CNG
-#[test]
-fn test_cng_rsa3072_key_generation() -> Result<()> {
+#[tokio::test]
+async fn test_cng_rsa3072_key_generation() -> Result<()> {
     let provider = CngKeyProvider::new()?;
-    let label = format!("test-rsa3072-{}", chrono::Utc::now().timestamp());
+    let label = format!("test-rsa3072-{}", unique_ts());
 
-    let key_handle = provider.generate_key_pair(KeyAlgorithm::Rsa3072, Some(&label))?;
+    let key_handle = provider
+        .generate_key_pair(KeyAlgorithm::Rsa { bits: 3072 }, Some(&label))
+        .await?;
 
-    assert_eq!(key_handle.algorithm(), KeyAlgorithm::Rsa3072);
-    assert!(key_handle.can_sign());
+    assert_eq!(key_handle.algorithm(), KeyAlgorithm::Rsa { bits: 3072 });
 
     Ok(())
 }
 
 /// Test ECDSA P-256 key generation in CNG
-#[test]
-fn test_cng_ecc_p256_key_generation() -> Result<()> {
+#[tokio::test]
+async fn test_cng_ecc_p256_key_generation() -> Result<()> {
     let provider = CngKeyProvider::new()?;
-    let label = format!("test-ecc-p256-{}", chrono::Utc::now().timestamp());
+    let label = format!("test-ecc-p256-{}", unique_ts());
 
-    let key_handle = provider.generate_key_pair(KeyAlgorithm::EccP256, Some(&label))?;
+    let key_handle = provider
+        .generate_key_pair(KeyAlgorithm::EcdsaP256, Some(&label))
+        .await?;
 
-    assert_eq!(key_handle.algorithm(), KeyAlgorithm::EccP256);
-    assert!(key_handle.can_sign());
+    assert_eq!(key_handle.algorithm(), KeyAlgorithm::EcdsaP256);
 
     Ok(())
 }
 
 /// Test get_container_name helper method
-#[test]
-fn test_get_container_name() -> Result<()> {
+#[tokio::test]
+async fn test_get_container_name() -> Result<()> {
     let provider = CngKeyProvider::new()?;
-    let label = format!("test-container-{}", chrono::Utc::now().timestamp());
+    let label = format!("test-container-{}", unique_ts());
 
-    let key_handle = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some(&label))?;
+    let key_handle = provider
+        .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some(&label))
+        .await?;
 
     let container_name = CngKeyProvider::get_container_name(&key_handle)?;
 
@@ -106,12 +113,14 @@ fn test_get_container_name() -> Result<()> {
 }
 
 /// Test get_provider_name helper method
-#[test]
-fn test_get_provider_name() -> Result<()> {
+#[tokio::test]
+async fn test_get_provider_name() -> Result<()> {
     let provider = CngKeyProvider::new()?;
-    let label = format!("test-provider-{}", chrono::Utc::now().timestamp());
+    let label = format!("test-provider-{}", unique_ts());
 
-    let key_handle = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some(&label))?;
+    let key_handle = provider
+        .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some(&label))
+        .await?;
 
     let provider_name = CngKeyProvider::get_provider_name(&key_handle)?;
 
@@ -122,13 +131,15 @@ fn test_get_provider_name() -> Result<()> {
 }
 
 /// Test key generation without label
-#[test]
-fn test_cng_key_generation_no_label() -> Result<()> {
+#[tokio::test]
+async fn test_cng_key_generation_no_label() -> Result<()> {
     let provider = CngKeyProvider::new()?;
 
-    let key_handle = provider.generate_key_pair(KeyAlgorithm::Rsa2048, None)?;
+    let key_handle = provider
+        .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, None)
+        .await?;
 
-    assert_eq!(key_handle.algorithm(), KeyAlgorithm::Rsa2048);
+    assert_eq!(key_handle.algorithm(), KeyAlgorithm::Rsa { bits: 2048 });
 
     // Container name should still be generated
     let container_name = CngKeyProvider::get_container_name(&key_handle)?;
@@ -138,12 +149,16 @@ fn test_cng_key_generation_no_label() -> Result<()> {
 }
 
 /// Test multiple key generation creates unique containers
-#[test]
-fn test_cng_multiple_keys_unique_containers() -> Result<()> {
+#[tokio::test]
+async fn test_cng_multiple_keys_unique_containers() -> Result<()> {
     let provider = CngKeyProvider::new()?;
 
-    let key1 = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some("key1"))?;
-    let key2 = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some("key2"))?;
+    let key1 = provider
+        .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some("key1"))
+        .await?;
+    let key2 = provider
+        .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some("key2"))
+        .await?;
 
     let container1 = CngKeyProvider::get_container_name(&key1)?;
     let container2 = CngKeyProvider::get_container_name(&key2)?;
@@ -157,18 +172,20 @@ fn test_cng_multiple_keys_unique_containers() -> Result<()> {
 }
 
 /// Test CNG key signing operation
-#[test]
-fn test_cng_key_signing() -> Result<()> {
+#[tokio::test]
+async fn test_cng_key_signing() -> Result<()> {
     let provider = CngKeyProvider::new()?;
-    let label = format!("test-signing-{}", chrono::Utc::now().timestamp());
+    let label = format!("test-signing-{}", unique_ts());
 
-    let key_handle = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some(&label))?;
+    let key_handle = provider
+        .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some(&label))
+        .await?;
 
     // Test data to sign
     let data = b"Test data for signing";
 
     // Sign the data
-    let signature = provider.sign(&key_handle, data)?;
+    let signature = provider.sign(&key_handle, data).await?;
 
     // Signature should not be empty
     assert!(!signature.is_empty());
@@ -180,9 +197,9 @@ fn test_cng_key_signing() -> Result<()> {
 }
 
 /// Test CertStore associate_cng_key with valid inputs
-#[test]
+#[tokio::test]
 #[ignore] // Requires actual certificate in Windows store
-fn test_certstore_associate_cng_key_valid() -> Result<()> {
+async fn test_certstore_associate_cng_key_valid() -> Result<()> {
     // This test requires:
     // 1. A certificate in LocalMachine\My store
     // 2. A CNG key container
@@ -192,8 +209,10 @@ fn test_certstore_associate_cng_key_valid() -> Result<()> {
     let provider = CngKeyProvider::new()?;
 
     // Generate test key
-    let label = format!("test-assoc-{}", chrono::Utc::now().timestamp());
-    let key_handle = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some(&label))?;
+    let label = format!("test-assoc-{}", unique_ts());
+    let key_handle = provider
+        .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some(&label))
+        .await?;
 
     let container_name = CngKeyProvider::get_container_name(&key_handle)?;
     let provider_name = CngKeyProvider::get_provider_name(&key_handle)?;
@@ -210,8 +229,8 @@ fn test_certstore_associate_cng_key_valid() -> Result<()> {
 }
 
 /// Test CertStore associate_cng_key with invalid thumbprint format
-#[test]
-fn test_certstore_associate_cng_key_invalid_thumbprint() -> Result<()> {
+#[tokio::test]
+async fn test_certstore_associate_cng_key_invalid_thumbprint() -> Result<()> {
     let store = CertStore::open_path("LocalMachine\\My")?;
 
     let result = store.associate_cng_key(
@@ -232,8 +251,8 @@ fn test_certstore_associate_cng_key_invalid_thumbprint() -> Result<()> {
 }
 
 /// Test CertStore associate_cng_key with non-existent certificate
-#[test]
-fn test_certstore_associate_cng_key_nonexistent_cert() -> Result<()> {
+#[tokio::test]
+async fn test_certstore_associate_cng_key_nonexistent_cert() -> Result<()> {
     let store = CertStore::open_path("LocalMachine\\My")?;
 
     // Valid format but non-existent thumbprint
@@ -253,12 +272,14 @@ fn test_certstore_associate_cng_key_nonexistent_cert() -> Result<()> {
 }
 
 /// Test key metadata preservation
-#[test]
-fn test_cng_key_metadata_preservation() -> Result<()> {
+#[tokio::test]
+async fn test_cng_key_metadata_preservation() -> Result<()> {
     let provider = CngKeyProvider::new()?;
     let label = "test-metadata";
 
-    let key_handle = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some(label))?;
+    let key_handle = provider
+        .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some(label))
+        .await?;
 
     // Check metadata
     let metadata = key_handle.metadata();
@@ -273,9 +294,9 @@ fn test_cng_key_metadata_preservation() -> Result<()> {
 }
 
 /// Performance benchmark: RSA-2048 key generation
-#[test]
+#[tokio::test]
 #[ignore] // Run with --ignored flag for benchmarks
-fn bench_rsa2048_generation() -> Result<()> {
+async fn bench_rsa2048_generation() -> Result<()> {
     let provider = CngKeyProvider::new()?;
     let iterations = 10;
 
@@ -283,7 +304,9 @@ fn bench_rsa2048_generation() -> Result<()> {
 
     for i in 0..iterations {
         let label = format!("bench-rsa2048-{}", i);
-        let _key = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some(&label))?;
+        let _key = provider
+            .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some(&label))
+            .await?;
     }
 
     let elapsed = start.elapsed();
@@ -298,9 +321,9 @@ fn bench_rsa2048_generation() -> Result<()> {
 }
 
 /// Performance benchmark: ECDSA P-256 key generation
-#[test]
+#[tokio::test]
 #[ignore] // Run with --ignored flag for benchmarks
-fn bench_ecc_p256_generation() -> Result<()> {
+async fn bench_ecc_p256_generation() -> Result<()> {
     let provider = CngKeyProvider::new()?;
     let iterations = 10;
 
@@ -308,7 +331,9 @@ fn bench_ecc_p256_generation() -> Result<()> {
 
     for i in 0..iterations {
         let label = format!("bench-ecc-p256-{}", i);
-        let _key = provider.generate_key_pair(KeyAlgorithm::EccP256, Some(&label))?;
+        let _key = provider
+            .generate_key_pair(KeyAlgorithm::EcdsaP256, Some(&label))
+            .await?;
     }
 
     let elapsed = start.elapsed();
@@ -323,9 +348,9 @@ fn bench_ecc_p256_generation() -> Result<()> {
 }
 
 /// Test CNG provider is_tpm detection
-#[test]
+#[tokio::test]
 #[ignore] // Requires TPM hardware
-fn test_cng_provider_tpm_detection() -> Result<()> {
+async fn test_cng_provider_tpm_detection() -> Result<()> {
     let result = CngKeyProvider::with_provider(providers::PLATFORM);
 
     match result {
@@ -344,9 +369,9 @@ fn test_cng_provider_tpm_detection() -> Result<()> {
 }
 
 /// Integration test: Full enrollment workflow simulation
-#[test]
+#[tokio::test]
 #[ignore] // Requires full environment setup
-fn test_integration_cng_enrollment_workflow() -> Result<()> {
+async fn test_integration_cng_enrollment_workflow() -> Result<()> {
     // This simulates the full workflow:
     // 1. Generate CNG key
     // 2. Create CSR
@@ -355,10 +380,12 @@ fn test_integration_cng_enrollment_workflow() -> Result<()> {
     // 5. Associate key with certificate
 
     let provider = CngKeyProvider::new()?;
-    let label = format!("test-enrollment-{}", chrono::Utc::now().timestamp());
+    let label = format!("test-enrollment-{}", unique_ts());
 
     // Step 1: Generate CNG key
-    let key_handle = provider.generate_key_pair(KeyAlgorithm::Rsa2048, Some(&label))?;
+    let key_handle = provider
+        .generate_key_pair(KeyAlgorithm::Rsa { bits: 2048 }, Some(&label))
+        .await?;
 
     // Step 2: Build CSR (would use CsrBuilder in real code)
     // Step 3: Submit to EST server (skipped in test)

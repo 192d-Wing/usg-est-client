@@ -239,15 +239,12 @@ impl LogKeys {
     /// Load keys from storage
     #[cfg(windows)]
     fn load(path: &Path) -> Result<Self> {
-        use crate::windows::security::DpapiBlob;
-
         // Load DPAPI-protected blob
         let protected = fs::read(path)
             .map_err(|e| EstError::platform(format!("Failed to read encryption keys: {}", e)))?;
 
         // Unprotect with DPAPI
-        let blob = DpapiBlob::from_bytes(&protected)?;
-        let keys_bytes = blob.unprotect()?;
+        let keys_bytes = crate::windows::dpapi::unprotect(&protected)?;
 
         if keys_bytes.len() != KEY_SIZE + MAC_KEY_SIZE {
             return Err(EstError::platform(format!(
@@ -312,16 +309,13 @@ impl LogKeys {
     /// Save keys to storage
     #[cfg(windows)]
     fn save(&self, path: &Path) -> Result<()> {
-        use crate::windows::security::DpapiBlob;
-
         // Combine keys
         let mut keys_bytes = Vec::with_capacity(KEY_SIZE + MAC_KEY_SIZE);
         keys_bytes.extend_from_slice(&self.encryption_key);
         keys_bytes.extend_from_slice(&self.mac_key);
 
         // Protect with DPAPI
-        let blob = DpapiBlob::protect(&keys_bytes, "EST Log Encryption Keys")?;
-        let protected = blob.to_bytes();
+        let protected = crate::windows::dpapi::protect(&keys_bytes, "EST Log Encryption Keys")?;
 
         // Write to file
         fs::write(path, protected)
@@ -614,10 +608,10 @@ impl EncryptedLogger {
     ///
     /// 32-byte HMAC-SHA256 tag
     fn compute_mac(&self, nonce: &[u8], ciphertext: &[u8]) -> Vec<u8> {
-        use hmac::{Hmac, Mac};
+        use hmac::{Hmac, KeyInit, Mac};
         type HmacSha256 = Hmac<Sha256>;
 
-        let mut mac = <HmacSha256 as Mac>::new_from_slice(&self.keys.mac_key)
+        let mut mac = <HmacSha256 as KeyInit>::new_from_slice(&self.keys.mac_key)
             .expect("HMAC can take keys of any size");
 
         mac.update(FORMAT_VERSION.as_bytes());
@@ -730,10 +724,10 @@ impl EncryptedLogger {
 
         // Verify MAC using constant-time comparison
         {
-            use hmac::{Hmac, Mac};
+            use hmac::{Hmac, KeyInit, Mac};
             type HmacSha256 = Hmac<Sha256>;
 
-            let mut mac = <HmacSha256 as Mac>::new_from_slice(&keys.mac_key)
+            let mut mac = <HmacSha256 as KeyInit>::new_from_slice(&keys.mac_key)
                 .expect("HMAC can take keys of any size");
 
             mac.update(FORMAT_VERSION.as_bytes());

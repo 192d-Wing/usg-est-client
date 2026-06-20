@@ -48,7 +48,6 @@
 
 use crate::error::{EstError, Result};
 use const_oid::ObjectIdentifier;
-use der::Reader;
 use x509_cert::Certificate;
 
 /// DoD Certificate Policy arc (2.16.840.1.101.2.1.11)
@@ -280,7 +279,8 @@ const CERTIFICATE_POLICIES_OID: ObjectIdentifier = ObjectIdentifier::new_unwrap(
 /// ```
 pub fn validate_dod_policy(cert: &Certificate) -> Result<DodCertificatePolicy> {
     // Get certificate extensions
-    let extensions = cert.tbs_certificate().extensions().as_ref().ok_or_else(|| {
+    let cert_extensions = cert.tbs_certificate().extensions();
+    let extensions = cert_extensions.as_ref().ok_or_else(|| {
         EstError::CertificateValidation("No extensions in certificate".to_string())
     })?;
 
@@ -301,7 +301,8 @@ pub fn validate_dod_policy(cert: &Certificate) -> Result<DodCertificatePolicy> {
 ///
 /// Returns all DoD policies found in the certificate, not just the primary one.
 pub fn extract_dod_policies(cert: &Certificate) -> Vec<DodCertificatePolicy> {
-    let extensions = match cert.tbs_certificate().extensions().as_ref() {
+    let cert_extensions = cert.tbs_certificate().extensions();
+    let extensions = match cert_extensions.as_ref() {
         Some(exts) => exts,
         None => return Vec::new(),
     };
@@ -335,10 +336,8 @@ fn parse_certificate_policies_extension(
         .map_err(|e| EstError::CertificateParsing(format!("Invalid policies extension: {}", e)))?;
 
     // Read the outer SEQUENCE
-    let policies: der::asn1::SequenceOf<PolicyInformation, 16> =
-        der::asn1::SequenceOf::decode(&mut reader).map_err(|e| {
-            EstError::CertificateParsing(format!("Failed to parse policies: {}", e))
-        })?;
+    let policies: Vec<PolicyInformation> = Vec::decode(&mut reader)
+        .map_err(|e| EstError::CertificateParsing(format!("Failed to parse policies: {}", e)))?;
 
     // Find first DoD policy
     for policy_info in policies.iter() {
@@ -363,11 +362,10 @@ fn parse_all_dod_policies(value: &der::asn1::OctetString) -> Vec<DodCertificateP
         Err(_) => return Vec::new(),
     };
 
-    let policies: der::asn1::SequenceOf<PolicyInformation, 16> =
-        match der::asn1::SequenceOf::decode(&mut reader) {
-            Ok(p) => p,
-            Err(_) => return Vec::new(),
-        };
+    let policies: Vec<PolicyInformation> = match Vec::decode(&mut reader) {
+        Ok(p) => p,
+        Err(_) => return Vec::new(),
+    };
 
     policies
         .iter()
@@ -383,11 +381,13 @@ struct PolicyInformation {
 }
 
 impl<'a> der::Decode<'a> for PolicyInformation {
+    type Error = der::Error;
+
     fn decode<R: der::Reader<'a>>(reader: &mut R) -> der::Result<Self> {
         reader.sequence(|r| {
             let policy_identifier = ObjectIdentifier::decode(r)?;
             // Skip any remaining content (policy qualifiers)
-            while r.peek_header().is_ok() {
+            while der::Header::peek(r).is_ok() {
                 let _ = r.decode::<der::asn1::Any>()?;
             }
             Ok(Self { policy_identifier })

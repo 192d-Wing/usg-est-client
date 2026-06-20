@@ -94,9 +94,6 @@ pub mod perfcounter;
 pub mod service;
 
 #[cfg(feature = "windows-service")]
-pub mod enrollment;
-
-#[cfg(feature = "windows-service")]
 pub mod credentials;
 
 #[cfg(feature = "windows-service")]
@@ -123,12 +120,6 @@ pub use perfcounter::{CounterType, PerformanceCounters, ServiceStateCounter};
 pub use service::{EnrollmentService, ServiceConfig, ServiceState, ServiceStateValue};
 
 #[cfg(feature = "windows-service")]
-pub use enrollment::{
-    CertificateInfo, EnrollmentManager, EnrollmentOptions, EnrollmentResult, EnrollmentStatus,
-    RecoveryHelper, RecoveryOptions,
-};
-
-#[cfg(feature = "windows-service")]
 pub use credentials::{
     CredentialManager, CredentialSource, CredentialType, Dpapi, SecureString, StoredCredential,
 };
@@ -139,7 +130,7 @@ pub use security::{
     SecurityAudit, SecurityAuditEvent, TlsSecurityConfig, TlsVersion,
 };
 
-use crate::error::{EstError, Result};
+use crate::error::EstError;
 
 /// Check if this code is running on a Windows system.
 ///

@@ -178,9 +178,9 @@ impl CredentialManager {
     ) -> Result<()> {
         use std::ptr;
         use windows::Win32::Security::Credentials::{
-            CRED_PERSIST_LOCAL_MACHINE, CREDENTIALW, CredWriteW,
+            CRED_FLAGS, CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE, CREDENTIALW, CredWriteW,
         };
-        use windows::core::PCWSTR;
+        use windows::core::PWSTR;
 
         let full_target = self.full_target(target);
         let target_wide: Vec<u16> = full_target
@@ -191,18 +191,18 @@ impl CredentialManager {
         let password_bytes = password.as_bytes();
 
         let mut credential = CREDENTIALW {
-            Flags: 0,
-            Type: credential_type.to_cred_type(),
-            TargetName: PCWSTR(target_wide.as_ptr()),
-            Comment: PCWSTR(ptr::null()),
+            Flags: CRED_FLAGS(0),
+            Type: CRED_TYPE(credential_type.to_cred_type()),
+            TargetName: PWSTR(target_wide.as_ptr() as *mut _),
+            Comment: PWSTR(ptr::null_mut()),
             LastWritten: Default::default(),
             CredentialBlobSize: password_bytes.len() as u32,
             CredentialBlob: password_bytes.as_ptr() as *mut u8,
-            Persist: CRED_PERSIST_LOCAL_MACHINE.0,
+            Persist: CRED_PERSIST_LOCAL_MACHINE,
             AttributeCount: 0,
             Attributes: ptr::null_mut(),
-            TargetAlias: PCWSTR(ptr::null()),
-            UserName: PCWSTR(username_wide.as_ptr()),
+            TargetAlias: PWSTR(ptr::null_mut()),
+            UserName: PWSTR(username_wide.as_ptr() as *mut _),
         };
 
         unsafe {
@@ -230,7 +230,7 @@ impl CredentialManager {
     #[cfg(windows)]
     pub fn get(&self, target: &str) -> Result<Option<StoredCredential>> {
         use std::slice;
-        use windows::Win32::Security::Credentials::{CREDENTIALW, CredFree, CredReadW};
+        use windows::Win32::Security::Credentials::{CRED_TYPE, CREDENTIALW, CredFree, CredReadW};
         use windows::core::PCWSTR;
 
         let full_target = self.full_target(target);
@@ -245,8 +245,8 @@ impl CredentialManager {
             // Try generic credential first
             let result = CredReadW(
                 PCWSTR(target_wide.as_ptr()),
-                1, // CRED_TYPE_GENERIC
-                0,
+                CRED_TYPE(1), // CRED_TYPE_GENERIC
+                None,
                 &mut cred_ptr,
             );
 
@@ -332,7 +332,7 @@ impl CredentialManager {
     /// Delete a credential from Windows Credential Manager.
     #[cfg(windows)]
     pub fn delete(&self, target: &str) -> Result<()> {
-        use windows::Win32::Security::Credentials::CredDeleteW;
+        use windows::Win32::Security::Credentials::{CRED_TYPE, CredDeleteW};
         use windows::core::PCWSTR;
 
         let full_target = self.full_target(target);
@@ -344,8 +344,8 @@ impl CredentialManager {
         unsafe {
             CredDeleteW(
                 PCWSTR(target_wide.as_ptr()),
-                1, // CRED_TYPE_GENERIC
-                0,
+                CRED_TYPE(1), // CRED_TYPE_GENERIC
+                None,
             )
             .map_err(|e| EstError::platform(format!("Failed to delete credential: {}", e)))?;
         }
@@ -440,9 +440,9 @@ impl Dpapi {
                     .to_vec();
 
             // Free the output buffer
-            windows::Win32::System::Memory::LocalFree(windows::Win32::Foundation::HLOCAL(
+            windows::Win32::Foundation::LocalFree(Some(windows::Win32::Foundation::HLOCAL(
                 output_blob.pbData as *mut _,
-            ));
+            )));
 
             Ok(result)
         }
@@ -487,9 +487,9 @@ impl Dpapi {
                     .to_vec();
 
             // Free the output buffer
-            windows::Win32::System::Memory::LocalFree(windows::Win32::Foundation::HLOCAL(
+            windows::Win32::Foundation::LocalFree(Some(windows::Win32::Foundation::HLOCAL(
                 output_blob.pbData as *mut _,
-            ));
+            )));
 
             Ok(result)
         }
@@ -503,12 +503,14 @@ impl Dpapi {
 
     /// Encrypt a string and return base64-encoded result.
     pub fn encrypt_string(&self, data: &str) -> Result<String> {
+        use base64::Engine;
         let encrypted = self.encrypt(data.as_bytes())?;
         Ok(base64::prelude::BASE64_STANDARD.encode(&encrypted))
     }
 
     /// Decrypt a base64-encoded string.
     pub fn decrypt_string(&self, encrypted_base64: &str) -> Result<String> {
+        use base64::Engine;
         let encrypted = base64::prelude::BASE64_STANDARD
             .decode(encrypted_base64)
             .map_err(|e| EstError::platform(format!("Invalid base64: {}", e)))?;
@@ -714,10 +716,12 @@ mod tests {
 
     #[test]
     fn test_credential_source_resolve_env() {
-        std::env::set_var("TEST_CRED_VAR", "secret_value");
+        // SAFETY: single-threaded test; no other thread reads/writes the env concurrently.
+        unsafe { std::env::set_var("TEST_CRED_VAR", "secret_value") };
         let source = CredentialSource::Environment("TEST_CRED_VAR".into());
         assert_eq!(source.resolve().unwrap(), "secret_value");
-        std::env::remove_var("TEST_CRED_VAR");
+        // SAFETY: see above.
+        unsafe { std::env::remove_var("TEST_CRED_VAR") };
     }
 
     #[test]

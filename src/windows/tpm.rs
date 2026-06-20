@@ -85,11 +85,10 @@
 //! ```
 
 use crate::error::{EstError, Result};
-use crate::hsm::{KeyAlgorithm, KeyHandle, KeyMetadata, KeyProvider, ProviderInfo};
+use crate::hsm::{KeyAlgorithm, KeyHandle, KeyProvider, ProviderInfo};
 use crate::windows::cng::{CngKeyProvider, KeyGenerationOptions, providers};
 use async_trait::async_trait;
 use spki::{AlgorithmIdentifierOwned, SubjectPublicKeyInfoOwned};
-use std::collections::HashMap;
 
 /// Information about TPM availability and capabilities.
 #[derive(Debug, Clone)]
@@ -139,7 +138,7 @@ impl TpmAvailability {
         use std::ffi::OsStr;
         use std::os::windows::ffi::OsStrExt;
         use windows::Win32::Security::Cryptography::{
-            NCRYPT_PROV_HANDLE, NCryptFreeObject, NCryptGetProperty, NCryptOpenStorageProvider,
+            NCRYPT_HANDLE, NCRYPT_PROV_HANDLE, NCryptFreeObject, NCryptOpenStorageProvider,
         };
 
         let provider_name = providers::PLATFORM;
@@ -171,7 +170,9 @@ impl TpmAvailability {
         // TPM is available - get version info
         // In a full implementation, we would query TPM properties here
 
-        unsafe { NCryptFreeObject(handle.0) };
+        unsafe {
+            let _ = NCryptFreeObject(NCRYPT_HANDLE(handle.0));
+        };
 
         Ok(Self {
             is_available: true,

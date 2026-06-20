@@ -287,8 +287,17 @@ pub struct EventLog {
     /// Event source name.
     source: String,
     #[cfg(windows)]
-    handle: windows::Win32::System::EventLog::HANDLE,
+    handle: windows::Win32::Foundation::HANDLE,
 }
+
+// SAFETY: The handle is a Windows event-source handle from RegisterEventSourceW.
+// Such handles are thread-safe to use: ReportEventW serializes access internally,
+// so sharing/sending the handle across threads is sound. This is required to use
+// `EventLog` inside a global `tracing` subscriber (which must be Send + Sync).
+#[cfg(windows)]
+unsafe impl Send for EventLog {}
+#[cfg(windows)]
+unsafe impl Sync for EventLog {}
 
 impl EventLog {
     /// Open the event log with the default source.
@@ -348,7 +357,7 @@ impl EventLog {
         {
             use std::ffi::OsStr;
             use std::os::windows::ffi::OsStrExt;
-            use windows::Win32::System::EventLog::ReportEventW;
+            use windows::Win32::System::EventLog::{REPORT_EVENT_TYPE, ReportEventW};
 
             // Build the full message
             let full_message = if let Some(d) = data {
@@ -367,10 +376,11 @@ impl EventLog {
             let result = unsafe {
                 ReportEventW(
                     self.handle,
-                    event_type.to_windows_type(),
+                    REPORT_EVENT_TYPE(event_type.to_windows_type()),
                     0, // Category
                     event_id,
                     None, // User SID
+                    0,    // Raw data size
                     Some(&strings),
                     None, // Raw data
                 )
@@ -586,8 +596,8 @@ pub fn register_event_source() -> Result<()> {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
     use windows::Win32::System::Registry::{
-        HKEY_LOCAL_MACHINE, KEY_WRITE, REG_DWORD, REG_EXPAND_SZ, REG_OPTION_NON_VOLATILE,
-        RegCreateKeyExW, RegSetValueExW,
+        HKEY_LOCAL_MACHINE, KEY_WRITE, REG_CREATE_KEY_DISPOSITION, REG_DWORD, REG_EXPAND_SZ,
+        REG_OPTION_NON_VOLATILE, RegCreateKeyExW, RegSetValueExW,
     };
 
     let key_path = format!(
@@ -601,14 +611,14 @@ pub fn register_event_source() -> Result<()> {
         .collect();
 
     let mut key = windows::Win32::System::Registry::HKEY::default();
-    let mut disposition = 0u32;
+    let mut disposition = REG_CREATE_KEY_DISPOSITION::default();
 
     let result = unsafe {
         RegCreateKeyExW(
             HKEY_LOCAL_MACHINE,
             windows::core::PCWSTR(wide_path.as_ptr()),
-            0,
             None,
+            windows::core::PCWSTR::null(),
             REG_OPTION_NON_VOLATILE,
             KEY_WRITE,
             None,
@@ -642,7 +652,7 @@ pub fn register_event_source() -> Result<()> {
         RegSetValueExW(
             key,
             windows::core::PCWSTR(value_name.as_ptr()),
-            0,
+            None,
             REG_EXPAND_SZ,
             Some(std::slice::from_raw_parts(
                 wide_exe.as_ptr() as *const u8,
@@ -662,7 +672,7 @@ pub fn register_event_source() -> Result<()> {
         RegSetValueExW(
             key,
             windows::core::PCWSTR(types_name.as_ptr()),
-            0,
+            None,
             REG_DWORD,
             Some(std::slice::from_raw_parts(
                 &types_value as *const u32 as *const u8,

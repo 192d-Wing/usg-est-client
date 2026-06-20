@@ -146,7 +146,7 @@ impl MachineIdentity {
 
         // First call to get required buffer size
         unsafe {
-            let _ = GetComputerNameExW(name_type, windows::core::PWSTR::null(), &mut size);
+            let _ = GetComputerNameExW(name_type, None, &mut size);
         }
 
         if size == 0 {
@@ -158,7 +158,7 @@ impl MachineIdentity {
         let result = unsafe {
             GetComputerNameExW(
                 name_type,
-                windows::core::PWSTR(buffer.as_mut_ptr()),
+                Some(windows::core::PWSTR(buffer.as_mut_ptr())),
                 &mut size,
             )
         };
@@ -274,7 +274,7 @@ pub fn current_username() -> Result<String> {
 
         // First call to get required buffer size
         unsafe {
-            let _ = GetUserNameW(windows::core::PWSTR::null(), &mut size);
+            let _ = GetUserNameW(None, &mut size);
         }
 
         if size == 0 {
@@ -282,7 +282,8 @@ pub fn current_username() -> Result<String> {
         }
 
         let mut buffer = vec![0u16; size as usize];
-        let result = unsafe { GetUserNameW(windows::core::PWSTR(buffer.as_mut_ptr()), &mut size) };
+        let result =
+            unsafe { GetUserNameW(Some(windows::core::PWSTR(buffer.as_mut_ptr())), &mut size) };
 
         if result.is_err() {
             return Err(EstError::platform("Failed to get username"));

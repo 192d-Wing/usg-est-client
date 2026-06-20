@@ -189,7 +189,10 @@ async fn main() {
             if let Some(cn) = get_cn(&certificate) {
                 println!("  Subject CN: {}", cn);
             }
-            println!("  Serial: {:?}", certificate.tbs_certificate().serial_number());
+            println!(
+                "  Serial: {:?}",
+                certificate.tbs_certificate().serial_number()
+            );
             println!();
             println!("Save the new certificate and update your configuration.");
         }

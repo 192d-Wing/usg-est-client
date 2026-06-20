@@ -86,19 +86,19 @@ use crate::hsm::{KeyAlgorithm, KeyHandle, KeyMetadata, KeyProvider, ProviderInfo
 use async_trait::async_trait;
 use spki::{AlgorithmIdentifierOwned, SubjectPublicKeyInfoOwned};
 use std::collections::HashMap;
-use std::sync::Arc;
 
 #[cfg(windows)]
 use windows::Win32::Security::Cryptography::{
-    BCRYPT_ALG_HANDLE, BCRYPT_ECCPUBLIC_BLOB, BCRYPT_ECDSA_P256_ALGORITHM,
-    BCRYPT_ECDSA_P384_ALGORITHM, BCRYPT_HASH_HANDLE, BCRYPT_KEY_HANDLE, BCRYPT_RSA_ALGORITHM,
-    BCRYPT_RSAPUBLIC_BLOB, BCRYPT_SHA256_ALGORITHM, BCryptCloseAlgorithmProvider, BCryptCreateHash,
-    BCryptDestroyHash, BCryptDestroyKey, BCryptExportKey, BCryptFinishHash, BCryptGenerateKeyPair,
-    BCryptHashData, BCryptOpenAlgorithmProvider, BCryptSignHash, NCRYPT_FLAGS, NCRYPT_KEY_HANDLE,
-    NCRYPT_PROV_HANDLE, NCryptCreatePersistedKey, NCryptDeleteKey, NCryptExportKey,
-    NCryptFinalizeKey, NCryptFreeObject, NCryptGetProperty, NCryptOpenKey,
+    BCRYPT_ALG_HANDLE, BCRYPT_ECCPUBLIC_BLOB, BCRYPT_HASH_HANDLE,
+    BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS, BCRYPT_RSAPUBLIC_BLOB, BCRYPT_SHA256_ALGORITHM,
+    BCryptCloseAlgorithmProvider, BCryptCreateHash, BCryptDestroyHash, BCryptFinishHash,
+    BCryptHashData, BCryptOpenAlgorithmProvider, CERT_KEY_SPEC, NCRYPT_FLAGS, NCRYPT_HANDLE,
+    NCRYPT_KEY_HANDLE, NCRYPT_PROV_HANDLE, NCryptCreatePersistedKey, NCryptDeleteKey,
+    NCryptExportKey, NCryptFinalizeKey, NCryptFreeObject, NCryptGetProperty, NCryptOpenKey,
     NCryptOpenStorageProvider, NCryptSetProperty, NCryptSignHash,
 };
+#[cfg(windows)]
+use windows::Win32::Security::OBJECT_SECURITY_INFORMATION;
 
 /// Well-known CNG key storage provider names.
 pub mod providers {
@@ -154,6 +154,7 @@ impl Default for KeyGenerationOptions {
 ///
 /// This provider uses Windows Cryptography Next Generation (CNG) APIs
 /// for key management and cryptographic operations.
+#[derive(Debug)]
 pub struct CngKeyProvider {
     /// The CNG storage provider name.
     provider_name: String,
@@ -305,7 +306,7 @@ impl CngKeyProvider {
         }
 
         unsafe {
-            NCryptFreeObject(handle.0);
+            let _ = NCryptFreeObject(NCRYPT_HANDLE(handle.0));
         }
 
         Ok(())
@@ -347,7 +348,7 @@ impl CngKeyProvider {
         use const_oid::db::rfc5912::{
             ID_EC_PUBLIC_KEY, RSA_ENCRYPTION, SECP_256_R_1, SECP_384_R_1,
         };
-        use der::{Encode, asn1::BitString};
+        use der::{Decode, Encode, asn1::BitString};
 
         match algorithm {
             KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384 => {
@@ -411,7 +412,7 @@ impl CngKeyProvider {
                 };
 
                 // Build AlgorithmIdentifier with curve OID as parameter
-                let parameters = der::asn1::ObjectIdentifier::new_unwrap(curve_oid.as_bytes());
+                let parameters = curve_oid;
                 let algorithm_id = spki::AlgorithmIdentifierOwned {
                     oid: ID_EC_PUBLIC_KEY,
                     parameters: Some(
@@ -504,13 +505,8 @@ impl CngKeyProvider {
                 let e = UintRef::new(public_exp)
                     .map_err(|e| EstError::platform(format!("Failed to encode exponent: {}", e)))?;
 
-                // Encode the RSAPublicKey sequence
-                let rsa_public_key = der::asn1::SequenceOf::<UintRef, 2>::try_from([n, e])
-                    .map_err(|e| {
-                        EstError::platform(format!("Failed to create RSA key sequence: {}", e))
-                    })?;
-
-                let rsa_public_key_der = rsa_public_key.to_der().map_err(|e| {
+                // Encode the RSAPublicKey sequence: SEQUENCE { modulus, publicExponent }.
+                let rsa_public_key_der = vec![n, e].to_der().map_err(|e| {
                     EstError::platform(format!("Failed to encode RSA public key: {}", e))
                 })?;
 
@@ -555,12 +551,8 @@ impl CngKeyProvider {
         let s_uint = UintRef::new(s)
             .map_err(|e| EstError::platform(format!("Failed to encode s: {}", e)))?;
 
-        let sig_seq =
-            der::asn1::SequenceOf::<UintRef, 2>::try_from([r_uint, s_uint]).map_err(|e| {
-                EstError::platform(format!("Failed to create signature sequence: {}", e))
-            })?;
-
-        sig_seq
+        // DER SEQUENCE { r INTEGER, s INTEGER }.
+        vec![r_uint, s_uint]
             .to_der()
             .map_err(|e| EstError::platform(format!("Failed to encode signature: {}", e)).into())
     }
@@ -600,7 +592,7 @@ impl KeyProvider for CngKeyProvider {
             impl Drop for ProviderGuard {
                 fn drop(&mut self) {
                     unsafe {
-                        let _ = NCryptFreeObject(self.0.0);
+                        let _ = NCryptFreeObject(NCRYPT_HANDLE(self.0.0));
                     }
                 }
             }
@@ -648,7 +640,7 @@ impl KeyProvider for CngKeyProvider {
                     &mut key_handle,
                     windows::core::PCWSTR(wide_algorithm.as_ptr()),
                     windows::core::PCWSTR(wide_container.as_ptr()),
-                    0,
+                    CERT_KEY_SPEC(0),
                     NCRYPT_FLAGS(0),
                 )
             };
@@ -676,7 +668,7 @@ impl KeyProvider for CngKeyProvider {
 
                 let result = unsafe {
                     NCryptSetProperty(
-                        key_handle,
+                        NCRYPT_HANDLE(key_handle.0),
                         windows::core::PCWSTR(wide_length.as_ptr()),
                         &size_bytes,
                         NCRYPT_FLAGS(0),
@@ -702,7 +694,7 @@ impl KeyProvider for CngKeyProvider {
 
                 let result = unsafe {
                     NCryptSetProperty(
-                        key_handle,
+                        NCRYPT_HANDLE(key_handle.0),
                         windows::core::PCWSTR(wide_policy.as_ptr()),
                         &policy_bytes,
                         NCRYPT_FLAGS(0),
@@ -805,12 +797,11 @@ impl KeyProvider for CngKeyProvider {
             let mut prop_size: u32 = 0;
             let validation_result = unsafe {
                 NCryptGetProperty(
-                    key_handle,
+                    NCRYPT_HANDLE(key_handle.0),
                     windows::core::PCWSTR(wide_algorithm.as_ptr()),
-                    std::ptr::null_mut(),
-                    0,
+                    None,
                     &mut prop_size,
-                    NCRYPT_FLAGS(0),
+                    OBJECT_SECURITY_INFORMATION(0),
                 )
             };
             if validation_result.is_err() {
@@ -825,21 +816,16 @@ impl KeyProvider for CngKeyProvider {
                 KeyAlgorithm::Rsa { .. } => BCRYPT_RSAPUBLIC_BLOB,
             };
 
-            let wide_blob_type: Vec<u16> = OsStr::new(blob_type.to_string().as_str())
-                .encode_wide()
-                .chain(std::iter::once(0))
-                .collect();
-
+            // `blob_type` is already a PCWSTR constant (e.g. BCRYPT_ECCPUBLIC_BLOB).
             // First call to get the size
             let mut blob_size: u32 = 0;
             let result = unsafe {
                 NCryptExportKey(
                     key_handle,
-                    NCRYPT_KEY_HANDLE::default(),
-                    windows::core::PCWSTR(wide_blob_type.as_ptr()),
-                    std::ptr::null(),
-                    std::ptr::null_mut(),
-                    0,
+                    None,
+                    blob_type,
+                    None,
+                    None,
                     &mut blob_size,
                     NCRYPT_FLAGS(0),
                 )
@@ -857,11 +843,10 @@ impl KeyProvider for CngKeyProvider {
             let result = unsafe {
                 NCryptExportKey(
                     key_handle,
-                    NCRYPT_KEY_HANDLE::default(),
-                    windows::core::PCWSTR(wide_blob_type.as_ptr()),
-                    std::ptr::null(),
-                    blob.as_mut_ptr(),
-                    blob_size,
+                    None,
+                    blob_type,
+                    None,
+                    Some(&mut blob),
                     &mut blob_size,
                     NCRYPT_FLAGS(0),
                 )
@@ -916,12 +901,11 @@ impl KeyProvider for CngKeyProvider {
             let mut prop_size: u32 = 0;
             let validation_result = unsafe {
                 NCryptGetProperty(
-                    key_handle,
+                    NCRYPT_HANDLE(key_handle.0),
                     windows::core::PCWSTR(wide_algorithm.as_ptr()),
-                    std::ptr::null_mut(),
-                    0,
+                    None,
                     &mut prop_size,
-                    NCRYPT_FLAGS(0),
+                    OBJECT_SECURITY_INFORMATION(0),
                 )
             };
             if validation_result.is_err() {
@@ -964,8 +948,8 @@ impl KeyProvider for CngKeyProvider {
                 BCryptOpenAlgorithmProvider(
                     &mut hash_alg_handle,
                     hash_algorithm,
-                    std::ptr::null(),
-                    0,
+                    windows::core::PCWSTR::null(),
+                    BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS(0),
                 )
             };
 
@@ -980,17 +964,8 @@ impl KeyProvider for CngKeyProvider {
 
             // Create hash object
             let mut hash_handle = BCRYPT_HASH_HANDLE::default();
-            let result = unsafe {
-                BCryptCreateHash(
-                    hash_alg_handle,
-                    &mut hash_handle,
-                    std::ptr::null_mut(),
-                    0,
-                    std::ptr::null(),
-                    0,
-                    0,
-                )
-            };
+            let result =
+                unsafe { BCryptCreateHash(hash_alg_handle, &mut hash_handle, None, None, 0) };
 
             if result.is_err() {
                 return Err(EstError::platform(format!(
@@ -1002,8 +977,7 @@ impl KeyProvider for CngKeyProvider {
             let _hash_guard = HashGuard(hash_handle);
 
             // Hash the data
-            let result =
-                unsafe { BCryptHashData(hash_handle, data.as_ptr(), data.len() as u32, 0) };
+            let result = unsafe { BCryptHashData(hash_handle, data, 0) };
 
             if result.is_err() {
                 return Err(EstError::platform(format!(
@@ -1019,8 +993,7 @@ impl KeyProvider for CngKeyProvider {
             };
 
             let mut hash = vec![0u8; hash_size];
-            let result =
-                unsafe { BCryptFinishHash(hash_handle, hash.as_mut_ptr(), hash_size as u32, 0) };
+            let result = unsafe { BCryptFinishHash(hash_handle, &mut hash, 0) };
 
             if result.is_err() {
                 return Err(EstError::platform(format!(
@@ -1034,20 +1007,18 @@ impl KeyProvider for CngKeyProvider {
             let result = unsafe {
                 NCryptSignHash(
                     key_handle,
-                    std::ptr::null(),
-                    hash.as_ptr(),
-                    hash.len() as u32,
-                    std::ptr::null_mut(),
-                    0,
+                    None,
+                    &hash,
+                    None,
                     &mut signature_size,
-                    0,
+                    NCRYPT_FLAGS(0),
                 )
             };
 
-            if result.is_err() {
+            if let Err(e) = result {
                 return Err(EstError::platform(format!(
                     "Failed to get signature size: {:?}",
-                    result
+                    e
                 )));
             }
 
@@ -1055,21 +1026,16 @@ impl KeyProvider for CngKeyProvider {
             let result = unsafe {
                 NCryptSignHash(
                     key_handle,
-                    std::ptr::null(),
-                    hash.as_ptr(),
-                    hash.len() as u32,
-                    signature.as_mut_ptr(),
-                    signature_size,
+                    None,
+                    &hash,
+                    Some(&mut signature),
                     &mut signature_size,
-                    0,
+                    NCRYPT_FLAGS(0),
                 )
             };
 
-            if result.is_err() {
-                return Err(EstError::platform(format!(
-                    "Failed to sign hash: {:?}",
-                    result
-                )));
+            if let Err(e) = result {
+                return Err(EstError::platform(format!("Failed to sign hash: {:?}", e)));
             }
 
             // For ECDSA, CNG returns raw (r,s) format - convert to DER
@@ -1215,13 +1181,15 @@ impl KeyProvider for CngKeyProvider {
                     prov_handle,
                     &mut key_handle,
                     windows::core::PCWSTR(wide_container.as_ptr()),
-                    0,
+                    CERT_KEY_SPEC(0),
                     NCRYPT_FLAGS(0),
                 )
             };
 
             if result.is_err() {
-                unsafe { NCryptFreeObject(prov_handle.0) };
+                unsafe {
+                    let _ = NCryptFreeObject(NCRYPT_HANDLE(prov_handle.0));
+                }
                 return Err(EstError::platform(format!(
                     "Failed to open key for deletion: {:?}",
                     result
@@ -1232,7 +1200,9 @@ impl KeyProvider for CngKeyProvider {
             let result = unsafe { NCryptDeleteKey(key_handle, 0) };
 
             // Clean up provider handle
-            unsafe { NCryptFreeObject(prov_handle.0) };
+            unsafe {
+                let _ = NCryptFreeObject(NCRYPT_HANDLE(prov_handle.0));
+            }
 
             if result.is_err() {
                 return Err(EstError::platform(format!(

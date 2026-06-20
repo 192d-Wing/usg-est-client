@@ -624,7 +624,10 @@ impl KeyProvider for Pkcs11KeyProvider {
                 )
             }
             KeyAlgorithm::Rsa { bits } => {
-                let modulus_bits = cryptoki::types::Ulong::from(bits as u64);
+                // CK_ULONG is platform-width (u32 on Windows, u64 on Linux), so go
+                // through the fallible usize conversion rather than From<u64>.
+                let modulus_bits = cryptoki::types::Ulong::try_from(bits as usize)
+                    .map_err(|e| EstError::hsm(format!("Invalid RSA modulus bits: {}", e)))?;
 
                 (
                     Mechanism::RsaPkcsKeyPairGen,

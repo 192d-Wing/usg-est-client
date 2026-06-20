@@ -600,7 +600,7 @@ fn decrypt_content(
     iv: &[u8],
     algorithm: EncryptionAlgorithm,
 ) -> Result<Vec<u8>> {
-    use cbc::cipher::{BlockDecryptMut, KeyIvInit};
+    use cbc::cipher::{BlockModeDecrypt, KeyIvInit};
 
     // Verify IV size
     let expected_iv_size = algorithm.block_size();
@@ -617,41 +617,33 @@ fn decrypt_content(
             type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
             let cipher = Aes128CbcDec::new_from_slices(key, iv)
                 .map_err(|e| EstError::operational(format!("Failed to create cipher: {}", e)))?;
-            let mut buffer = encrypted.to_vec();
             cipher
-                .decrypt_padded_mut::<cbc::cipher::block_padding::Pkcs7>(&mut buffer)
+                .decrypt_padded_vec::<cbc::cipher::block_padding::Pkcs7>(encrypted)
                 .map_err(|e| EstError::operational(format!("Decryption failed: {}", e)))?
-                .to_vec()
         }
         EncryptionAlgorithm::Aes192Cbc => {
             type Aes192CbcDec = cbc::Decryptor<aes::Aes192>;
             let cipher = Aes192CbcDec::new_from_slices(key, iv)
                 .map_err(|e| EstError::operational(format!("Failed to create cipher: {}", e)))?;
-            let mut buffer = encrypted.to_vec();
             cipher
-                .decrypt_padded_mut::<cbc::cipher::block_padding::Pkcs7>(&mut buffer)
+                .decrypt_padded_vec::<cbc::cipher::block_padding::Pkcs7>(encrypted)
                 .map_err(|e| EstError::operational(format!("Decryption failed: {}", e)))?
-                .to_vec()
         }
         EncryptionAlgorithm::Aes256Cbc => {
             type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
             let cipher = Aes256CbcDec::new_from_slices(key, iv)
                 .map_err(|e| EstError::operational(format!("Failed to create cipher: {}", e)))?;
-            let mut buffer = encrypted.to_vec();
             cipher
-                .decrypt_padded_mut::<cbc::cipher::block_padding::Pkcs7>(&mut buffer)
+                .decrypt_padded_vec::<cbc::cipher::block_padding::Pkcs7>(encrypted)
                 .map_err(|e| EstError::operational(format!("Decryption failed: {}", e)))?
-                .to_vec()
         }
         EncryptionAlgorithm::TripleDesCbc => {
             type TdesEde3CbcDec = cbc::Decryptor<des::TdesEde3>;
             let cipher = TdesEde3CbcDec::new_from_slices(key, iv)
                 .map_err(|e| EstError::operational(format!("Failed to create cipher: {}", e)))?;
-            let mut buffer = encrypted.to_vec();
             cipher
-                .decrypt_padded_mut::<cbc::cipher::block_padding::Pkcs7>(&mut buffer)
+                .decrypt_padded_vec::<cbc::cipher::block_padding::Pkcs7>(encrypted)
                 .map_err(|e| EstError::operational(format!("Decryption failed: {}", e)))?
-                .to_vec()
         }
     };
 
@@ -793,7 +785,7 @@ mod tests {
     fn test_aes_decryption() {
         // Test data encrypted with AES-256-CBC
         // This is a simple test with known key, IV, and plaintext
-        use cbc::cipher::{BlockEncryptMut, KeyIvInit};
+        use cbc::cipher::{BlockModeEncrypt, KeyIvInit};
 
         let key = [0x42u8; 32]; // Test key
         let iv = [0x24u8; 16]; // Test IV
@@ -802,12 +794,7 @@ mod tests {
         // Encrypt with proper PKCS#7 padding
         type Aes256CbcEnc = cbc::Encryptor<aes::Aes256>;
         let cipher = Aes256CbcEnc::new_from_slices(&key, &iv).unwrap();
-        let mut buffer = plaintext.to_vec();
-        buffer.resize(32, 0); // Space for padding (at least one block)
-        let ciphertext = cipher
-            .encrypt_padded_mut::<cbc::cipher::block_padding::Pkcs7>(&mut buffer, plaintext.len())
-            .unwrap()
-            .to_vec();
+        let ciphertext = cipher.encrypt_padded_vec::<cbc::cipher::block_padding::Pkcs7>(plaintext);
 
         // Decrypt using our function
         let decryption_key =
@@ -838,56 +825,28 @@ mod enveloped_tests {
         iv: &[u8],
         algorithm: EncryptionAlgorithm,
     ) -> Vec<u8> {
-        use cbc::cipher::{BlockEncryptMut, KeyIvInit};
-
-        let buf_size = plaintext.len() + algorithm.block_size();
-        let mut buffer = plaintext.to_vec();
-        buffer.resize(buf_size, 0);
+        use cbc::cipher::{BlockModeEncrypt, KeyIvInit};
 
         match algorithm {
             EncryptionAlgorithm::Aes128Cbc => {
                 type Enc = cbc::Encryptor<aes::Aes128>;
                 let cipher = Enc::new_from_slices(key, iv).unwrap();
-                cipher
-                    .encrypt_padded_mut::<cbc::cipher::block_padding::Pkcs7>(
-                        &mut buffer,
-                        plaintext.len(),
-                    )
-                    .unwrap()
-                    .to_vec()
+                cipher.encrypt_padded_vec::<cbc::cipher::block_padding::Pkcs7>(plaintext)
             }
             EncryptionAlgorithm::Aes192Cbc => {
                 type Enc = cbc::Encryptor<aes::Aes192>;
                 let cipher = Enc::new_from_slices(key, iv).unwrap();
-                cipher
-                    .encrypt_padded_mut::<cbc::cipher::block_padding::Pkcs7>(
-                        &mut buffer,
-                        plaintext.len(),
-                    )
-                    .unwrap()
-                    .to_vec()
+                cipher.encrypt_padded_vec::<cbc::cipher::block_padding::Pkcs7>(plaintext)
             }
             EncryptionAlgorithm::Aes256Cbc => {
                 type Enc = cbc::Encryptor<aes::Aes256>;
                 let cipher = Enc::new_from_slices(key, iv).unwrap();
-                cipher
-                    .encrypt_padded_mut::<cbc::cipher::block_padding::Pkcs7>(
-                        &mut buffer,
-                        plaintext.len(),
-                    )
-                    .unwrap()
-                    .to_vec()
+                cipher.encrypt_padded_vec::<cbc::cipher::block_padding::Pkcs7>(plaintext)
             }
             EncryptionAlgorithm::TripleDesCbc => {
                 type Enc = cbc::Encryptor<des::TdesEde3>;
                 let cipher = Enc::new_from_slices(key, iv).unwrap();
-                cipher
-                    .encrypt_padded_mut::<cbc::cipher::block_padding::Pkcs7>(
-                        &mut buffer,
-                        plaintext.len(),
-                    )
-                    .unwrap()
-                    .to_vec()
+                cipher.encrypt_padded_vec::<cbc::cipher::block_padding::Pkcs7>(plaintext)
             }
         }
     }
@@ -934,8 +893,7 @@ mod enveloped_tests {
         let iv = [0x66u8; 8]; // 3DES uses 8-byte IV
         let plaintext = b"3DES roundtrip test";
 
-        let ciphertext =
-            encrypt_aes_cbc(plaintext, &key, &iv, EncryptionAlgorithm::TripleDesCbc);
+        let ciphertext = encrypt_aes_cbc(plaintext, &key, &iv, EncryptionAlgorithm::TripleDesCbc);
         let decrypted =
             decrypt_content(&ciphertext, &key, &iv, EncryptionAlgorithm::TripleDesCbc).unwrap();
         assert_eq!(&decrypted, plaintext);
@@ -951,8 +909,7 @@ mod enveloped_tests {
 
         // Decrypt with a different key - should fail with unpadding error
         let wrong_key = [0xCCu8; 32];
-        let result =
-            decrypt_content(&ciphertext, &wrong_key, &iv, EncryptionAlgorithm::Aes256Cbc);
+        let result = decrypt_content(&ciphertext, &wrong_key, &iv, EncryptionAlgorithm::Aes256Cbc);
         assert!(result.is_err());
     }
 
@@ -962,8 +919,7 @@ mod enveloped_tests {
         let bad_iv = [0xBBu8; 8]; // AES expects 16-byte IV
         let ciphertext = vec![0u8; 32]; // dummy
 
-        let result =
-            decrypt_content(&ciphertext, &key, &bad_iv, EncryptionAlgorithm::Aes256Cbc);
+        let result = decrypt_content(&ciphertext, &key, &bad_iv, EncryptionAlgorithm::Aes256Cbc);
         assert!(result.is_err());
     }
 
@@ -974,8 +930,7 @@ mod enveloped_tests {
         // Corrupt data that won't have valid PKCS#7 padding
         let corrupt = vec![0xFFu8; 32];
 
-        let result =
-            decrypt_content(&corrupt, &key, &iv, EncryptionAlgorithm::Aes128Cbc);
+        let result = decrypt_content(&corrupt, &key, &iv, EncryptionAlgorithm::Aes128Cbc);
         assert!(result.is_err());
     }
 
