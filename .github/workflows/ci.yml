@@ -66,7 +66,8 @@ jobs:
       - run: cargo test --features "${{ matrix.features }}" --verbose
 
   # FIPS-validated TLS via the aws-lc-rs FIPS module. Linux-only (the FIPS module,
-  # aws-lc-fips-sys, builds on Linux x86_64/aarch64 and needs Go + cmake).
+  # aws-lc-fips-sys, builds on Linux x86_64/aarch64; its build deps Go + cmake are
+  # preinstalled on the GitHub-hosted ubuntu runners).
   # NOTE: this verifies the FIPS *build* and that the provider reports FIPS mode;
   # it is not a CMVP-validated operating environment.
   fips-tls:
@@ -79,9 +80,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "stable"
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --no-default-features --features fips-tls --verbose
 

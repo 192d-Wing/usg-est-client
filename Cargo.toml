@@ -28,8 +28,8 @@ native-tls = { version = "0.2", optional = true }
 # TLS
 rustls = "0.23.40"
 # FIPS-validated crypto module (aws-lc-rs FIPS) used as the rustls TLS provider.
-# Phase 1 of the FIPS migration; only builds on FIPS-supported targets
-# (Linux x86_64/aarch64). Windows uses the CNG FIPS module instead.
+# Phase 1 of the FIPS migration; the FIPS module (aws-lc-fips-sys) builds on
+# Linux (x86_64/aarch64) only. Windows uses the CNG FIPS module instead.
 aws-lc-rs = { version = "1.13", optional = true }
 rustls-pki-types = { version = "1.14", features = ["alloc"] }
 webpki-roots = "1.0"
