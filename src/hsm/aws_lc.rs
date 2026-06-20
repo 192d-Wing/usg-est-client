@@ -310,6 +310,35 @@ mod tests {
         assert!(!sig.is_empty());
     }
 
+    /// Cross-implementation regression guard for the sign() contract: a raw
+    /// message signed by the aws-lc FIPS module must verify with RustCrypto over
+    /// that same message. Catches any double-hash (signing a pre-hashed digest).
+    #[tokio::test]
+    async fn sign_verifies_over_raw_message_p256() {
+        use p256::ecdsa::signature::Verifier;
+        use p256::ecdsa::{Signature, VerifyingKey};
+        use p256::pkcs8::DecodePublicKey;
+
+        let provider = AwsLcKeyProvider::new();
+        let handle = provider
+            .generate_key_pair(KeyAlgorithm::EcdsaP256, None)
+            .await
+            .unwrap();
+        let message = b"to-be-signed CertificationRequestInfo bytes";
+        let sig = provider.sign(&handle, message).await.unwrap();
+
+        let spki_der = provider
+            .public_key(&handle)
+            .await
+            .unwrap()
+            .to_der()
+            .unwrap();
+        let vk = VerifyingKey::from_public_key_der(&spki_der).unwrap();
+        let signature = Signature::from_der(&sig).unwrap();
+        vk.verify(message, &signature)
+            .expect("aws-lc ECDSA signature must verify over the raw message (no double-hash)");
+    }
+
     #[tokio::test]
     async fn generate_and_sign_ecdsa_p384() {
         let provider = AwsLcKeyProvider::new();

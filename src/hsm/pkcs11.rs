@@ -681,15 +681,16 @@ impl KeyProvider for Pkcs11KeyProvider {
             .lock()
             .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
 
-        // Select mechanism based on algorithm
+        // Select a hash-and-sign mechanism: per the KeyProvider contract, `data`
+        // is the raw message, so the token hashes it internally (SHA-256 for
+        // P-256/RSA, SHA-384 for P-384) — matching the other providers.
         let mechanism = match handle.algorithm {
-            KeyAlgorithm::EcdsaP256 => Mechanism::Ecdsa,
-            KeyAlgorithm::EcdsaP384 => Mechanism::Ecdsa,
-            KeyAlgorithm::Rsa { .. } => Mechanism::RsaPkcs,
+            KeyAlgorithm::EcdsaP256 => Mechanism::EcdsaSha256,
+            KeyAlgorithm::EcdsaP384 => Mechanism::EcdsaSha384,
+            KeyAlgorithm::Rsa { .. } => Mechanism::Sha256RsaPkcs,
         };
 
-        // For ECDSA, data should be a SHA-256 or SHA-384 hash
-        // For RSA, data should be a DigestInfo structure (or just hash for PKCS#1)
+        // `data` is the raw to-be-signed message; the mechanism hashes it.
 
         // Sign the data
         let signature = session
