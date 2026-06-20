@@ -90,8 +90,8 @@ pub use aws_lc::AwsLcKeyProvider;
 /// - Otherwise (`csr-gen`): the in-memory [`SoftwareKeyProvider`].
 ///
 /// FIPS thus takes effect automatically: a build with `fips` gets FIPS keys
-/// without the caller choosing a provider. (Windows CNG FIPS is wired in a later
-/// phase.) Use [`default_key_provider`] to construct one.
+/// without the caller choosing a provider. On Windows, use [`fips_key_provider`]
+/// for the CNG FIPS provider. Use [`default_key_provider`] to construct one.
 #[cfg(feature = "fips")]
 pub type DefaultKeyProvider = AwsLcKeyProvider;
 
@@ -106,6 +106,44 @@ pub type DefaultKeyProvider = SoftwareKeyProvider;
 #[cfg(any(feature = "fips", feature = "csr-gen"))]
 pub fn default_key_provider() -> DefaultKeyProvider {
     DefaultKeyProvider::new()
+}
+
+/// The platform's FIPS-validated [`KeyProvider`] type.
+///
+/// - Linux `fips`: [`AwsLcKeyProvider`] — keys + signing in the aws-lc-rs FIPS
+///   module.
+/// - Windows `windows`: [`CngKeyProvider`](crate::windows::CngKeyProvider) in
+///   FIPS mode — keys + signing via Windows CNG under the system FIPS policy.
+///
+/// Construct one with [`fips_key_provider`].
+#[cfg(feature = "fips")]
+pub type FipsKeyProvider = AwsLcKeyProvider;
+
+/// See [`FipsKeyProvider`].
+#[cfg(all(not(feature = "fips"), windows, feature = "windows"))]
+pub type FipsKeyProvider = crate::windows::CngKeyProvider;
+
+/// Construct the platform's FIPS-validated key provider, **fail-closed**.
+///
+/// Selects the FIPS provider for the build/platform — the aws-lc-rs
+/// [`AwsLcKeyProvider`] under `fips` (Linux), or the Windows CNG
+/// [`CngKeyProvider`](crate::windows::CngKeyProvider) under `windows`. The CNG
+/// path errors if the Windows FIPS algorithm policy is not enabled, so a FIPS
+/// deployment can never silently run on non-validated cryptography.
+///
+/// Available when the build has a FIPS provider: the `fips` feature (Linux) or
+/// the `windows` feature (Windows). Pair with
+/// [`crate::csr::HsmCsrBuilder::build_with_provider`] to produce a CSR whose key
+/// and signature come from the FIPS module.
+#[cfg(feature = "fips")]
+pub fn fips_key_provider() -> Result<FipsKeyProvider> {
+    Ok(AwsLcKeyProvider::new())
+}
+
+/// See [`fips_key_provider`] (Windows CNG FIPS).
+#[cfg(all(not(feature = "fips"), windows, feature = "windows"))]
+pub fn fips_key_provider() -> Result<FipsKeyProvider> {
+    crate::windows::CngKeyProvider::new_fips()
 }
 
 use crate::error::Result;
@@ -356,5 +394,18 @@ mod tests {
         assert_eq!(info.name, "TestProvider");
         assert!(info.supports_key_generation);
         assert!(!info.supports_key_deletion);
+    }
+
+    // On Windows, `fips_key_provider()` must be fail-closed: it succeeds iff the
+    // system FIPS policy is on, matching `CngKeyProvider::is_fips_mode_enabled`.
+    #[cfg(all(not(feature = "fips"), windows, feature = "windows"))]
+    #[test]
+    fn test_fips_key_provider_fail_closed() {
+        let fips_on = crate::windows::CngKeyProvider::is_fips_mode_enabled().unwrap();
+        assert_eq!(
+            fips_key_provider().is_ok(),
+            fips_on,
+            "fips_key_provider() must agree with the system FIPS policy"
+        );
     }
 }
