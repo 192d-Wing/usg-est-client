@@ -35,9 +35,8 @@
 //! - Prevents weak keys that could be compromised
 //!
 //! **IA-7: Cryptographic Module Authentication**
-//! - Ensures only FIPS-validated cryptographic modules are used
-//! - Runtime validation of FIPS mode status
-//! - CMVP Certificate validation (OpenSSL FIPS module #4282, #4616)
+//! - Ensures only FIPS-approved algorithms are used
+//! - Runtime validation of FIPS mode status (aws-lc-rs FIPS module / Windows CNG)
 //!
 //! ## STIG Compliance
 //!
@@ -105,13 +104,15 @@
 //! - **RSA < 2048 bits** - Insufficient security margin (factorization attacks)
 //! - **ECC < 256 bits** - Below NIST minimum for FIPS 140-2
 //!
-//! # FIPS 140-2 Validation
+//! # FIPS 140 validation
 //!
-//! When FIPS mode is enabled, this module uses OpenSSL FIPS module:
-//! - **CMVP Certificate #4282** - OpenSSL 3.0.0 FIPS Provider
-//! - **CMVP Certificate #4616** - OpenSSL 3.0.8 FIPS Provider
+//! This module enforces the FIPS-approved algorithm set. The underlying
+//! cryptography runs in the aws-lc-rs FIPS module (Linux, `fips` feature) or the
+//! Windows CNG FIPS module. FIPS 140 validation (CMVP) attaches to a specific
+//! module version operated per its Security Policy — confirm the exact validated
+//! version for an ATO. See `docs/fips-compliance.md`.
 //!
-//! Validation status: https://csrc.nist.gov/projects/cryptographic-module-validation-program
+//! CMVP: https://csrc.nist.gov/projects/cryptographic-module-validation-program
 
 use crate::error::{EstError, Result};
 use std::fmt;

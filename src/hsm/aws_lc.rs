@@ -13,7 +13,7 @@
 //! crates — aws-lc-rs provides the cryptographic primitives only. The actual
 //! key generation and signature operations are performed by the FIPS module.
 //!
-//! Available only with the `fips-tls` feature (Linux; Windows uses CNG FIPS).
+//! Available only with the `fips` feature (Linux; Windows uses CNG FIPS).
 
 use super::{KeyAlgorithm, KeyHandle, KeyMetadata, KeyProvider, ProviderInfo};
 use crate::error::{EstError, Result};

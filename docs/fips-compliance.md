@@ -1,6 +1,18 @@
-# FIPS 140-2 Compliance Guide
+# FIPS 140 Compliance Guide
 
-This guide documents the FIPS 140-2 (Federal Information Processing Standard) compliance features of the usg-est-client for deployment on Department of Defense (DoD) networks.
+This guide documents the FIPS 140 (Federal Information Processing Standard) compliance features of the usg-est-client for deployment on Department of Defense (DoD) networks.
+
+> **Status / accuracy note.** The crate's FIPS cryptography is provided by the
+> **aws-lc-rs FIPS module** on Linux (the `fips` feature) and the **Windows CNG
+> FIPS module** on Windows (`CngKeyProvider::new_fips`). The earlier OpenSSL FIPS
+> path has been removed. Building with `fips` links a FIPS module but is **not, by
+> itself, a CMVP-validated operating environment**: FIPS 140 validation attaches
+> to a specific module version operated per its Security Policy. The `aws-lc-rs`
+> dependency is pinned to an exact version (`=1.17.0`) so the build cannot roll
+> forward off a validated version; confirm the exact CMVP-validated version and
+> operating conditions before relying on this for an ATO. Sections below that
+> still describe OpenSSL `openssl.cnf` setup are retained for historical reference
+> and are slated for rewrite.
 
 ## Table of Contents
 
@@ -21,11 +33,12 @@ FIPS 140-2 is a U.S. government computer security standard that specifies securi
 
 When FIPS mode is enabled, the EST client:
 
-- Uses OpenSSL 3.0+ with FIPS module instead of rustls
+- Uses the aws-lc-rs FIPS module (Linux) or Windows CNG FIPS module as the
+  crypto provider for TLS and PKI operations
 - Enforces FIPS-approved algorithms only
 - Blocks non-FIPS algorithms (3DES, DES, MD5, SHA-1, RC4, etc.)
 - Validates minimum key sizes (RSA ≥2048 bits, ECC ≥256 bits)
-- Performs FIPS self-tests on startup
+- Installs the FIPS rustls provider fail-closed (errors if not in FIPS mode)
 - Requires TLS 1.2 minimum (TLS 1.3 recommended)
 
 ### FIPS-Approved Algorithms
@@ -66,15 +79,19 @@ The following algorithms are **NOT** FIPS-approved and will be rejected:
 
 ### System Requirements
 
-- **OpenSSL 3.0 or later** with FIPS module installed
-- Linux, macOS, or Windows operating system
-- Rust 1.75+ (Edition 2024)
+- **Linux** (x86_64/aarch64) to build the aws-lc-rs FIPS module via the `fips`
+  feature; build deps Go and cmake. On **Windows**, FIPS comes from the CNG FIPS
+  module under the system FIPS policy (no `fips` feature).
+- Rust 1.92+ (Edition 2024)
 
-### OpenSSL FIPS Module
+### FIPS cryptographic module
 
-The OpenSSL FIPS module is validated under:
-- **CMVP Certificate #4282** (OpenSSL 3.0.0)
-- **CMVP Certificate #4616** (OpenSSL 3.0.8)
+- **Linux:** aws-lc-rs FIPS module (`aws-lc-fips-sys`), pinned to an exact version.
+- **Windows:** Microsoft CNG FIPS module under the "System cryptography: Use FIPS
+  compliant algorithms" policy.
+
+FIPS 140 validation (CMVP) attaches to a specific module version. Confirm the
+exact CMVP-validated version for your platform before an ATO.
 
 See: https://csrc.nist.gov/projects/cryptographic-module-validation-program
 

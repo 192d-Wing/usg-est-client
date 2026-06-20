@@ -867,21 +867,21 @@ impl CertificateValidator {
         const ECDSA_SHA512: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.4");
 
         // Perform cryptographic signature verification using FIPS-approved algorithms.
-        // Under `fips-tls`, verification runs inside the aws-lc-rs FIPS module; the
+        // Under `fips`, verification runs inside the aws-lc-rs FIPS module; the
         // RustCrypto path is used otherwise.
         match *sig_alg_oid {
             RSA_SHA256 | RSA_SHA384 | RSA_SHA512 => {
-                #[cfg(feature = "fips-tls")]
+                #[cfg(feature = "fips")]
                 self.verify_signature_fips(*sig_alg_oid, issuer_spki, &tbs_bytes, signature)?;
-                #[cfg(not(feature = "fips-tls"))]
+                #[cfg(not(feature = "fips"))]
                 self.verify_rsa_signature(&tbs_bytes, signature, *sig_alg_oid, issuer_spki)?;
                 debug!("RSA signature verified successfully");
                 Ok(())
             }
             ECDSA_SHA256 | ECDSA_SHA384 | ECDSA_SHA512 => {
-                #[cfg(feature = "fips-tls")]
+                #[cfg(feature = "fips")]
                 self.verify_signature_fips(*sig_alg_oid, issuer_spki, &tbs_bytes, signature)?;
-                #[cfg(not(feature = "fips-tls"))]
+                #[cfg(not(feature = "fips"))]
                 self.verify_ecdsa_signature(&tbs_bytes, signature, *sig_alg_oid, issuer_spki)?;
                 debug!("ECDSA signature verified successfully");
                 Ok(())
@@ -898,11 +898,11 @@ impl CertificateValidator {
 
     /// Verify a certificate signature inside the aws-lc-rs FIPS module.
     ///
-    /// Used in place of the RustCrypto verifiers when built with `fips-tls`, so
+    /// Used in place of the RustCrypto verifiers when built with `fips`, so
     /// the trust-decision path runs on FIPS-validated cryptography. The issuer's
     /// SPKI subjectPublicKey is exactly the key encoding aws-lc-rs expects (the
     /// SEC1 point for ECDSA, the PKCS#1 RSAPublicKey for RSA).
-    #[cfg(feature = "fips-tls")]
+    #[cfg(feature = "fips")]
     fn verify_signature_fips(
         &self,
         alg_oid: ObjectIdentifier,
@@ -946,7 +946,7 @@ impl CertificateValidator {
     }
 
     /// Verify RSA signature.
-    #[cfg(not(feature = "fips-tls"))]
+    #[cfg(not(feature = "fips"))]
     fn verify_rsa_signature(
         &self,
         tbs_bytes: &[u8],
@@ -1018,7 +1018,7 @@ impl CertificateValidator {
     }
 
     /// Verify ECDSA signature.
-    #[cfg(not(feature = "fips-tls"))]
+    #[cfg(not(feature = "fips"))]
     fn verify_ecdsa_signature(
         &self,
         tbs_bytes: &[u8],

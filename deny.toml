@@ -36,7 +36,7 @@ allow = [
     "ISC",
     "Unicode-DFS-2016",
     "Unicode-3.0",  # For unicode/ICU crates (transitive via url/idna)
-    "OpenSSL",  # For openssl/openssl-sys (FIPS feature)
+    "OpenSSL",  # For aws-lc-rs / aws-lc-fips-sys (fips feature)
     "CDLA-Permissive-2.0",  # For webpki-roots/webpki-root-certs (Mozilla root certificates)
     "MPL-2.0",  # For option-ext (transitive via dirs)
 ]

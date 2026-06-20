@@ -76,34 +76,34 @@ pub mod pkcs11;
 #[cfg(feature = "pkcs11")]
 pub use pkcs11::Pkcs11KeyProvider;
 
-#[cfg(feature = "fips-tls")]
+#[cfg(feature = "fips")]
 mod aws_lc;
 
-#[cfg(feature = "fips-tls")]
+#[cfg(feature = "fips")]
 pub use aws_lc::AwsLcKeyProvider;
 
 /// The default [`KeyProvider`] for EST enrollment, selected by build features.
 ///
-/// - With `fips-tls` (FIPS builds, Linux): the FIPS-validated
+/// - With `fips` (FIPS builds, Linux): the FIPS-validated
 ///   [`AwsLcKeyProvider`] — key generation and signing run inside the aws-lc-rs
 ///   FIPS module.
 /// - Otherwise (`csr-gen`): the in-memory [`SoftwareKeyProvider`].
 ///
-/// FIPS thus takes effect automatically: a build with `fips-tls` gets FIPS keys
+/// FIPS thus takes effect automatically: a build with `fips` gets FIPS keys
 /// without the caller choosing a provider. (Windows CNG FIPS is wired in a later
 /// phase.) Use [`default_key_provider`] to construct one.
-#[cfg(feature = "fips-tls")]
+#[cfg(feature = "fips")]
 pub type DefaultKeyProvider = AwsLcKeyProvider;
 
 /// See [`DefaultKeyProvider`].
-#[cfg(all(not(feature = "fips-tls"), feature = "csr-gen"))]
+#[cfg(all(not(feature = "fips"), feature = "csr-gen"))]
 pub type DefaultKeyProvider = SoftwareKeyProvider;
 
 /// Construct the feature-selected [`DefaultKeyProvider`] for EST enrollment.
 ///
 /// Pair with [`crate::csr::HsmCsrBuilder::build_with_provider`] to generate a CSR
-/// whose key + signature come from the FIPS module when built with `fips-tls`.
-#[cfg(any(feature = "fips-tls", feature = "csr-gen"))]
+/// whose key + signature come from the FIPS module when built with `fips`.
+#[cfg(any(feature = "fips", feature = "csr-gen"))]
 pub fn default_key_provider() -> DefaultKeyProvider {
     DefaultKeyProvider::new()
 }

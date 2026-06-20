@@ -1,32 +1,34 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2025 U.S. Federal Government (in countries where recognized)
 
-//! FIPS 140-2 Compliant Certificate Enrollment Example
+//! FIPS 140 Certificate Enrollment Example (aws-lc-rs FIPS module)
 //!
-//! This example demonstrates certificate enrollment using FIPS-validated cryptography.
+//! This example demonstrates certificate enrollment using the aws-lc-rs FIPS
+//! cryptographic module for TLS and PKI operations.
 //!
 //! # Security Controls Demonstrated
 //!
 //! **NIST SP 800-53 Rev 5:**
-//! - SC-13: Cryptographic Protection (FIPS 140-2 approved algorithms only)
-//! - SC-12: Cryptographic Key Establishment (FIPS-validated key generation)
+//! - SC-13: Cryptographic Protection (FIPS-approved algorithms only)
+//! - SC-12: Cryptographic Key Establishment (FIPS-module key generation)
 //! - IA-7: Cryptographic Module Authentication (FIPS module verification)
 //!
 //! **Application Development STIG V5R3:**
 //! - APSC-DV-000170 (CAT I): Use only FIPS-validated cryptography
 //!
-//! # FIPS 140-2 Compliance
+//! # FIPS 140 mode
 //!
-//! - Enforces use of FIPS-approved algorithms (AES-256, RSA-2048+, ECDSA P-256+)
-//! - Blocks deprecated algorithms (3DES, MD5, SHA-1, RC4)
-//! - Validates OpenSSL FIPS module status (CMVP #4282, #4616)
-//! - Uses FIPS-approved random number generator (BCryptGenRandom)
+//! - Enforces FIPS-approved algorithms (AES, RSA-2048+, ECDSA P-256/P-384)
+//! - Installs the aws-lc-rs FIPS module as the rustls TLS provider (fail-closed)
+//! - Performs key generation, signing, and verification in the FIPS module
 //!
 //! # Requirements
 //!
-//! - OpenSSL 3.0+ with FIPS module installed and configured
-//! - FIPS mode enabled system-wide (via openssl.cnf)
+//! - Build with the `fips` feature (links the aws-lc-rs FIPS module; Linux)
 //! - EST server that supports FIPS-approved algorithms
+//!
+//! Note: a `fips`-feature build links the FIPS module but is not, by itself, a
+//! CMVP-validated operating environment. See docs/fips-compliance.md.
 //!
 //! # Running
 //!
@@ -80,19 +82,18 @@ async fn main() {
     println!("{}", info);
 
     if !info.fips_capable {
-        eprintln!("\n❌ ERROR: OpenSSL FIPS module is not available");
-        eprintln!("Please install OpenSSL 3.0+ with FIPS module");
+        eprintln!("\n❌ ERROR: the aws-lc-rs FIPS module is not available");
+        eprintln!("Rebuild with the `fips` feature (Linux): --features fips,csr-gen");
         eprintln!("See docs/fips-compliance.md for setup instructions");
         process::exit(1);
     }
 
     if !info.fips_enabled {
-        println!("\n⚠️  FIPS mode is not currently enabled. Attempting to enable...");
+        println!("\n⚠️  FIPS provider is not yet installed. Attempting to install...");
         match enable_fips_mode() {
-            Ok(()) => println!("✅ FIPS mode enabled successfully"),
+            Ok(()) => println!("✅ FIPS provider installed successfully"),
             Err(e) => {
-                eprintln!("\n❌ ERROR: Failed to enable FIPS mode: {}", e);
-                eprintln!("You may need to configure OpenSSL system-wide");
+                eprintln!("\n❌ ERROR: Failed to install the FIPS provider: {}", e);
                 eprintln!("See docs/fips-compliance.md for setup instructions");
                 process::exit(1);
             }
