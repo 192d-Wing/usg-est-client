@@ -76,6 +76,12 @@ pub mod pkcs11;
 #[cfg(feature = "pkcs11")]
 pub use pkcs11::Pkcs11KeyProvider;
 
+#[cfg(feature = "fips-tls")]
+mod aws_lc;
+
+#[cfg(feature = "fips-tls")]
+pub use aws_lc::AwsLcKeyProvider;
+
 use crate::error::Result;
 use async_trait::async_trait;
 use spki::{AlgorithmIdentifierOwned, SubjectPublicKeyInfoOwned};

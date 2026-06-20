@@ -256,7 +256,9 @@ fips = ["openssl", "openssl-sys", "native-tls-backend"]
 # build aws-lc-fips-sys; Windows uses the CNG FIPS module. Will be folded into a
 # single `fips` feature once the PKI phases (keygen/sign/verify) also route through
 # aws-lc-rs / CNG.
-fips-tls = ["dep:aws-lc-rs", "aws-lc-rs/fips", "rustls/fips"]
+# Adds `hsm` + `csr-gen` so the KeyProvider trait + HsmCsrBuilder (manual,
+# rcgen/ring-free CSR signing) are available for the FIPS AwsLcKeyProvider.
+fips-tls = ["dep:aws-lc-rs", "aws-lc-rs/fips", "rustls/fips", "hsm", "csr-gen"]
 
 # DoD PKI integration (DoD Root CAs, certificate policies, CAC/PIV support)
 # Provides DoD-specific trust anchors and policy validation
