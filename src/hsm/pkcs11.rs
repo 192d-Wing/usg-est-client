@@ -563,6 +563,44 @@ impl Pkcs11KeyProvider {
             attributes,
         })
     }
+
+    /// Synchronously sign `data` with the token-held key.
+    ///
+    /// Identical in behaviour to the async [`KeyProvider::sign`] (same
+    /// hash-and-sign mechanism, same P1363→DER re-encoding for EC keys), but
+    /// callable from synchronous contexts such as the rustls [`Signer`] used for
+    /// TLS client/server authentication. PKCS#11 operations are blocking anyway,
+    /// so the async method simply delegates here.
+    ///
+    /// [`Signer`]: rustls::sign::Signer
+    pub fn sign_blocking(&self, handle: &KeyHandle, data: &[u8]) -> Result<Vec<u8>> {
+        let priv_handle = self.handle_to_object(handle)?;
+        let session = self
+            .session
+            .lock()
+            .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
+
+        // Hash-and-sign mechanism: per the KeyProvider contract `data` is the raw
+        // message, so the token hashes it (SHA-256 for P-256/RSA, SHA-384 for P-384).
+        let mechanism = match handle.algorithm {
+            KeyAlgorithm::EcdsaP256 => Mechanism::EcdsaSha256,
+            KeyAlgorithm::EcdsaP384 => Mechanism::EcdsaSha384,
+            KeyAlgorithm::Rsa { .. } => Mechanism::Sha256RsaPkcs,
+        };
+
+        let signature = session
+            .sign(&mechanism, priv_handle, data)
+            .map_err(|e| EstError::hsm(format!("Failed to sign data: {}", e)))?;
+
+        // PKCS#11 emits ECDSA signatures as raw r‖s (P1363); the rest of the
+        // crate (and TLS) expects the DER Ecdsa-Sig-Value. RSA is already final.
+        match handle.algorithm {
+            KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384 => {
+                ecdsa_p1363_to_der(&signature, handle.algorithm)
+            }
+            KeyAlgorithm::Rsa { .. } => Ok(signature),
+        }
+    }
 }
 
 #[async_trait]
@@ -695,39 +733,10 @@ impl KeyProvider for Pkcs11KeyProvider {
     }
 
     async fn sign(&self, handle: &KeyHandle, data: &[u8]) -> Result<Vec<u8>> {
-        let priv_handle = self.handle_to_object(handle)?;
-        let session = self
-            .session
-            .lock()
-            .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
-
-        // Select a hash-and-sign mechanism: per the KeyProvider contract, `data`
-        // is the raw message, so the token hashes it internally (SHA-256 for
-        // P-256/RSA, SHA-384 for P-384) — matching the other providers.
-        let mechanism = match handle.algorithm {
-            KeyAlgorithm::EcdsaP256 => Mechanism::EcdsaSha256,
-            KeyAlgorithm::EcdsaP384 => Mechanism::EcdsaSha384,
-            KeyAlgorithm::Rsa { .. } => Mechanism::Sha256RsaPkcs,
-        };
-
-        // `data` is the raw to-be-signed message; the mechanism hashes it.
-
-        // Sign the data
-        let signature = session
-            .sign(&mechanism, priv_handle, data)
-            .map_err(|e| EstError::hsm(format!("Failed to sign data: {}", e)))?;
-
-        // PKCS#11 emits ECDSA signatures as the raw fixed-width `r ‖ s` pair
-        // (IEEE P1363 / CKM_ECDSA), but the KeyProvider contract — and the CSR
-        // and TLS assembly that consume this output — expect the ASN.1 DER
-        // `Ecdsa-Sig-Value` (matching the aws-lc-rs `*_ASN1_SIGNING` providers).
-        // Re-encode EC signatures; RSA PKCS#1 v1.5 signatures are already final.
-        match handle.algorithm {
-            KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384 => {
-                ecdsa_p1363_to_der(&signature, handle.algorithm)
-            }
-            KeyAlgorithm::Rsa { .. } => Ok(signature),
-        }
+        // PKCS#11 is blocking; the real work (incl. the P1363→DER re-encoding for
+        // EC keys) lives in the synchronous `sign_blocking`, which the rustls
+        // `Signer` for TLS auth also uses.
+        self.sign_blocking(handle, data)
     }
 
     async fn algorithm_identifier(&self, handle: &KeyHandle) -> Result<AlgorithmIdentifierOwned> {
