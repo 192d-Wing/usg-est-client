@@ -125,6 +125,25 @@ pub struct Pkcs11KeyProvider {
 unsafe impl Send for Pkcs11KeyProvider {}
 unsafe impl Sync for Pkcs11KeyProvider {}
 
+/// Decode the named-curve OID from a PKCS#11 `CKA_EC_PARAMS` value.
+///
+/// `CKA_EC_PARAMS` holds the DER-encoded curve OID — tag `0x06`, length, then
+/// the value — but [`ObjectIdentifier::from_bytes`] expects only the value bytes
+/// (sans tag/length). Passing the raw attribute makes every EC key fail to match
+/// a known curve, so `find_key`/`list_keys` silently drop EC keys. Strip the DER
+/// header before decoding.
+fn oid_from_ec_params(params: &[u8]) -> Option<ObjectIdentifier> {
+    if params.len() >= 2 && params[0] == 0x06 {
+        let len = params[1] as usize;
+        // Curve OIDs (P-256/P-384) use single-byte DER lengths.
+        if len < 0x80 && params.len() >= 2 + len {
+            return ObjectIdentifier::from_bytes(&params[2..2 + len]).ok();
+        }
+    }
+    // Fall back: treat the input as already value-only.
+    ObjectIdentifier::from_bytes(params).ok()
+}
+
 impl Pkcs11KeyProvider {
     /// Create a new PKCS#11 key provider.
     ///
@@ -495,12 +514,12 @@ impl Pkcs11KeyProvider {
     }
 
     /// Get key metadata from a PKCS#11 object.
-    fn get_key_metadata(&self, handle: ObjectHandle) -> Result<KeyMetadata> {
-        let session = self
-            .session
-            .lock()
-            .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
-
+    ///
+    /// Takes the already-locked `session` rather than re-locking `self.session`:
+    /// every caller (generate_key_pair, find_key, list_keys) invokes this while
+    /// holding the session guard, and the `std::sync::Mutex` is not reentrant, so
+    /// re-locking here would self-deadlock.
+    fn get_key_metadata(&self, session: &Session, handle: ObjectHandle) -> Result<KeyMetadata> {
         let attrs = session
             .get_attributes(
                 handle,
@@ -657,8 +676,9 @@ impl KeyProvider for Pkcs11KeyProvider {
             .generate_key_pair(&mechanism, &pub_template, &priv_template)
             .map_err(|e| EstError::hsm(format!("Failed to generate key pair: {}", e)))?;
 
-        // Get metadata
-        let metadata = self.get_key_metadata(priv_handle)?;
+        // Read metadata using the held session (get_key_metadata must not re-lock
+        // the non-reentrant mutex).
+        let metadata = self.get_key_metadata(&session, priv_handle)?;
 
         Ok(KeyHandle::new(key_id, algorithm, metadata))
     }
@@ -765,7 +785,7 @@ impl KeyProvider for Pkcs11KeyProvider {
                     // Determine curve from EC_PARAMS
                     if let Attribute::EcParams(params) = &attrs[2] {
                         // Parse OID from params
-                        if let Ok(oid) = ObjectIdentifier::from_bytes(params) {
+                        if let Some(oid) = oid_from_ec_params(params) {
                             if oid == SECP_256_R_1 {
                                 KeyAlgorithm::EcdsaP256
                             } else if oid == SECP_384_R_1 {
@@ -787,7 +807,7 @@ impl KeyProvider for Pkcs11KeyProvider {
                 _ => continue, // Unsupported key type
             };
 
-            let metadata = self.get_key_metadata(handle)?;
+            let metadata = self.get_key_metadata(&session, handle)?;
             key_handles.push(KeyHandle::new(key_id, algorithm, metadata));
         }
 
@@ -826,7 +846,7 @@ impl KeyProvider for Pkcs11KeyProvider {
             let algorithm = match *key_type {
                 cryptoki::object::KeyType::EC => {
                     if let Attribute::EcParams(params) = &attrs[2] {
-                        if let Ok(oid) = ObjectIdentifier::from_bytes(params) {
+                        if let Some(oid) = oid_from_ec_params(params) {
                             if oid == SECP_256_R_1 {
                                 KeyAlgorithm::EcdsaP256
                             } else if oid == SECP_384_R_1 {
@@ -845,7 +865,7 @@ impl KeyProvider for Pkcs11KeyProvider {
                 _ => return Ok(None),
             };
 
-            let metadata = self.get_key_metadata(handle)?;
+            let metadata = self.get_key_metadata(&session, handle)?;
             Ok(Some(KeyHandle::new(key_id, algorithm, metadata)))
         } else {
             Ok(None)
