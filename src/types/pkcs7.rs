@@ -83,10 +83,18 @@ impl<'a> IntoIterator for &'a CaCertificates {
 /// This parses the CMS SignedData structure used in EST responses for
 /// /cacerts, /simpleenroll, and /simplereenroll endpoints.
 ///
-/// The response body should be base64-encoded DER.
+/// The response body is base64-encoded DER per RFC 7030, but some EST servers
+/// return raw binary DER (no `Content-Transfer-Encoding: base64`). Both are
+/// accepted.
 pub fn parse_certs_only(body: &[u8]) -> Result<Vec<Certificate>> {
-    // Decode base64
-    let der_bytes = decode_base64(body)?;
+    // A CMS ContentInfo is a DER SEQUENCE (leading tag 0x30); its base64 form
+    // always begins with 'M'. So a leading 0x30 means the body is already raw
+    // DER and must not be base64-decoded.
+    let trimmed_start = body.iter().position(|b| !b.is_ascii_whitespace());
+    let der_bytes = match trimmed_start {
+        Some(i) if body[i] == 0x30 => body[i..].to_vec(),
+        _ => decode_base64(body)?,
+    };
 
     // Parse ContentInfo
     let content_info = ContentInfo::from_der(&der_bytes)
