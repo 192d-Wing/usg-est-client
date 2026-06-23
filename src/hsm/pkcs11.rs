@@ -125,6 +125,25 @@ pub struct Pkcs11KeyProvider {
 unsafe impl Send for Pkcs11KeyProvider {}
 unsafe impl Sync for Pkcs11KeyProvider {}
 
+/// Decode the named-curve OID from a PKCS#11 `CKA_EC_PARAMS` value.
+///
+/// `CKA_EC_PARAMS` holds the DER-encoded curve OID — tag `0x06`, length, then
+/// the value — but [`ObjectIdentifier::from_bytes`] expects only the value bytes
+/// (sans tag/length). Passing the raw attribute makes every EC key fail to match
+/// a known curve, so `find_key`/`list_keys` silently drop EC keys. Strip the DER
+/// header before decoding.
+fn oid_from_ec_params(params: &[u8]) -> Option<ObjectIdentifier> {
+    if params.len() >= 2 && params[0] == 0x06 {
+        let len = params[1] as usize;
+        // Curve OIDs (P-256/P-384) use single-byte DER lengths.
+        if len < 0x80 && params.len() >= 2 + len {
+            return ObjectIdentifier::from_bytes(&params[2..2 + len]).ok();
+        }
+    }
+    // Fall back: treat the input as already value-only.
+    ObjectIdentifier::from_bytes(params).ok()
+}
+
 impl Pkcs11KeyProvider {
     /// Create a new PKCS#11 key provider.
     ///
@@ -775,7 +794,7 @@ impl KeyProvider for Pkcs11KeyProvider {
                     // Determine curve from EC_PARAMS
                     if let Attribute::EcParams(params) = &attrs[2] {
                         // Parse OID from params
-                        if let Ok(oid) = ObjectIdentifier::from_bytes(params) {
+                        if let Some(oid) = oid_from_ec_params(params) {
                             if oid == SECP_256_R_1 {
                                 KeyAlgorithm::EcdsaP256
                             } else if oid == SECP_384_R_1 {
@@ -836,7 +855,7 @@ impl KeyProvider for Pkcs11KeyProvider {
             let algorithm = match *key_type {
                 cryptoki::object::KeyType::EC => {
                     if let Attribute::EcParams(params) = &attrs[2] {
-                        if let Ok(oid) = ObjectIdentifier::from_bytes(params) {
+                        if let Some(oid) = oid_from_ec_params(params) {
                             if oid == SECP_256_R_1 {
                                 KeyAlgorithm::EcdsaP256
                             } else if oid == SECP_384_R_1 {
