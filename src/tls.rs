@@ -263,6 +263,21 @@ fn build_rustls_client_config(
     #[cfg(feature = "fips")]
     crate::fips_tls::install_fips_provider()?;
 
+    // This preconfigured-rustls path performs full server-certificate
+    // verification; unlike the reqwest path it has no `danger_accept_invalid_certs`
+    // escape hatch for Bootstrap/Insecure trust. A token-backed client identity is
+    // only used for renewal, which always pins explicit trust, so reject those
+    // combinations fail-closed rather than silently build an empty-root config
+    // that rejects every server.
+    if matches!(
+        config.trust_anchors,
+        TrustAnchors::Bootstrap(_) | TrustAnchors::InsecureAcceptAny
+    ) {
+        return Err(EstError::tls(
+            "token-backed client identity requires explicit or WebPKI trust anchors".to_string(),
+        ));
+    }
+
     let root_store = build_root_store(&config.trust_anchors)?;
 
     // SC-8 / NIST SP 800-52r2: TLS 1.3 only (parity with the reqwest path's
@@ -270,10 +285,14 @@ fn build_rustls_client_config(
     let builder = ClientConfig::builder_with_protocol_versions(&[&rustls::version::TLS13])
         .with_root_certificates(root_store);
 
-    let tls_config = match resolver {
+    let mut tls_config = match resolver {
         Some(resolver) => builder.with_client_cert_resolver(resolver),
         None => builder.with_no_client_auth(),
     };
+
+    // EST is an HTTP/1.1 protocol. The reqwest-native path sets ALPN for us, but
+    // the preconfigured path does not, so advertise http/1.1 explicitly.
+    tls_config.alpn_protocols = vec![b"http/1.1".to_vec()];
 
     Ok(tls_config)
 }
@@ -619,5 +638,20 @@ Ur9b5dTSP0o0tErOk85mFlPR7Lwtmg==
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let config = config_with(None, Some(Arc::new(StubResolver)));
         assert!(build_http_client(&config).is_ok());
+    }
+
+    /// A token-backed resolver must refuse Bootstrap/Insecure trust (the
+    /// preconfigured-rustls path has no danger-accept escape hatch) rather than
+    /// build a config that rejects every server.
+    #[test]
+    fn resolver_rejects_insecure_trust() {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let mut config = config_with(None, Some(Arc::new(StubResolver)));
+        config.trust_anchors = TrustAnchors::InsecureAcceptAny;
+        let err = build_http_client(&config).unwrap_err();
+        assert!(
+            err.to_string().contains("explicit or WebPKI"),
+            "got: {err}"
+        );
     }
 }
