@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-06-23
+
+### Fixed
+
+- PKCS#7 parsing (`cacerts`, `simpleenroll`, `simplereenroll`) now accepts a raw
+  binary DER response body, not only base64. RFC 7030 specifies base64 with
+  `Content-Transfer-Encoding: base64`, but some EST servers return binary DER
+  (`application/pkcs7-mime` with no transfer encoding); `parse_certs_only` now
+  detects the leading SEQUENCE tag (`0x30`) and skips base64 decoding in that
+  case. Fixes enrollment against such servers.
+
 ## [2.0.0] - 2026-06-20
 
 FIPS migration: cryptography now runs in a FIPS-validated module — the aws-lc-rs
