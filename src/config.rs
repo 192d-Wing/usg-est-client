@@ -163,7 +163,7 @@ pub struct EstClientConfig {
     ///
     /// A rustls client-certificate resolver used when the client's private key
     /// cannot be exported to PEM — e.g. a TPM/HSM key behind PKCS#11 (see
-    /// [`hsm::Pkcs11ClientCertResolver`](crate::hsm::Pkcs11ClientCertResolver)).
+    /// `hsm::Pkcs11ClientCertResolver`, available with the `pkcs11` feature).
     /// Takes precedence over [`client_identity`](Self::client_identity); the two
     /// are mutually exclusive. When set, the HTTPS transport is built from a
     /// preconfigured rustls `ClientConfig` rather than a PEM `reqwest::Identity`.
@@ -410,8 +410,8 @@ impl EstClientConfigBuilder {
     /// Set a token-backed client identity for mutual TLS.
     ///
     /// Use when the client's private key cannot be exported to PEM — e.g. a
-    /// TPM/HSM key behind PKCS#11 via
-    /// [`hsm::Pkcs11ClientCertResolver`](crate::hsm::Pkcs11ClientCertResolver).
+    /// TPM/HSM key behind PKCS#11 via `hsm::Pkcs11ClientCertResolver` (available
+    /// with the `pkcs11` feature).
     /// Takes precedence over [`client_identity_pem`](Self::client_identity_pem);
     /// supplying both is rejected at [`build`](Self::build)/client construction.
     pub fn client_identity_resolver(
