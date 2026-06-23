@@ -114,6 +114,30 @@ pub fn build_http_client(config: &EstClientConfig) -> Result<reqwest::Client> {
     #[cfg(feature = "fips")]
     crate::fips_tls::install_fips_provider()?;
 
+    // PEM identity and a token-backed resolver are mutually exclusive.
+    if config.client_identity.is_some() && config.client_cert_resolver.is_some() {
+        return Err(EstError::tls(
+            "client_identity (PEM) and client_cert_resolver (PKCS#11) are mutually exclusive"
+                .to_string(),
+        ));
+    }
+
+    // Token-backed client identity (e.g. a TPM/HSM key): the private key cannot
+    // be handed to reqwest as a PEM `Identity`, so build a complete rustls
+    // `ClientConfig` (trust anchors + client-cert resolver, TLS 1.3) and hand it
+    // to reqwest preconfigured. This path owns all TLS configuration.
+    if let Some(resolver) = &config.client_cert_resolver {
+        let tls = build_rustls_client_config(config, Some(resolver.clone()))?;
+        // reqwest wraps the argument in `Some(..)` internally and downcasts to
+        // `Option<rustls::ClientConfig>`, so pass the owned config directly.
+        let builder = reqwest::Client::builder()
+            .timeout(config.timeout)
+            .tls_backend_preconfigured(tls);
+        return apply_default_headers(builder, config)
+            .build()
+            .map_err(|e| EstError::tls(format!("Failed to build HTTP client: {}", e)));
+    }
+
     let mut builder = reqwest::Client::builder()
         .timeout(config.timeout)
         .tls_backend_rustls();
@@ -205,6 +229,53 @@ fn build_reqwest_identity(identity: &ClientIdentity) -> Result<reqwest::Identity
 
     reqwest::Identity::from_pem(&pem_data)
         .map_err(|e| EstError::tls(format!("Failed to create client identity: {}", e)))
+}
+
+/// Apply the configured additional HTTP headers to a reqwest builder.
+fn apply_default_headers(
+    builder: reqwest::ClientBuilder,
+    config: &EstClientConfig,
+) -> reqwest::ClientBuilder {
+    let mut headers = reqwest::header::HeaderMap::new();
+    for (name, value) in &config.additional_headers {
+        if let (Ok(name), Ok(value)) = (
+            reqwest::header::HeaderName::try_from(name.as_str()),
+            reqwest::header::HeaderValue::try_from(value.as_str()),
+        ) {
+            headers.insert(name, value);
+        }
+    }
+    builder.default_headers(headers)
+}
+
+/// Build an owned rustls `ClientConfig` (TLS 1.3 only) for the preconfigured-TLS
+/// transport path: trust anchors from `config`, plus either a token-backed
+/// client-certificate `resolver` or no client authentication.
+///
+/// Used when the client's private key cannot be exported to PEM (PKCS#11/TPM),
+/// so reqwest's PEM `Identity` path is unavailable.
+fn build_rustls_client_config(
+    config: &EstClientConfig,
+    resolver: Option<Arc<dyn rustls::client::ResolvesClientCert>>,
+) -> Result<ClientConfig> {
+    // Fail closed: require the FIPS provider before building (the builder uses the
+    // process-default crypto provider).
+    #[cfg(feature = "fips")]
+    crate::fips_tls::install_fips_provider()?;
+
+    let root_store = build_root_store(&config.trust_anchors)?;
+
+    // SC-8 / NIST SP 800-52r2: TLS 1.3 only (parity with the reqwest path's
+    // `min_tls_version(TLS_1_3)`).
+    let builder = ClientConfig::builder_with_protocol_versions(&[&rustls::version::TLS13])
+        .with_root_certificates(root_store);
+
+    let tls_config = match resolver {
+        Some(resolver) => builder.with_client_cert_resolver(resolver),
+        None => builder.with_no_client_auth(),
+    };
+
+    Ok(tls_config)
 }
 
 /// Build a rustls ClientConfig for advanced TLS operations.
@@ -493,5 +564,60 @@ Ur9b5dTSP0o0tErOk85mFlPR7Lwtmg==
         use base64::prelude::*;
         let decoded = BASE64_STANDARD.decode(&encoded).unwrap();
         assert_eq!(decoded.as_slice(), &challenge);
+    }
+
+    /// Minimal client-cert resolver stand-in (no token needed) for exercising the
+    /// transport wiring around `client_cert_resolver`.
+    #[derive(Debug)]
+    struct StubResolver;
+    impl rustls::client::ResolvesClientCert for StubResolver {
+        fn resolve(
+            &self,
+            _root_hint_subjects: &[&[u8]],
+            _sigschemes: &[rustls::SignatureScheme],
+        ) -> Option<Arc<rustls::sign::CertifiedKey>> {
+            None
+        }
+        fn has_certs(&self) -> bool {
+            false
+        }
+    }
+
+    fn config_with(
+        identity: Option<ClientIdentity>,
+        resolver: Option<Arc<dyn rustls::client::ResolvesClientCert>>,
+    ) -> EstClientConfig {
+        EstClientConfig {
+            client_identity: identity,
+            client_cert_resolver: resolver,
+            // WebPKI roots keep the preconfigured-rustls path independent of any
+            // CA fixture (we're testing client-auth wiring, not server trust).
+            trust_anchors: TrustAnchors::WebPki,
+            ..EstClientConfig::default()
+        }
+    }
+
+    /// A PEM identity and a token-backed resolver are mutually exclusive; the
+    /// transport must refuse rather than silently pick one. (Returns before any
+    /// crypto provider is needed.)
+    #[test]
+    fn build_http_client_rejects_both_identities() {
+        let identity = ClientIdentity {
+            cert_pem: TEST_CERT_PEM.to_vec(),
+            key_pem: TEST_KEY_PEM.to_vec(),
+        };
+        let config = config_with(Some(identity), Some(Arc::new(StubResolver)));
+        let err = build_http_client(&config).unwrap_err();
+        assert!(err.to_string().contains("mutually exclusive"), "got: {err}");
+    }
+
+    /// A resolver-only config builds a client via the preconfigured-rustls path.
+    #[test]
+    fn build_http_client_accepts_resolver() {
+        // The preconfigured ClientConfig builder uses the process-default crypto
+        // provider; install one for the test (non-FIPS aws-lc-rs).
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let config = config_with(None, Some(Arc::new(StubResolver)));
+        assert!(build_http_client(&config).is_ok());
     }
 }

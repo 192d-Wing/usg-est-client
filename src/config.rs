@@ -159,6 +159,19 @@ pub struct EstClientConfig {
     /// **Security**: Preferred authentication method. Private key MUST be protected.
     pub client_identity: Option<ClientIdentity>,
 
+    /// Token-backed client identity for mutual TLS (IA-5; non-extractable keys).
+    ///
+    /// A rustls client-certificate resolver used when the client's private key
+    /// cannot be exported to PEM — e.g. a TPM/HSM key behind PKCS#11 (see
+    /// [`hsm::Pkcs11ClientCertResolver`](crate::hsm::Pkcs11ClientCertResolver)).
+    /// Takes precedence over [`client_identity`](Self::client_identity); the two
+    /// are mutually exclusive. When set, the HTTPS transport is built from a
+    /// preconfigured rustls `ClientConfig` rather than a PEM `reqwest::Identity`.
+    ///
+    /// **Security**: Highest-assurance client auth — the private key never leaves
+    /// the token.
+    pub client_cert_resolver: Option<Arc<dyn rustls::client::ResolvesClientCert>>,
+
     /// HTTP Basic authentication credentials (IA-5: fallback authentication).
     ///
     /// Used as a fallback when TLS client authentication is not available.
@@ -261,6 +274,7 @@ impl Default for EstClientConfig {
             server_url: Url::parse("https://localhost").expect("valid default URL"),
             ca_label: None,
             client_identity: None,
+            client_cert_resolver: None,
             http_auth: None,
             trust_anchors: TrustAnchors::WebPki,
             timeout: Duration::from_secs(30),
@@ -304,6 +318,7 @@ pub struct EstClientConfigBuilder {
     server_url: Option<Url>,
     ca_label: Option<String>,
     client_identity: Option<ClientIdentity>,
+    client_cert_resolver: Option<Arc<dyn rustls::client::ResolvesClientCert>>,
     http_auth: Option<HttpAuth>,
     trust_anchors: Option<TrustAnchors>,
     timeout: Option<Duration>,
@@ -389,6 +404,21 @@ impl EstClientConfigBuilder {
             cert_pem: cert_pem.into(),
             key_pem: key_pem.into(),
         });
+        self
+    }
+
+    /// Set a token-backed client identity for mutual TLS.
+    ///
+    /// Use when the client's private key cannot be exported to PEM — e.g. a
+    /// TPM/HSM key behind PKCS#11 via
+    /// [`hsm::Pkcs11ClientCertResolver`](crate::hsm::Pkcs11ClientCertResolver).
+    /// Takes precedence over [`client_identity_pem`](Self::client_identity_pem);
+    /// supplying both is rejected at [`build`](Self::build)/client construction.
+    pub fn client_identity_resolver(
+        mut self,
+        resolver: Arc<dyn rustls::client::ResolvesClientCert>,
+    ) -> Self {
+        self.client_cert_resolver = Some(resolver);
         self
     }
 
@@ -532,6 +562,7 @@ impl EstClientConfigBuilder {
             server_url,
             ca_label: self.ca_label,
             client_identity: self.client_identity,
+            client_cert_resolver: self.client_cert_resolver,
             http_auth: self.http_auth,
             trust_anchors: self.trust_anchors.unwrap_or(TrustAnchors::WebPki),
             timeout: self.timeout.unwrap_or(Duration::from_secs(30)),
