@@ -76,6 +76,12 @@ pub mod pkcs11;
 #[cfg(feature = "pkcs11")]
 pub use pkcs11::Pkcs11KeyProvider;
 
+#[cfg(feature = "pkcs11")]
+pub mod pkcs11_tls;
+
+#[cfg(feature = "pkcs11")]
+pub use pkcs11_tls::{Pkcs11ClientCertResolver, Pkcs11SigningKey};
+
 #[cfg(feature = "fips")]
 mod aws_lc;
 

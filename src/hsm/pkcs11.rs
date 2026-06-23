@@ -125,6 +125,25 @@ pub struct Pkcs11KeyProvider {
 unsafe impl Send for Pkcs11KeyProvider {}
 unsafe impl Sync for Pkcs11KeyProvider {}
 
+/// Decode the named-curve OID from a PKCS#11 `CKA_EC_PARAMS` value.
+///
+/// `CKA_EC_PARAMS` holds the DER-encoded curve OID — tag `0x06`, length, then
+/// the value — but [`ObjectIdentifier::from_bytes`] expects only the value bytes
+/// (sans tag/length). Passing the raw attribute makes every EC key fail to match
+/// a known curve, so `find_key`/`list_keys` silently drop EC keys. Strip the DER
+/// header before decoding.
+fn oid_from_ec_params(params: &[u8]) -> Option<ObjectIdentifier> {
+    if params.len() >= 2 && params[0] == 0x06 {
+        let len = params[1] as usize;
+        // Curve OIDs (P-256/P-384) use single-byte DER lengths.
+        if len < 0x80 && params.len() >= 2 + len {
+            return ObjectIdentifier::from_bytes(&params[2..2 + len]).ok();
+        }
+    }
+    // Fall back: treat the input as already value-only.
+    ObjectIdentifier::from_bytes(params).ok()
+}
+
 impl Pkcs11KeyProvider {
     /// Create a new PKCS#11 key provider.
     ///
@@ -495,12 +514,12 @@ impl Pkcs11KeyProvider {
     }
 
     /// Get key metadata from a PKCS#11 object.
-    fn get_key_metadata(&self, handle: ObjectHandle) -> Result<KeyMetadata> {
-        let session = self
-            .session
-            .lock()
-            .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
-
+    ///
+    /// Takes the already-locked `session` rather than re-locking `self.session`:
+    /// every caller (generate_key_pair, find_key, list_keys) invokes this while
+    /// holding the session guard, and the `std::sync::Mutex` is not reentrant, so
+    /// re-locking here would self-deadlock.
+    fn get_key_metadata(&self, session: &Session, handle: ObjectHandle) -> Result<KeyMetadata> {
         let attrs = session
             .get_attributes(
                 handle,
@@ -543,6 +562,44 @@ impl Pkcs11KeyProvider {
             extractable,
             attributes,
         })
+    }
+
+    /// Synchronously sign `data` with the token-held key.
+    ///
+    /// Identical in behaviour to the async [`KeyProvider::sign`] (same
+    /// hash-and-sign mechanism, same P1363→DER re-encoding for EC keys), but
+    /// callable from synchronous contexts such as the rustls [`Signer`] used for
+    /// TLS client/server authentication. PKCS#11 operations are blocking anyway,
+    /// so the async method simply delegates here.
+    ///
+    /// [`Signer`]: rustls::sign::Signer
+    pub fn sign_blocking(&self, handle: &KeyHandle, data: &[u8]) -> Result<Vec<u8>> {
+        let priv_handle = self.handle_to_object(handle)?;
+        let session = self
+            .session
+            .lock()
+            .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
+
+        // Hash-and-sign mechanism: per the KeyProvider contract `data` is the raw
+        // message, so the token hashes it (SHA-256 for P-256/RSA, SHA-384 for P-384).
+        let mechanism = match handle.algorithm {
+            KeyAlgorithm::EcdsaP256 => Mechanism::EcdsaSha256,
+            KeyAlgorithm::EcdsaP384 => Mechanism::EcdsaSha384,
+            KeyAlgorithm::Rsa { .. } => Mechanism::Sha256RsaPkcs,
+        };
+
+        let signature = session
+            .sign(&mechanism, priv_handle, data)
+            .map_err(|e| EstError::hsm(format!("Failed to sign data: {}", e)))?;
+
+        // PKCS#11 emits ECDSA signatures as raw r‖s (P1363); the rest of the
+        // crate (and TLS) expects the DER Ecdsa-Sig-Value. RSA is already final.
+        match handle.algorithm {
+            KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384 => {
+                ecdsa_p1363_to_der(&signature, handle.algorithm)
+            }
+            KeyAlgorithm::Rsa { .. } => Ok(signature),
+        }
     }
 }
 
@@ -657,8 +714,9 @@ impl KeyProvider for Pkcs11KeyProvider {
             .generate_key_pair(&mechanism, &pub_template, &priv_template)
             .map_err(|e| EstError::hsm(format!("Failed to generate key pair: {}", e)))?;
 
-        // Get metadata
-        let metadata = self.get_key_metadata(priv_handle)?;
+        // Read metadata using the held session (get_key_metadata must not re-lock
+        // the non-reentrant mutex).
+        let metadata = self.get_key_metadata(&session, priv_handle)?;
 
         Ok(KeyHandle::new(key_id, algorithm, metadata))
     }
@@ -675,29 +733,10 @@ impl KeyProvider for Pkcs11KeyProvider {
     }
 
     async fn sign(&self, handle: &KeyHandle, data: &[u8]) -> Result<Vec<u8>> {
-        let priv_handle = self.handle_to_object(handle)?;
-        let session = self
-            .session
-            .lock()
-            .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
-
-        // Select a hash-and-sign mechanism: per the KeyProvider contract, `data`
-        // is the raw message, so the token hashes it internally (SHA-256 for
-        // P-256/RSA, SHA-384 for P-384) — matching the other providers.
-        let mechanism = match handle.algorithm {
-            KeyAlgorithm::EcdsaP256 => Mechanism::EcdsaSha256,
-            KeyAlgorithm::EcdsaP384 => Mechanism::EcdsaSha384,
-            KeyAlgorithm::Rsa { .. } => Mechanism::Sha256RsaPkcs,
-        };
-
-        // `data` is the raw to-be-signed message; the mechanism hashes it.
-
-        // Sign the data
-        let signature = session
-            .sign(&mechanism, priv_handle, data)
-            .map_err(|e| EstError::hsm(format!("Failed to sign data: {}", e)))?;
-
-        Ok(signature)
+        // PKCS#11 is blocking; the real work (incl. the P1363→DER re-encoding for
+        // EC keys) lives in the synchronous `sign_blocking`, which the rustls
+        // `Signer` for TLS auth also uses.
+        self.sign_blocking(handle, data)
     }
 
     async fn algorithm_identifier(&self, handle: &KeyHandle) -> Result<AlgorithmIdentifierOwned> {
@@ -755,7 +794,7 @@ impl KeyProvider for Pkcs11KeyProvider {
                     // Determine curve from EC_PARAMS
                     if let Attribute::EcParams(params) = &attrs[2] {
                         // Parse OID from params
-                        if let Ok(oid) = ObjectIdentifier::from_bytes(params) {
+                        if let Some(oid) = oid_from_ec_params(params) {
                             if oid == SECP_256_R_1 {
                                 KeyAlgorithm::EcdsaP256
                             } else if oid == SECP_384_R_1 {
@@ -777,7 +816,7 @@ impl KeyProvider for Pkcs11KeyProvider {
                 _ => continue, // Unsupported key type
             };
 
-            let metadata = self.get_key_metadata(handle)?;
+            let metadata = self.get_key_metadata(&session, handle)?;
             key_handles.push(KeyHandle::new(key_id, algorithm, metadata));
         }
 
@@ -816,7 +855,7 @@ impl KeyProvider for Pkcs11KeyProvider {
             let algorithm = match *key_type {
                 cryptoki::object::KeyType::EC => {
                     if let Attribute::EcParams(params) = &attrs[2] {
-                        if let Ok(oid) = ObjectIdentifier::from_bytes(params) {
+                        if let Some(oid) = oid_from_ec_params(params) {
                             if oid == SECP_256_R_1 {
                                 KeyAlgorithm::EcdsaP256
                             } else if oid == SECP_384_R_1 {
@@ -835,7 +874,7 @@ impl KeyProvider for Pkcs11KeyProvider {
                 _ => return Ok(None),
             };
 
-            let metadata = self.get_key_metadata(handle)?;
+            let metadata = self.get_key_metadata(&session, handle)?;
             Ok(Some(KeyHandle::new(key_id, algorithm, metadata)))
         } else {
             Ok(None)
@@ -874,5 +913,110 @@ impl Drop for Pkcs11KeyProvider {
         if let Ok(session) = self.session.lock() {
             let _ = session.logout();
         }
+    }
+}
+
+/// Convert a raw IEEE-P1363 ECDSA signature (the fixed-width `r ‖ s` pair that
+/// PKCS#11 `CKM_ECDSA*` mechanisms return) into the ASN.1 DER `Ecdsa-Sig-Value`
+/// (`SEQUENCE { r INTEGER, s INTEGER }`) expected by X.509/PKCS#10 and TLS.
+///
+/// Without this, [`Pkcs11KeyProvider`] would violate the [`KeyProvider`] sign
+/// contract (DER, as produced by the aws-lc-rs `*_ASN1_SIGNING` providers) and
+/// CSRs/handshakes built from token-held EC keys would carry a malformed
+/// signature. RSA signatures are already in final form and must not be passed
+/// here.
+fn ecdsa_p1363_to_der(raw: &[u8], algorithm: KeyAlgorithm) -> Result<Vec<u8>> {
+    let coord_len = match algorithm {
+        KeyAlgorithm::EcdsaP256 => 32,
+        KeyAlgorithm::EcdsaP384 => 48,
+        KeyAlgorithm::Rsa { .. } => {
+            return Err(EstError::hsm(
+                "ecdsa_p1363_to_der called for a non-EC key".to_string(),
+            ));
+        }
+    };
+
+    if raw.len() != coord_len * 2 {
+        return Err(EstError::hsm(format!(
+            "unexpected raw ECDSA signature length {} (expected {} for {:?})",
+            raw.len(),
+            coord_len * 2,
+            algorithm
+        )));
+    }
+
+    let (r, s) = raw.split_at(coord_len);
+    let sig_value = EcdsaSigValue {
+        r: der::asn1::UintRef::new(r)
+            .map_err(|e| EstError::hsm(format!("encode ECDSA r: {}", e)))?,
+        s: der::asn1::UintRef::new(s)
+            .map_err(|e| EstError::hsm(format!("encode ECDSA s: {}", e)))?,
+    };
+    sig_value
+        .to_der()
+        .map_err(|e| EstError::hsm(format!("DER-encode Ecdsa-Sig-Value: {}", e)))
+}
+
+/// ASN.1 `Ecdsa-Sig-Value ::= SEQUENCE { r INTEGER, s INTEGER }` (RFC 3279 §2.2.3).
+/// `UintRef` borrows the big-endian coordinate bytes and emits a positive DER
+/// INTEGER (trimming leading zeros, inserting one if the high bit is set).
+/// Encode-only — `FixedTag` + `EncodeValue` give a blanket `Encode`/`to_der`.
+struct EcdsaSigValue<'a> {
+    r: der::asn1::UintRef<'a>,
+    s: der::asn1::UintRef<'a>,
+}
+
+impl der::FixedTag for EcdsaSigValue<'_> {
+    const TAG: der::Tag = der::Tag::Sequence;
+}
+
+impl der::EncodeValue for EcdsaSigValue<'_> {
+    fn value_len(&self) -> der::Result<der::Length> {
+        self.r.encoded_len()? + self.s.encoded_len()?
+    }
+
+    fn encode_value(&self, writer: &mut impl der::Writer) -> der::Result<()> {
+        self.r.encode(writer)?;
+        self.s.encode(writer)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Deterministic vectors exercise both DER INTEGER rules a token signature
+    /// hits: leading-zero trimming (s = 1) and sign padding when the high bit is
+    /// set (r's minimal value 0x80 must gain a 0x00 prefix). Hand-computed DER:
+    /// `SEQUENCE { INTEGER 0x0080, INTEGER 0x01 }` = 30 07 02 02 00 80 02 01 01.
+    #[test]
+    fn p1363_to_der_applies_integer_rules() {
+        let mut raw = [0u8; 64];
+        raw[31] = 0x80; // r = 128 (high bit set -> needs 0x00 sign pad)
+        raw[63] = 0x01; // s = 1   (31 leading zeros -> trimmed)
+
+        let der = ecdsa_p1363_to_der(&raw, KeyAlgorithm::EcdsaP256).expect("convert");
+        assert_eq!(
+            der,
+            vec![0x30, 0x07, 0x02, 0x02, 0x00, 0x80, 0x02, 0x01, 0x01]
+        );
+    }
+
+    /// P-384 splits at 48 bytes; r = s = 1 -> SEQUENCE { 02 01 01, 02 01 01 }.
+    #[test]
+    fn p1363_to_der_handles_p384_width() {
+        let mut raw = [0u8; 96];
+        raw[47] = 0x01;
+        raw[95] = 0x01;
+        let der = ecdsa_p1363_to_der(&raw, KeyAlgorithm::EcdsaP384).expect("convert");
+        assert_eq!(der, vec![0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x01]);
+    }
+
+    #[test]
+    fn p1363_to_der_rejects_wrong_length_and_rsa() {
+        assert!(ecdsa_p1363_to_der(&[0u8; 63], KeyAlgorithm::EcdsaP256).is_err());
+        assert!(ecdsa_p1363_to_der(&[0u8; 64], KeyAlgorithm::EcdsaP384).is_err());
+        assert!(ecdsa_p1363_to_der(&[0u8; 96], KeyAlgorithm::Rsa { bits: 2048 }).is_err());
     }
 }
