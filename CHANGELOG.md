@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-06-23
+
+### Added
+
+- PKCS#11 token-backed TLS client identity for mutual-TLS `simplereenroll`:
+  `hsm::pkcs11_tls::Pkcs11SigningKey` (a rustls `SigningKey` that signs
+  handshakes inside the token) and `hsm::pkcs11_tls::Pkcs11ClientCertResolver`,
+  plus `EstClientConfig::client_cert_resolver` / `client_identity_resolver()`.
+  Lets a node authenticate with a non-extractable TPM/HSM key (the EST
+  `ClientIdentity` is PEM-only). When set, the transport is built from a
+  preconfigured rustls `ClientConfig` (TLS 1.3, explicit `http/1.1` ALPN,
+  bootstrap/insecure trust rejected fail-closed). All under the `pkcs11` feature.
+- `Pkcs11KeyProvider::sign_blocking` — synchronous signing for the rustls signer.
+
+### Fixed
+
+- `Pkcs11KeyProvider::sign` now DER-encodes ECDSA signatures (PKCS#11 returns the
+  raw IEEE-P1363 `r||s`; the CSR/TLS layers expect the ASN.1 `Ecdsa-Sig-Value`).
+  Previously `HsmCsrBuilder::build_with_provider` with a PKCS#11 EC key produced a
+  malformed CSR signature.
+- `find_key`/`list_keys`/`generate_key_pair` no longer self-deadlock: they held
+  the session mutex while calling `get_key_metadata`, which re-locked the
+  non-reentrant mutex. `get_key_metadata` now takes the held session.
+- `find_key`/`list_keys` now strip the DER tag/length from `CKA_EC_PARAMS` before
+  decoding the curve OID, so existing EC token keys are found instead of silently
+  dropped.
+
+### Security
+
+- Bump `quinn-proto` to 0.11.15 (RUSTSEC-2026-0185). It is an optional, unused
+  transitive dependency (reqwest HTTP/3, not enabled) but was pinned in the lock.
+
+## [2.0.1] - 2026-06-23
+
+### Fixed
+
+- PKCS#7 parsing (`cacerts`, `simpleenroll`, `simplereenroll`) now accepts a raw
+  binary DER response body, not only base64. RFC 7030 specifies base64 with
+  `Content-Transfer-Encoding: base64`, but some EST servers return binary DER
+  (`application/pkcs7-mime` with no transfer encoding); `parse_certs_only` now
+  detects the leading SEQUENCE tag (`0x30`) and skips base64 decoding in that
+  case. Fixes enrollment against such servers.
+
 ## [2.0.0] - 2026-06-20
 
 FIPS migration: cryptography now runs in a FIPS-validated module — the aws-lc-rs
