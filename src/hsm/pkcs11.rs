@@ -495,12 +495,12 @@ impl Pkcs11KeyProvider {
     }
 
     /// Get key metadata from a PKCS#11 object.
-    fn get_key_metadata(&self, handle: ObjectHandle) -> Result<KeyMetadata> {
-        let session = self
-            .session
-            .lock()
-            .map_err(|e| EstError::hsm(format!("PKCS#11 session lock poisoned: {}", e)))?;
-
+    ///
+    /// Takes the already-locked `session` rather than re-locking `self.session`:
+    /// every caller (generate_key_pair, find_key, list_keys) invokes this while
+    /// holding the session guard, and the `std::sync::Mutex` is not reentrant, so
+    /// re-locking here would self-deadlock.
+    fn get_key_metadata(&self, session: &Session, handle: ObjectHandle) -> Result<KeyMetadata> {
         let attrs = session
             .get_attributes(
                 handle,
@@ -695,8 +695,9 @@ impl KeyProvider for Pkcs11KeyProvider {
             .generate_key_pair(&mechanism, &pub_template, &priv_template)
             .map_err(|e| EstError::hsm(format!("Failed to generate key pair: {}", e)))?;
 
-        // Get metadata
-        let metadata = self.get_key_metadata(priv_handle)?;
+        // Read metadata using the held session (get_key_metadata must not re-lock
+        // the non-reentrant mutex).
+        let metadata = self.get_key_metadata(&session, priv_handle)?;
 
         Ok(KeyHandle::new(key_id, algorithm, metadata))
     }
@@ -796,7 +797,7 @@ impl KeyProvider for Pkcs11KeyProvider {
                 _ => continue, // Unsupported key type
             };
 
-            let metadata = self.get_key_metadata(handle)?;
+            let metadata = self.get_key_metadata(&session, handle)?;
             key_handles.push(KeyHandle::new(key_id, algorithm, metadata));
         }
 
@@ -854,7 +855,7 @@ impl KeyProvider for Pkcs11KeyProvider {
                 _ => return Ok(None),
             };
 
-            let metadata = self.get_key_metadata(handle)?;
+            let metadata = self.get_key_metadata(&session, handle)?;
             Ok(Some(KeyHandle::new(key_id, algorithm, metadata)))
         } else {
             Ok(None)
