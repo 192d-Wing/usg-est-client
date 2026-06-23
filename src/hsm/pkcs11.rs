@@ -697,7 +697,17 @@ impl KeyProvider for Pkcs11KeyProvider {
             .sign(&mechanism, priv_handle, data)
             .map_err(|e| EstError::hsm(format!("Failed to sign data: {}", e)))?;
 
-        Ok(signature)
+        // PKCS#11 emits ECDSA signatures as the raw fixed-width `r ‖ s` pair
+        // (IEEE P1363 / CKM_ECDSA), but the KeyProvider contract — and the CSR
+        // and TLS assembly that consume this output — expect the ASN.1 DER
+        // `Ecdsa-Sig-Value` (matching the aws-lc-rs `*_ASN1_SIGNING` providers).
+        // Re-encode EC signatures; RSA PKCS#1 v1.5 signatures are already final.
+        match handle.algorithm {
+            KeyAlgorithm::EcdsaP256 | KeyAlgorithm::EcdsaP384 => {
+                ecdsa_p1363_to_der(&signature, handle.algorithm)
+            }
+            KeyAlgorithm::Rsa { .. } => Ok(signature),
+        }
     }
 
     async fn algorithm_identifier(&self, handle: &KeyHandle) -> Result<AlgorithmIdentifierOwned> {
@@ -874,5 +884,110 @@ impl Drop for Pkcs11KeyProvider {
         if let Ok(session) = self.session.lock() {
             let _ = session.logout();
         }
+    }
+}
+
+/// Convert a raw IEEE-P1363 ECDSA signature (the fixed-width `r ‖ s` pair that
+/// PKCS#11 `CKM_ECDSA*` mechanisms return) into the ASN.1 DER `Ecdsa-Sig-Value`
+/// (`SEQUENCE { r INTEGER, s INTEGER }`) expected by X.509/PKCS#10 and TLS.
+///
+/// Without this, [`Pkcs11KeyProvider`] would violate the [`KeyProvider`] sign
+/// contract (DER, as produced by the aws-lc-rs `*_ASN1_SIGNING` providers) and
+/// CSRs/handshakes built from token-held EC keys would carry a malformed
+/// signature. RSA signatures are already in final form and must not be passed
+/// here.
+fn ecdsa_p1363_to_der(raw: &[u8], algorithm: KeyAlgorithm) -> Result<Vec<u8>> {
+    let coord_len = match algorithm {
+        KeyAlgorithm::EcdsaP256 => 32,
+        KeyAlgorithm::EcdsaP384 => 48,
+        KeyAlgorithm::Rsa { .. } => {
+            return Err(EstError::hsm(
+                "ecdsa_p1363_to_der called for a non-EC key".to_string(),
+            ));
+        }
+    };
+
+    if raw.len() != coord_len * 2 {
+        return Err(EstError::hsm(format!(
+            "unexpected raw ECDSA signature length {} (expected {} for {:?})",
+            raw.len(),
+            coord_len * 2,
+            algorithm
+        )));
+    }
+
+    let (r, s) = raw.split_at(coord_len);
+    let sig_value = EcdsaSigValue {
+        r: der::asn1::UintRef::new(r)
+            .map_err(|e| EstError::hsm(format!("encode ECDSA r: {}", e)))?,
+        s: der::asn1::UintRef::new(s)
+            .map_err(|e| EstError::hsm(format!("encode ECDSA s: {}", e)))?,
+    };
+    sig_value
+        .to_der()
+        .map_err(|e| EstError::hsm(format!("DER-encode Ecdsa-Sig-Value: {}", e)))
+}
+
+/// ASN.1 `Ecdsa-Sig-Value ::= SEQUENCE { r INTEGER, s INTEGER }` (RFC 3279 §2.2.3).
+/// `UintRef` borrows the big-endian coordinate bytes and emits a positive DER
+/// INTEGER (trimming leading zeros, inserting one if the high bit is set).
+/// Encode-only — `FixedTag` + `EncodeValue` give a blanket `Encode`/`to_der`.
+struct EcdsaSigValue<'a> {
+    r: der::asn1::UintRef<'a>,
+    s: der::asn1::UintRef<'a>,
+}
+
+impl der::FixedTag for EcdsaSigValue<'_> {
+    const TAG: der::Tag = der::Tag::Sequence;
+}
+
+impl der::EncodeValue for EcdsaSigValue<'_> {
+    fn value_len(&self) -> der::Result<der::Length> {
+        self.r.encoded_len()? + self.s.encoded_len()?
+    }
+
+    fn encode_value(&self, writer: &mut impl der::Writer) -> der::Result<()> {
+        self.r.encode(writer)?;
+        self.s.encode(writer)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Deterministic vectors exercise both DER INTEGER rules a token signature
+    /// hits: leading-zero trimming (s = 1) and sign padding when the high bit is
+    /// set (r's minimal value 0x80 must gain a 0x00 prefix). Hand-computed DER:
+    /// `SEQUENCE { INTEGER 0x0080, INTEGER 0x01 }` = 30 07 02 02 00 80 02 01 01.
+    #[test]
+    fn p1363_to_der_applies_integer_rules() {
+        let mut raw = [0u8; 64];
+        raw[31] = 0x80; // r = 128 (high bit set -> needs 0x00 sign pad)
+        raw[63] = 0x01; // s = 1   (31 leading zeros -> trimmed)
+
+        let der = ecdsa_p1363_to_der(&raw, KeyAlgorithm::EcdsaP256).expect("convert");
+        assert_eq!(
+            der,
+            vec![0x30, 0x07, 0x02, 0x02, 0x00, 0x80, 0x02, 0x01, 0x01]
+        );
+    }
+
+    /// P-384 splits at 48 bytes; r = s = 1 -> SEQUENCE { 02 01 01, 02 01 01 }.
+    #[test]
+    fn p1363_to_der_handles_p384_width() {
+        let mut raw = [0u8; 96];
+        raw[47] = 0x01;
+        raw[95] = 0x01;
+        let der = ecdsa_p1363_to_der(&raw, KeyAlgorithm::EcdsaP384).expect("convert");
+        assert_eq!(der, vec![0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x01]);
+    }
+
+    #[test]
+    fn p1363_to_der_rejects_wrong_length_and_rsa() {
+        assert!(ecdsa_p1363_to_der(&[0u8; 63], KeyAlgorithm::EcdsaP256).is_err());
+        assert!(ecdsa_p1363_to_der(&[0u8; 64], KeyAlgorithm::EcdsaP384).is_err());
+        assert!(ecdsa_p1363_to_der(&[0u8; 96], KeyAlgorithm::Rsa { bits: 2048 }).is_err());
     }
 }
