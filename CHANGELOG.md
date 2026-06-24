@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-06-24
+
+### Fixed
+
+- PKCS#11 EC public keys: the `SubjectPublicKeyInfo` `AlgorithmIdentifier`
+  parameters now encode the named curve as a bare OID (RFC 5480 §2.1.1) instead
+  of wrapping it in an OCTET STRING. The malformed encoding was accepted by
+  RustCrypto's `from_sec1_bytes` (which ignores the `AlgorithmIdentifier`) but
+  rejected by rustls-webpki during the mTLS client `CertificateVerify`
+  (`UnsupportedSignatureAlgorithmForPublicKeyContext`), surfacing to the client
+  as a TLS `DecryptError`. Bootstrap/server-auth never parse the client SPKI, so
+  only token-backed `simplereenroll` mutual TLS was affected. `CKA_EC_POINT` is
+  now decoded as a DER OCTET STRING rather than stripped by a fixed offset.
+
 ## [2.1.0] - 2026-06-23
 
 ### Added
