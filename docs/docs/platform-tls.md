@@ -8,7 +8,7 @@ By default, `usg-est-client` uses [rustls](https://github.com/rustls/rustls), a 
 
 ```toml
 [dependencies]
-usg-est-client = "0.1"
+usg-est-client = "2.1"
 ```
 
 ### Advantages
@@ -40,7 +40,7 @@ The `native-tls-backend` feature uses the operating system's TLS implementation:
 
 ```toml
 [dependencies]
-usg-est-client = { version = "0.1", features = ["native-tls-backend"] }
+usg-est-client = { version = "2.1", features = ["native-tls-backend"] }
 ```
 
 ### When to Use native-tls
@@ -77,7 +77,7 @@ For Linux deployments where OpenSSL may not be available (Alpine, musl, AWS Lamb
 
 ```toml
 [dependencies]
-usg-est-client = { version = "0.1", features = ["native-tls-vendored"] }
+usg-est-client = { version = "2.1", features = ["native-tls-vendored"] }
 ```
 
 This compiles OpenSSL from source and statically links it, eliminating runtime dependencies.
