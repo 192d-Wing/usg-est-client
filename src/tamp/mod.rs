@@ -61,15 +61,18 @@
 
 pub mod asn1;
 pub mod oid;
-// Built up incrementally on top of asn1/oid:
+pub mod store;
+pub mod verify;
+pub mod wrapper;
+// Built up incrementally on top of the layers above:
 // pub mod client;
 // pub mod response;
-// pub mod store;
-// pub mod verify;
-// pub mod wrapper;
 
 #[doc(inline)]
 pub use oid::TampContentType;
+
+#[doc(inline)]
+pub use store::{TrustAnchorStore, TrustAnchorStoreEntry};
 
 /// RFC 5914 `TrustAnchorChoice`, re-exported from `x509-cert`.
 ///
