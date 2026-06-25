@@ -6,6 +6,7 @@ docs_dir = "docs"
 site_dir = "site"
 repo_url = "https://github.com/192d-Wing/usg-est-client"
 repo_name = "192d-Wing/usg-est-client"
+copyright = "Copyright &copy; 192d Wing"
 nav = [
     { Overview = "index.md" },
     { "Getting Started" = "getting-started.md" },
@@ -15,6 +16,7 @@ nav = [
     ] },
     { Operations = [
         "operations.md",
+        "revocation-guide.md",
         "revocation_status.md",
         "platform-tls.md",
     ] },
@@ -42,15 +44,28 @@ logo = "images/logo.png"
 features = [
     "navigation.tabs",
     "navigation.sections",
+    "navigation.top",
+    "navigation.footer",
+    "navigation.indexes",
     "content.code.copy",
+    "content.code.annotate",
+    "content.tabs.link",
     "search.highlight",
+    "search.suggest",
 ]
 
 [project.theme.icon]
 repo = "fontawesome/brands/github"
 
-[project.theme.palette]
+[[project.theme.palette]]
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
 scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
 
 [project.extra]
 generator = true

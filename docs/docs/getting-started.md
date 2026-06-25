@@ -8,7 +8,7 @@ Add `usg-est-client` to your `Cargo.toml`:
 
         ```toml
         [dependencies]
-        usg-est-client = "0.1"
+        usg-est-client = "2.1"
         tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
         ```
 
@@ -18,7 +18,7 @@ The library supports optional features:
 
         ```toml
         [dependencies]
-        usg-est-client = { version = "0.1", features = ["csr-gen"] }
+        usg-est-client = { version = "2.1", features = ["csr-gen"] }
         ```
 
 - `csr-gen` (default): Enables CSR generation helpers using the `rcgen` crate
@@ -28,7 +28,7 @@ To use the library without CSR generation:
 
         ```toml
         [dependencies]
-        usg-est-client = { version = "0.1", default-features = false }
+        usg-est-client = { version = "2.1", default-features = false }
         ```
 
 ## Basic Usage

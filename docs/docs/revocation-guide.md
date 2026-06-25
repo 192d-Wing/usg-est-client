@@ -98,7 +98,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-usg-est-client = { version = "0.1", features = ["revocation"] }
+usg-est-client = { version = "2.1", features = ["revocation"] }
 ```
 
 ---
@@ -1145,5 +1145,5 @@ pub enum CheckOrder {
 ---
 
 **Last Updated**: 2026-01-12
-**Library Version**: 0.1.0
+**Library Version**: 2.1.2
 **Revocation Implementation**: Production-ready (Phase 10.2.2)
