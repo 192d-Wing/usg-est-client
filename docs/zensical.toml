@@ -82,6 +82,7 @@ description = """
 [project.markdown_extensions.pymdownx.snippets]
 
 [project.markdown_extensions.pymdownx.superfences]
+custom_fences = [{ name = "mermaid", class = "mermaid" }]
 
 [project.markdown_extensions.pymdownx.highlight]
 anchor_linenums = true

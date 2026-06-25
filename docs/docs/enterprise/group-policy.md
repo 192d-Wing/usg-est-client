@@ -32,36 +32,14 @@ Group Policy can manage:
 
 ### Deployment Architecture
 
-```text
-┌─────────────────────────────────────────────────────────┐
-│              Active Directory Domain                     │
-├─────────────────────────────────────────────────────────┤
-│                                                          │
-│  Group Policy Objects:                                   │
-│  ┌────────────────────────────────────────┐             │
-│  │ EST Client - Software Installation     │             │
-│  │ EST Client - Configuration             │             │
-│  │ EST Client - Credentials               │             │
-│  │ EST Client - Service Management        │             │
-│  └────────────────────────────────────────┘             │
-│                      │                                   │
-│                      ▼                                   │
-│  ┌────────────────────────────────────────┐             │
-│  │         Target OUs                      │             │
-│  │  - Workstations                         │             │
-│  │  - Servers                              │             │
-│  │  - Domain Controllers (optional)        │             │
-│  └────────────────────────────────────────┘             │
-│                      │                                   │
-│                      ▼                                   │
-│  ┌────────────────────────────────────────┐             │
-│  │         Client Machines                 │             │
-│  │  - EST Client Installed                 │             │
-│  │  - Configuration Deployed               │             │
-│  │  - Service Running                      │             │
-│  └────────────────────────────────────────┘             │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph AD["Active Directory Domain"]
+        GPO["Group Policy Objects:<br/>EST Client - Software Installation<br/>EST Client - Configuration<br/>EST Client - Credentials<br/>EST Client - Service Management"]
+        OU["Target OUs:<br/>- Workstations<br/>- Servers<br/>- Domain Controllers (optional)"]
+        CM["Client Machines:<br/>- EST Client Installed<br/>- Configuration Deployed<br/>- Service Running"]
+        GPO --> OU --> CM
+    end
 ```
 
 ## Prerequisites
@@ -105,13 +83,14 @@ Get-FileHash "\\domain.com\SYSVOL\domain.com\EST\Software\est-client-x64.msi"
 
 Use OU structure and WMI filters for gradual deployment:
 
-```text
-Deployment Phases:
-├── Phase 1: Pilot OU (5-10 machines)
-├── Phase 2: IT Department (25 machines)
-├── Phase 3: Department A (100 machines)
-├── Phase 4: Department B (100 machines)
-└── Phase 5: All Workstations
+```mermaid
+flowchart TB
+    P1["Phase 1: Pilot OU (5-10 machines)"]
+    P2["Phase 2: IT Department (25 machines)"]
+    P3["Phase 3: Department A (100 machines)"]
+    P4["Phase 4: Department B (100 machines)"]
+    P5["Phase 5: All Workstations"]
+    P1 --> P2 --> P3 --> P4 --> P5
 ```
 
 ### GPO Linking Strategy
@@ -556,31 +535,28 @@ Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\H
 
 ### Complete Organizational Structure
 
-```text
-Domain: corp.contoso.com
-├── Workstations OU
-│   ├── GPO: EST-Software-Install (Link Order: 1)
-│   ├── GPO: EST-Configuration (Link Order: 2)
-│   ├── GPO: EST-Credentials (Link Order: 3)
-│   ├── GPO: EST-Service (Link Order: 4)
-│   │
-│   ├── Pilot OU (Phase 1)
-│   │   └── WMI Filter: "SELECT * FROM Win32_ComputerSystem WHERE Name LIKE 'PILOT%'"
-│   │
-│   ├── IT Department OU (Phase 2)
-│   │   └── Security Group: "EST-Phase2-Deployment"
-│   │
-│   └── Production OU (Phase 3+)
-│       ├── Floor 1 OU
-│       ├── Floor 2 OU
-│       └── Remote Workers OU
-│
-├── Servers OU
-│   ├── GPO: EST-Software-Install-Servers
-│   ├── GPO: EST-Configuration-Servers (Different config)
-│   └── ...
-│
-└── Domain Controllers OU (Optional)
+```mermaid
+flowchart TB
+    Domain["Domain: corp.contoso.com"]
+    Domain --> WS["Workstations OU"]
+    Domain --> SRV["Servers OU"]
+    Domain --> DC["Domain Controllers OU (Optional)"]
+
+    WS --> G1["GPO: EST-Software-Install (Link Order: 1)"]
+    WS --> G2["GPO: EST-Configuration (Link Order: 2)"]
+    WS --> G3["GPO: EST-Credentials (Link Order: 3)"]
+    WS --> G4["GPO: EST-Service (Link Order: 4)"]
+    WS --> Pilot["Pilot OU (Phase 1)"]
+    Pilot --> WMI["WMI Filter: Name LIKE 'PILOT%'"]
+    WS --> IT["IT Department OU (Phase 2)"]
+    IT --> SG["Security Group: EST-Phase2-Deployment"]
+    WS --> Prod["Production OU (Phase 3+)"]
+    Prod --> F1["Floor 1 OU"]
+    Prod --> F2["Floor 2 OU"]
+    Prod --> RW["Remote Workers OU"]
+
+    SRV --> SS1["GPO: EST-Software-Install-Servers"]
+    SRV --> SS2["GPO: EST-Configuration-Servers (Different config)"]
 ```
 
 ### GPO Settings Summary

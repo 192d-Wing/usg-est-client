@@ -1,119 +1,84 @@
-# USG RADIUS Documentation
+# USG EST Client Documentation
 
-This directory contains the complete documentation for the USG RADIUS server, built with Zensical.
+This directory contains the documentation site for `usg-est-client`, an
+RFC 7030 compliant EST (Enrollment over Secure Transport) client library.
+The site is built with [Zensical](https://zensical.org).
 
 ## Documentation Structure
 
 ```
 docs/
-├── docs/                          # Documentation content
-│   ├── index.md                   # Homepage
-│   ├── quick-reference.md         # Quick reference guide
-│   ├── getting-started/           # Installation and setup
-│   │   └── installation.md
-│   ├── protocol/                  # RADIUS protocol details
-│   │   ├── overview.md
-│   │   └── attributes.md
-│   ├── configuration/             # Server configuration
-│   │   ├── server.md
-│   │   ├── users.md
-│   │   └── clients.md
-│   ├── api/                       # API reference
-│   │   └── overview.md
-│   ├── security/                  # Security guidelines
-│   │   └── overview.md
-│   └── examples/                  # Usage examples
-│       └── basic-auth.md
-├── zensical.toml                  # Site configuration
-└── README.md                      # This file
+├── docs/                       # Documentation content (Markdown)
+│   ├── index.md                # Overview
+│   ├── getting-started.md      # Installation and first enrollment
+│   ├── configuration.md        # Configuration guide
+│   ├── config-reference.md     # Full configuration reference
+│   ├── operations.md           # EST operations
+│   ├── revocation-guide.md     # CRL/OCSP revocation guide
+│   ├── revocation_status.md    # Revocation implementation status
+│   ├── platform-tls.md         # TLS backend selection
+│   ├── security.md             # Security guidance
+│   ├── windows-enrollment.md   # Windows enrollment
+│   ├── wasm-compatibility.md   # WebAssembly compatibility
+│   ├── enterprise/             # Enterprise guides
+│   │   └── group-policy.md     # Group Policy deployment
+│   ├── examples.md             # Usage examples
+│   ├── api-reference.md        # API reference
+│   ├── metrics.md              # Metrics and observability
+│   ├── migration-from-adcs.md  # Migrating from ADCS
+│   └── troubleshooting.md      # Troubleshooting
+├── zensical.toml               # Site configuration
+├── pyproject.toml              # Python project / Zensical dependency
+└── README.md                   # This file
 ```
 
 ## Building the Documentation
 
-### Prerequisites
-
-Install Zensical (if not already installed):
-
-```bash
-pip install zensical
-# or
-pipx install zensical
-```
-
-### Build the Site
+This project pins Zensical via `pyproject.toml`/`uv.lock`, so the
+recommended workflow uses [uv](https://docs.astral.sh/uv/):
 
 ```bash
 cd docs
-zensical build
+uv run zensical build -f zensical.toml
 ```
 
-The site will be generated in the `site/` directory.
+> **Note:** pass `-f zensical.toml` explicitly. The generated site is written
+> to the `site/` directory.
 
 ### Serve Locally
 
 ```bash
 cd docs
-zensical serve
+uv run zensical serve -f zensical.toml
 ```
 
-Then visit http://127.0.0.1:8000 in your browser.
+Then visit <http://127.0.0.1:8000> in your browser.
 
-### Watch Mode
+## Diagrams (Mermaid)
 
-For development, use watch mode to auto-rebuild on changes:
+Architecture and flow diagrams are authored as [Mermaid](https://mermaid.js.org)
+code blocks (` ```mermaid `), enabled via the `pymdownx.superfences`
+`custom_fences` setting in `zensical.toml`.
 
-```bash
-cd docs
-zensical serve --watch
-```
-
-## Documentation Sections
-
-### Home (index.md)
-
-Overview of USG RADIUS with quick start guide and feature highlights.
-
-### Quick Reference (quick-reference.md)
-
-Fast reference for common tasks, commands, and configurations.
-
-### Getting Started
-
-- **Installation**: Step-by-step installation and first run
-
-### Protocol
-
-- **Overview**: RADIUS protocol details, packet structure, authentication flow
-- **Attributes**: Complete attribute reference with examples
-
-### Configuration
-
-- **Server**: Server settings and configuration
-- **Users**: User management and authentication
-- **Clients**: Client (NAS) configuration
-
-### API Reference
-
-- **Overview**: Using USG RADIUS as a library, custom authentication handlers
-
-### Security
-
-- **Overview**: Security considerations, best practices, cryptographic details
-
-### Examples
-
-- **Basic Authentication**: Complete working example with code
+> **Air-gapped / ATO deployments:** Zensical's bundled theme loads the Mermaid
+> runtime from a public CDN (`https://unpkg.com/mermaid@11/dist/mermaid.min.js`)
+> at page-render time. In a disconnected or accreditation-controlled environment
+> this request will fail and the diagrams will not render (the page otherwise
+> works). To support offline/ATO hosting, vendor the Mermaid library locally —
+> place `mermaid.min.js` under `docs/docs/javascripts/` and reference it via
+> `extra_javascript` in `zensical.toml` (with a local `mermaid.initialize`
+> call), or pre-render the diagrams to static SVG. Confirm the chosen approach
+> against your environment's content-security and supply-chain requirements.
 
 ## Contributing to Documentation
 
-1. Create or edit Markdown files in `docs/docs/`
-2. Test locally with `zensical serve`
-3. Commit changes
-4. Documentation will be built and deployed automatically
+1. Create or edit Markdown files in `docs/docs/`.
+2. Preview locally with `uv run zensical serve -f zensical.toml`.
+3. Keep fenced code blocks flush with the left margin (indenting a fence by
+   4+ spaces makes Markdown render it as literal text).
+4. Commit changes; the site is built and deployed via CI.
 
 ## Contact
 
-For documentation issues or suggestions:
-
-- Open an issue on GitHub
+- Open an issue on [GitHub](https://github.com/192d-Wing/usg-est-client).
 - Contact: John Edward Willman V <john.willman.1@us.af.mil>
