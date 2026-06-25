@@ -1,7 +1,7 @@
 [project]
-name = "usg-radius-docs"
+name = "usg-est-client-docs"
 version = "0.1.0"
-description = "Zensical site for usg-radius documentation"
+description = "Zensical site for usg-est-client documentation"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = ["zensical>=0.0.14"]
+dependencies = ["zensical>=0.0.15"]

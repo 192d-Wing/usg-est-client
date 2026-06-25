@@ -90,7 +90,7 @@ wheels = [
 ]
 
 [[package]]
-name = "usg-radius-docs"
+name = "usg-est-client-docs"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
@@ -98,7 +98,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "zensical", specifier = ">=0.0.14" }]
+requires-dist = [{ name = "zensical", specifier = ">=0.0.15" }]
 
 [[package]]
 name = "zensical"

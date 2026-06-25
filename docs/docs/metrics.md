@@ -29,10 +29,10 @@ The USG EST Client provides comprehensive metrics collection for monitoring EST 
 
     ```toml
     [dependencies]
-    usg-est-client = { version = "0.1", features = ["metrics"] }
+    usg-est-client = { version = "2.1", features = ["metrics"] }
     
     # For Prometheus/OpenTelemetry export
-    usg-est-client = { version = "0.1", features = ["metrics", "metrics-prometheus"] }
+    usg-est-client = { version = "2.1", features = ["metrics", "metrics-prometheus"] }
     ```
 
 ## Basic Metrics Collection
@@ -166,7 +166,7 @@ The OpenTelemetry exporter provides integration with the OpenTelemetry observabi
     // Create OpenTelemetry exporter
     let exporter = OpenTelemetryExporter::new(
         "est-client",  // service name
-        "0.1.0"        // service version
+        "2.1.2"        // service version
     )?;
     ```
 
