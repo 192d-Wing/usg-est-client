@@ -346,28 +346,13 @@ gh attestation verify "<artifact>" --repo 192d-Wing/usg-est-client
 
 ## Architecture
 
-```text
-┌─────────────────────────────────────────┐
-│          EstClient (main API)           │
-│  - simple_enroll()                      │
-│  - simple_reenroll()                    │
-│  - get_ca_certs()                       │
-│  - server_keygen()                      │
-└─────────────┬───────────────────────────┘
-              │
-     ┌────────┴────────┐
-     ▼                 ▼
-┌──────────┐    ┌──────────────┐
-│   TLS    │    │   HTTP/REST  │
-│ rustls   │    │   reqwest    │
-└──────────┘    └──────────────┘
-     │                 │
-     └────────┬────────┘
-              ▼
-     ┌────────────────┐
-     │  EST Server    │
-     │  (RFC 7030)    │
-     └────────────────┘
+```mermaid
+flowchart TD
+    Client["<b>EstClient</b> (main API)<br/>simple_enroll() · simple_reenroll()<br/>get_ca_certs() · server_keygen()"]
+    Client --> TLS["TLS<br/>rustls / aws-lc-rs (FIPS)"]
+    Client --> HTTP["HTTP / REST<br/>reqwest"]
+    TLS --> Server["EST Server<br/>(RFC 7030)"]
+    HTTP --> Server
 ```
 
 ## Dependencies
