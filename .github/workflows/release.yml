@@ -5,10 +5,11 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+*"
 
+# Least-privilege default (OpenSSF Scorecard Token-Permissions). The build job
+# only needs read; the publish job elevates to contents/id-token/attestations
+# write in its own job-level `permissions:` block.
 permissions:
-  contents: write
-  id-token: write # cosign keyless signing + provenance attestation (OIDC)
-  attestations: write # actions/attest-build-provenance
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always

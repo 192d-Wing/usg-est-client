@@ -5,7 +5,9 @@
 #   docker build -f Dockerfile.release --build-arg TARGET=x86_64-unknown-linux-gnu -t est-enroll:latest .
 
 ARG RUST_VERSION=1.92
-FROM rust:${RUST_VERSION}-bookworm AS chef
+# Pinned by digest (supply-chain hardening / OpenSSF Scorecard). Update the
+# digest together with RUST_VERSION; the tag is retained for readability.
+FROM rust:${RUST_VERSION}-bookworm@sha256:e90e846de4124376164ddfbaab4b0774c7bdeef5e738866295e5a90a34a307a2 AS chef
 
 # Install cargo-chef for dependency caching
 RUN cargo install cargo-chef --locked
@@ -42,7 +44,8 @@ RUN cargo build --release --target ${TARGET} --bin est-enroll --features cli
 RUN cp target/${TARGET}/release/est-enroll /app/est-enroll
 
 # Runtime stage - minimal image with just the binary
-FROM debian:bookworm-slim AS runtime
+# Base image pinned by digest (supply-chain hardening / OpenSSF Scorecard).
+FROM debian:bookworm-slim@sha256:60eac759739651111db372c07be67863818726f754804b8707c90979bda511df AS runtime
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
