@@ -26,8 +26,15 @@
 //! `message-digest` (RFC 5652 §5.4) so the receiver — and our own
 //! [`super::verify`] — can validate them.
 //!
-//! Under the `fips` feature, signing runs in the aws-lc-rs FIPS module;
-//! otherwise it uses the RustCrypto signers.
+//! # FIPS note
+//!
+//! The digest and message-digest hashing run through the FIPS-aware
+//! [`crate::fips_crypto`] layer (the aws-lc-rs FIPS module under `fips`). The
+//! signature operation itself uses the RustCrypto signers (`rsa`, `p256`,
+//! `p384`) on **every** build — TAMP message signing is not yet routed through
+//! the validated module. A FIPS deployment's validated boundary therefore
+//! covers TAMP TLS, verification, and hashing, but not TAMP signing; see
+//! `docs/docs/tamp.md`.
 
 use cms::cert::CertificateChoices;
 use cms::content_info::CmsVersion;
@@ -152,7 +159,7 @@ impl TampSigner {
 
     fn digest(&self, data: &[u8]) -> Vec<u8> {
         match self.key {
-            SigningKey::P384(_) => digest_helper::sha384(data),
+            SigningKey::P384(_) => crate::fips_crypto::sha384(data).to_vec(),
             _ => crate::fips_crypto::sha256(data).to_vec(),
         }
     }
@@ -301,23 +308,6 @@ fn parse_signing_key(key_pem: &[u8]) -> Result<SigningKey> {
     Err(EstError::tamp(
         "unsupported TAMP signing key: expected PKCS#8 RSA, P-256, or P-384",
     ))
-}
-
-/// Internal digest helpers shared with verification (kept small and local).
-mod digest_helper {
-    pub(super) fn sha384(data: &[u8]) -> Vec<u8> {
-        #[cfg(feature = "fips")]
-        {
-            aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA384, data)
-                .as_ref()
-                .to_vec()
-        }
-        #[cfg(not(feature = "fips"))]
-        {
-            use sha2::{Digest, Sha384};
-            Sha384::digest(data).to_vec()
-        }
-    }
 }
 
 #[cfg(test)]

@@ -68,6 +68,15 @@ const RSA_SHA512: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.11354
 const ECDSA_SHA256: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.2");
 const ECDSA_SHA384: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.3");
 
+/// Maximum number of `SignerInfo`s to verify in one inbound message.
+///
+/// A legitimate TAMP message carries one (occasionally a few) signers. Capping
+/// the count bounds the work an attacker-supplied `SignedData` can force: without
+/// it, a message with thousands of signers — each driving a digest over a large
+/// `eContent` — is a CPU-amplification vector (the digest is also cached per
+/// algorithm; see [`cached_digest`]).
+const MAX_SIGNERS: usize = 16;
+
 /// A TAMP message whose signature has been verified against the trust anchor
 /// store.
 #[derive(Clone, Debug)]
@@ -97,10 +106,26 @@ pub fn verify_message(msg: &TampMessage, store: &TrustAnchorStore) -> Result<Ver
             "TAMP message has no SignerInfo; unsigned management messages are rejected",
         ));
     }
+    if signers.as_slice().len() > MAX_SIGNERS {
+        return Err(EstError::tamp(format!(
+            "TAMP message carries {} SignerInfos, exceeding the limit of {MAX_SIGNERS}",
+            signers.as_slice().len()
+        )));
+    }
+
+    // Cache eContent digests per algorithm OID so a multi-signer message hashes
+    // the (possibly large) eContent at most once per distinct algorithm.
+    let mut digest_cache: Vec<(ObjectIdentifier, Vec<u8>)> = Vec::new();
 
     let mut last_err: Option<EstError> = None;
     for signer in signers.iter() {
-        match verify_one(signer, &msg.econtent_type, &msg.econtent, store) {
+        match verify_one(
+            signer,
+            &msg.econtent_type,
+            &msg.econtent,
+            store,
+            &mut digest_cache,
+        ) {
             Ok(signer_key_id) => {
                 return Ok(VerifiedMessage {
                     content_type,
@@ -126,9 +151,16 @@ fn verify_one(
     econtent_type: &ObjectIdentifier,
     econtent: &[u8],
     store: &TrustAnchorStore,
+    digest_cache: &mut Vec<(ObjectIdentifier, Vec<u8>)>,
 ) -> Result<Vec<u8>> {
     // 1. Resolve the signer to a trust anchor we already hold.
     let (key_id, spki) = resolve_signer(&signer.sid, store)?;
+
+    // 1b. The digestAlgorithm must match the hash bound to the signatureAlgorithm
+    // (RFC 5652 §5.4 pairs them). Rejecting a mismatch keeps the integrity hash
+    // that message-digest is checked under from being decoupled from the hash the
+    // signature actually validates.
+    check_digest_matches_sig(signer.digest_alg.oid, signer.signature_algorithm.oid)?;
 
     // 2. Determine the bytes that were signed.
     //
@@ -145,7 +177,7 @@ fn verify_one(
              binding is mandatory and the message is rejected",
         )
     })?;
-    validate_signed_attrs(signed_attrs, signer, econtent_type, econtent)?;
+    validate_signed_attrs(signed_attrs, signer, econtent_type, econtent, digest_cache)?;
     // RFC 5652 §5.4: the signature is computed over the DER encoding of the
     // SignedAttributes value with the universal SET OF tag (not the IMPLICIT
     // [0] tag carried in the SignerInfo).
@@ -207,12 +239,38 @@ fn cert_issuer_serial(
     }
 }
 
+/// Enforce that the SignerInfo digestAlgorithm matches the hash implied by its
+/// signatureAlgorithm (RFC 5652 §5.4 binds the two together).
+fn check_digest_matches_sig(
+    digest_alg: ObjectIdentifier,
+    sig_alg: ObjectIdentifier,
+) -> Result<()> {
+    let expected = match sig_alg {
+        RSA_SHA256 | ECDSA_SHA256 => OID_SHA256,
+        RSA_SHA384 | ECDSA_SHA384 => OID_SHA384,
+        RSA_SHA512 => OID_SHA512,
+        other => {
+            return Err(EstError::tamp(format!(
+                "unsupported TAMP signature algorithm: {other}"
+            )));
+        }
+    };
+    if digest_alg != expected {
+        return Err(EstError::tamp(format!(
+            "SignerInfo digestAlgorithm {digest_alg} does not match the hash implied by \
+             signatureAlgorithm {sig_alg}"
+        )));
+    }
+    Ok(())
+}
+
 /// Enforce the mandatory CMS signed attributes (RFC 5652 §5.4).
 fn validate_signed_attrs(
     signed_attrs: &SetOfVec<Attribute>,
     signer: &SignerInfo,
     econtent_type: &ObjectIdentifier,
     econtent: &[u8],
+    digest_cache: &mut Vec<(ObjectIdentifier, Vec<u8>)>,
 ) -> Result<()> {
     // content-type attribute must equal the eContentType.
     let ct_attr = find_attr(signed_attrs, &OID_CONTENT_TYPE)
@@ -242,8 +300,8 @@ fn validate_signed_attrs(
         .decode_as()
         .map_err(|e| EstError::tamp(format!("decode message-digest attribute: {e}")))?;
 
-    let computed = digest(signer.digest_alg.oid, econtent)?;
-    if md_val.as_bytes() != computed.as_slice() {
+    let computed = cached_digest(digest_cache, signer.digest_alg.oid, econtent)?;
+    if md_val.as_bytes() != computed {
         return Err(EstError::tamp(
             "message-digest attribute does not match eContent digest",
         ));
@@ -255,37 +313,34 @@ fn find_attr<'a>(attrs: &'a SetOfVec<Attribute>, oid: &ObjectIdentifier) -> Opti
     attrs.as_slice().iter().find(|a| a.oid == *oid)
 }
 
-/// Compute a digest under the named algorithm. FIPS-routed under `fips`.
+/// Return the digest of `data` under `alg`, computing it at most once per
+/// algorithm across a multi-signer message (`cache` is shared by all signers).
+fn cached_digest<'a>(
+    cache: &'a mut Vec<(ObjectIdentifier, Vec<u8>)>,
+    alg: ObjectIdentifier,
+    data: &[u8],
+) -> Result<&'a [u8]> {
+    let pos = match cache.iter().position(|(o, _)| *o == alg) {
+        Some(p) => p,
+        None => {
+            let d = digest(alg, data)?;
+            cache.push((alg, d));
+            cache.len() - 1
+        }
+    };
+    Ok(cache[pos].1.as_slice())
+}
+
+/// Compute a digest under the named algorithm, routed through the FIPS-aware
+/// [`crate::fips_crypto`] layer (validated module under `fips`, else `sha2`).
 fn digest(alg: ObjectIdentifier, data: &[u8]) -> Result<Vec<u8>> {
     match alg {
         OID_SHA256 => Ok(crate::fips_crypto::sha256(data).to_vec()),
-        OID_SHA384 => Ok(sha_384_512(data, false)),
-        OID_SHA512 => Ok(sha_384_512(data, true)),
+        OID_SHA384 => Ok(crate::fips_crypto::sha384(data).to_vec()),
+        OID_SHA512 => Ok(crate::fips_crypto::sha512(data).to_vec()),
         other => Err(EstError::tamp(format!(
             "unsupported message-digest algorithm: {other}"
         ))),
-    }
-}
-
-/// SHA-384/512 helper (FIPS module under `fips`, else RustCrypto).
-fn sha_384_512(data: &[u8], is_512: bool) -> Vec<u8> {
-    #[cfg(feature = "fips")]
-    {
-        let alg = if is_512 {
-            &aws_lc_rs::digest::SHA512
-        } else {
-            &aws_lc_rs::digest::SHA384
-        };
-        aws_lc_rs::digest::digest(alg, data).as_ref().to_vec()
-    }
-    #[cfg(not(feature = "fips"))]
-    {
-        use sha2::{Digest, Sha384, Sha512};
-        if is_512 {
-            Sha512::digest(data).to_vec()
-        } else {
-            Sha384::digest(data).to_vec()
-        }
     }
 }
 

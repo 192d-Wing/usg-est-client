@@ -281,7 +281,10 @@ fips-tls = ["fips"]
 # of a FIPS deployment. TAMP signing uses the RustCrypto crates (same as the
 # non-FIPS path) — CNG key operations cover EST enrollment; full CNG-backed CMS
 # signing is a future enhancement.
-fips-cng = ["windows", "native-tls-backend", "tamp", "hsm", "csr-gen"]
+#
+# `hsm` is pulled in transitively by `windows`; `csr-gen` is required directly
+# (the CngKeyProvider CSR path needs it) and is not implied by the others.
+fips-cng = ["windows", "native-tls-backend", "tamp", "csr-gen"]
 
 # TAMP (Trust Anchor Management Protocol, RFC 5934) client.
 # Client-role only: sends TAMPStatusQuery and signed *Confirm/TAMPError messages,
@@ -289,8 +292,10 @@ fips-cng = ["windows", "native-tls-backend", "tamp", "hsm", "csr-gen"]
 # maintains a local trust anchor store (RFC 5914 TrustAnchorChoice) with
 # sequence-number replay protection. Uses the in-tree cms/der/x509-cert/spki
 # crypto; only enables PKCS#8 key parsing on the EC crates for signing client
-# messages. Signing/verification/hashing route through the FIPS-aware path
-# (fips_crypto + aws-lc-rs provider) when `fips` is on.
+# messages. Verification and hashing route through the FIPS-aware path
+# (fips_crypto + aws-lc-rs provider) when `fips` is on; message *signing* uses
+# the RustCrypto signers on every build (not yet routed through the validated
+# module — see docs/docs/tamp.md).
 tamp = ["p256/pkcs8", "p384/pkcs8"]
 
 # DoD PKI integration (DoD Root CAs, certificate policies, CAC/PIV support)

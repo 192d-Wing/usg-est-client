@@ -144,6 +144,18 @@ impl TrustAnchorStore {
     pub fn upsert(&mut self, anchor: TrustAnchorChoice, is_apex: bool) -> Result<()> {
         let entry = TrustAnchorStoreEntry::new(anchor, is_apex)?;
         if let Some(existing) = self.entries.iter_mut().find(|e| e.key_id == entry.key_id) {
+            // Same key id must mean the same public key. Refuse to swap an
+            // anchor's key out from under its key id — otherwise a crafted keyId
+            // (taInfo) or an SKI collision could silently replace a trusted
+            // anchor's key while inheriting its replay counter.
+            if spki_of(&existing.anchor)?.to_der().map_err(spki_err)?
+                != spki_of(&entry.anchor)?.to_der().map_err(spki_err)?
+            {
+                return Err(EstError::tamp(
+                    "trust anchor key-id collision: an existing anchor shares this key \
+                     identifier but has a different public key; refusing to replace it",
+                ));
+            }
             existing.anchor = entry.anchor;
             existing.is_apex = is_apex;
         } else {
@@ -168,6 +180,16 @@ impl TrustAnchorStore {
     /// `clearTrustAnchors`).
     pub fn clear_non_apex(&mut self) {
         self.entries.retain(|e| e.is_apex);
+    }
+
+    /// Demote any current apex anchor to a regular (non-apex) anchor, keeping its
+    /// entry and replay counter. Used when an apex update installs a new apex: the
+    /// old apex retains its committed sequence number (so its messages can't be
+    /// replayed) but no longer holds apex authority.
+    pub fn demote_apex(&mut self) {
+        for e in self.entries.iter_mut().filter(|e| e.is_apex) {
+            e.is_apex = false;
+        }
     }
 
     /// Check a TAMP sequence number against the replay counter for `key_id`,
@@ -222,21 +244,44 @@ impl TrustAnchorStore {
     }
 
     /// Reconstruct a store from DER produced by [`to_der`](Self::to_der).
+    ///
+    /// The persisted `key_id` is **not** trusted: it is re-derived from each
+    /// anchor and the stored value must match. This prevents a tampered store
+    /// file from binding an attacker-chosen key id (e.g. the apex's, or one with
+    /// a low replay counter) to a public key it does not belong to. Duplicate key
+    /// ids are also rejected so lookups are unambiguous.
     pub fn from_der(der: &[u8]) -> Result<Self> {
         let persisted = PersistedStore::from_der(der)
             .map_err(|e| EstError::tamp(format!("decode store: {e}")))?;
-        let entries = persisted
-            .entries
-            .into_iter()
-            .map(|p| TrustAnchorStoreEntry {
+        let mut entries: Vec<TrustAnchorStoreEntry> = Vec::with_capacity(persisted.entries.len());
+        for p in persisted.entries {
+            let stored_key_id = p.key_id.as_bytes().to_vec();
+            let derived = derive_key_id(&p.anchor)?;
+            if derived != stored_key_id {
+                return Err(EstError::tamp(
+                    "persisted trust anchor key id does not match the anchor; \
+                     store file is corrupt or tampered",
+                ));
+            }
+            if entries.iter().any(|e| e.key_id == stored_key_id) {
+                return Err(EstError::tamp(
+                    "persisted trust anchor store contains a duplicate key id",
+                ));
+            }
+            entries.push(TrustAnchorStoreEntry {
                 anchor: p.anchor,
-                key_id: p.key_id.as_bytes().to_vec(),
+                key_id: stored_key_id,
                 last_seq_num: p.last_seq_num,
                 is_apex: p.is_apex,
-            })
-            .collect();
+            });
+        }
         Ok(Self { entries })
     }
+}
+
+/// Error mapper for SPKI DER-encoding failures.
+fn spki_err(e: der::Error) -> EstError {
+    EstError::tamp(format!("encode SPKI: {e}"))
 }
 
 /// On-disk representation of [`TrustAnchorStore`] (one entry per trust anchor).
@@ -269,28 +314,46 @@ pub fn spki_of(anchor: &TrustAnchorChoice) -> Result<SubjectPublicKeyInfoOwned> 
     })
 }
 
+/// Minimum acceptable key-identifier length. An identifier shorter than this is
+/// treated as absent and replaced by the SHA-256 SPKI-digest fallback, so an
+/// empty or trivially short `keyId`/SKI cannot collapse distinct anchors onto a
+/// colliding identifier.
+const MIN_KEY_ID_LEN: usize = 8;
+
 /// Derive the key identifier used to track and match a trust anchor.
 ///
 /// Resolution order:
-/// 1. For a `taInfo` anchor, its explicit `keyId` field.
+/// 1. For a `taInfo` anchor, its explicit `keyId` field (if at least
+///    [`MIN_KEY_ID_LEN`] bytes).
 /// 2. For a certificate / TBS certificate, the Subject Key Identifier extension
-///    value, if present (RFC 5280 §4.2.1.2).
+///    value, if present and long enough (RFC 5280 §4.2.1.2).
 /// 3. Otherwise, the SHA-256 digest of the public key BIT STRING contents
 ///    (FIPS-routed via [`crate::fips_crypto`]). This is a deterministic fallback
-///    so every anchor has a stable identifier even without an SKI extension;
-///    a Trust Anchor Manager that references anchors by this id must use the
-///    same construction.
+///    so every anchor has a stable, collision-resistant identifier even without
+///    a usable SKI; a Trust Anchor Manager that references anchors by this id
+///    must use the same construction.
 pub fn derive_key_id(anchor: &TrustAnchorChoice) -> Result<Vec<u8>> {
     match anchor {
-        TrustAnchorChoice::TaInfo(info) => Ok(info.key_id.as_bytes().to_vec()),
+        TrustAnchorChoice::TaInfo(info) => {
+            let explicit = info.key_id.as_bytes();
+            if explicit.len() >= MIN_KEY_ID_LEN {
+                Ok(explicit.to_vec())
+            } else {
+                spki_digest(&spki_of(anchor)?)
+            }
+        }
         TrustAnchorChoice::Certificate(cert) => {
-            if let Some(ski) = subject_key_identifier(cert.tbs_certificate().extensions()) {
+            if let Some(ski) = subject_key_identifier(cert.tbs_certificate().extensions())
+                && ski.len() >= MIN_KEY_ID_LEN
+            {
                 return Ok(ski);
             }
             spki_digest(&spki_of(anchor)?)
         }
         TrustAnchorChoice::TbsCertificate(tbs) => {
-            if let Some(ski) = subject_key_identifier(tbs.extensions()) {
+            if let Some(ski) = subject_key_identifier(tbs.extensions())
+                && ski.len() >= MIN_KEY_ID_LEN
+            {
                 return Ok(ski);
             }
             spki_digest(&spki_of(anchor)?)
@@ -325,14 +388,18 @@ mod tests {
     use x509_cert::anchor::{TrustAnchorInfo, Version};
 
     fn make_ta_info(key_id: &[u8], title: &str) -> TrustAnchorChoice {
-        // A minimal, self-consistent taInfo trust anchor. The public key value is
-        // arbitrary test bytes; we only exercise store mechanics, not crypto.
+        // A minimal, self-consistent taInfo trust anchor. The public key is
+        // derived from the key_id so distinct anchors have distinct SPKIs (the
+        // store now rejects same-key-id/different-key collisions); the bytes are
+        // arbitrary — we exercise store mechanics, not crypto.
+        let mut key_bytes = vec![0x04];
+        key_bytes.extend_from_slice(key_id);
         let spki = SubjectPublicKeyInfoOwned {
             algorithm: AlgorithmIdentifierOwned {
                 oid: const_oid::ObjectIdentifier::new_unwrap("1.2.840.10045.2.1"),
                 parameters: None,
             },
-            subject_public_key: BitString::from_bytes(&[0x04, 0x01, 0x02, 0x03]).unwrap(),
+            subject_public_key: BitString::from_bytes(&key_bytes).unwrap(),
         };
         TrustAnchorChoice::TaInfo(TrustAnchorInfo {
             version: Version::V1,
@@ -349,45 +416,63 @@ mod tests {
     fn upsert_and_lookup() {
         let mut store = TrustAnchorStore::new();
         store
-            .upsert(make_ta_info(b"key-1", "Root A"), true)
+            .upsert(make_ta_info(b"key-1aaa", "Root A"), true)
             .unwrap();
         store
-            .upsert(make_ta_info(b"key-2", "Root B"), false)
+            .upsert(make_ta_info(b"key-2bbb", "Root B"), false)
             .unwrap();
         assert_eq!(store.len(), 2);
-        assert_eq!(store.find_by_key_id(b"key-1").unwrap().title().as_deref(), Some("Root A"));
+        assert_eq!(store.find_by_key_id(b"key-1aaa").unwrap().title().as_deref(), Some("Root A"));
         assert!(store.apex().is_some());
-        assert_eq!(store.apex().unwrap().key_id, b"key-1");
+        assert_eq!(store.apex().unwrap().key_id, b"key-1aaa");
     }
 
     #[test]
     fn upsert_preserves_replay_counter() {
         let mut store = TrustAnchorStore::new();
-        store.upsert(make_ta_info(b"k", "A"), false).unwrap();
-        store.accept_seq_num(b"k", 5).unwrap();
-        // Re-adding the same key id must not reset the counter.
-        store.upsert(make_ta_info(b"k", "A-updated"), false).unwrap();
-        assert_eq!(store.find_by_key_id(b"k").unwrap().last_seq_num, Some(5));
-        assert!(store.check_seq_num(b"k", 5).is_err());
+        store.upsert(make_ta_info(b"key-aaaa", "A"), false).unwrap();
+        store.accept_seq_num(b"key-aaaa", 5).unwrap();
+        // Re-adding the same key id (same key) must not reset the counter.
+        store.upsert(make_ta_info(b"key-aaaa", "A-updated"), false).unwrap();
+        assert_eq!(store.find_by_key_id(b"key-aaaa").unwrap().last_seq_num, Some(5));
+        assert!(store.check_seq_num(b"key-aaaa", 5).is_err());
+    }
+
+    #[test]
+    fn upsert_rejects_key_id_collision_with_different_key() {
+        // Two distinct taInfo anchors that share an (explicit) key id but carry
+        // different public keys must not silently overwrite each other.
+        let mut store = TrustAnchorStore::new();
+        store.upsert(make_ta_info(b"shared-id-1", "A"), false).unwrap();
+        let colliding = match make_ta_info(b"shared-id-1", "B") {
+            TrustAnchorChoice::TaInfo(mut info) => {
+                // Force a different public key under the same key id.
+                info.pub_key.subject_public_key =
+                    BitString::from_bytes(&[0x04, 0xff, 0xfe, 0xfd]).unwrap();
+                TrustAnchorChoice::TaInfo(info)
+            }
+            other => other,
+        };
+        assert!(store.upsert(colliding, false).is_err());
     }
 
     #[test]
     fn sequence_number_replay_is_rejected() {
         let mut store = TrustAnchorStore::new();
-        store.upsert(make_ta_info(b"k", "A"), false).unwrap();
-        store.accept_seq_num(b"k", 10).unwrap();
-        assert!(store.check_seq_num(b"k", 10).is_err(), "equal seq must be replay");
-        assert!(store.check_seq_num(b"k", 9).is_err(), "lower seq must be replay");
-        assert!(store.check_seq_num(b"k", 11).is_ok(), "higher seq is fresh");
-        store.accept_seq_num(b"k", 11).unwrap();
-        assert_eq!(store.find_by_key_id(b"k").unwrap().last_seq_num, Some(11));
+        store.upsert(make_ta_info(b"key-aaaa", "A"), false).unwrap();
+        store.accept_seq_num(b"key-aaaa", 10).unwrap();
+        assert!(store.check_seq_num(b"key-aaaa", 10).is_err(), "equal seq must be replay");
+        assert!(store.check_seq_num(b"key-aaaa", 9).is_err(), "lower seq must be replay");
+        assert!(store.check_seq_num(b"key-aaaa", 11).is_ok(), "higher seq is fresh");
+        store.accept_seq_num(b"key-aaaa", 11).unwrap();
+        assert_eq!(store.find_by_key_id(b"key-aaaa").unwrap().last_seq_num, Some(11));
     }
 
     #[test]
     fn clear_non_apex_keeps_apex() {
         let mut store = TrustAnchorStore::new();
-        store.upsert(make_ta_info(b"apex", "Apex"), true).unwrap();
-        store.upsert(make_ta_info(b"leaf", "Leaf"), false).unwrap();
+        store.upsert(make_ta_info(b"apex-aaaa", "Apex"), true).unwrap();
+        store.upsert(make_ta_info(b"leaf-bbbb", "Leaf"), false).unwrap();
         store.clear_non_apex();
         assert_eq!(store.len(), 1);
         assert!(store.apex().is_some());
@@ -396,20 +481,42 @@ mod tests {
     #[test]
     fn der_round_trip_preserves_everything() {
         let mut store = TrustAnchorStore::new();
-        store.upsert(make_ta_info(b"key-1", "Root A"), true).unwrap();
-        store.upsert(make_ta_info(b"key-2", "Root B"), false).unwrap();
-        store.accept_seq_num(b"key-1", 42).unwrap();
+        store.upsert(make_ta_info(b"key-1aaa", "Root A"), true).unwrap();
+        store.upsert(make_ta_info(b"key-2bbb", "Root B"), false).unwrap();
+        store.accept_seq_num(b"key-1aaa", 42).unwrap();
 
         let der = store.to_der().unwrap();
         let restored = TrustAnchorStore::from_der(&der).unwrap();
         assert_eq!(store, restored);
-        assert_eq!(restored.find_by_key_id(b"key-1").unwrap().last_seq_num, Some(42));
+        assert_eq!(restored.find_by_key_id(b"key-1aaa").unwrap().last_seq_num, Some(42));
         assert!(restored.apex().is_some());
+    }
+
+    #[test]
+    fn from_der_rejects_key_id_mismatch() {
+        // A store whose persisted key_id does not match its anchor must be
+        // rejected (tamper / corruption guard).
+        let mut store = TrustAnchorStore::new();
+        store.upsert(make_ta_info(b"key-1aaa", "Root A"), true).unwrap();
+        let der = store.to_der().unwrap();
+        // Decode, corrupt the key_id, re-encode, and confirm from_der rejects it.
+        let mut persisted = PersistedStore::from_der(&der).unwrap();
+        persisted.entries[0].key_id = OctetString::new(b"forged-key-id".to_vec()).unwrap();
+        let tampered = persisted.to_der().unwrap();
+        assert!(TrustAnchorStore::from_der(&tampered).is_err());
     }
 
     #[test]
     fn key_id_for_ta_info_uses_explicit_field() {
         let anchor = make_ta_info(b"explicit-id", "X");
         assert_eq!(derive_key_id(&anchor).unwrap(), b"explicit-id");
+    }
+
+    #[test]
+    fn short_ta_info_key_id_falls_back_to_spki_digest() {
+        // A too-short explicit keyId is replaced by the 32-byte SPKI digest.
+        let anchor = make_ta_info(b"short", "X");
+        let kid = derive_key_id(&anchor).unwrap();
+        assert_eq!(kid.len(), 32, "fallback must be a SHA-256 digest");
     }
 }

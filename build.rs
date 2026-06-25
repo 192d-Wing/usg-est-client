@@ -6,6 +6,15 @@ fn main() {
     let has_fips = std::env::var("CARGO_FEATURE_FIPS").is_ok();
     let has_fips_cng = std::env::var("CARGO_FEATURE_FIPS_CNG").is_ok();
 
+    if has_fips && has_fips_cng {
+        panic!(
+            "\n\
+            The `fips` and `fips-cng` features are mutually exclusive: `fips` links the\n\
+            aws-lc-rs FIPS module (Linux), while `fips-cng` routes crypto through Windows\n\
+            CNG/SChannel. Enable exactly one for the target platform.\n"
+        );
+    }
+
     if has_fips && target_os == "windows" {
         panic!(
             "\n\

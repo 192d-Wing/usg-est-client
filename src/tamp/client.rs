@@ -93,6 +93,15 @@ impl TampClient {
     ) -> Result<Self> {
         let http = build_http_client(&config)?;
         let tamp_url = Url::parse(tamp_url.as_ref())?;
+        // TAMP management messages (trust anchor updates) must not travel in
+        // plaintext. Reject any non-HTTPS endpoint rather than silently sending
+        // over HTTP because the URL scheme overrides the TLS-capable client.
+        if tamp_url.scheme() != "https" {
+            return Err(EstError::tamp(format!(
+                "TAMP endpoint must use https, got scheme '{}'",
+                tamp_url.scheme()
+            )));
+        }
         // Reuse the EST client identity for signing client-originated messages
         // when one is configured.
         let signer = match &config.client_identity {
@@ -168,11 +177,21 @@ impl TampClient {
             .map_err(|e| EstError::tamp(format!("decode TAMPStatusResponse: {e}")))?;
 
         // Populate the store from a verbose response so pulled anchors are
-        // available locally.
-        if let StatusResponse::Verbose(v) = &response.response {
-            for ta in &v.ta_info {
-                self.store.upsert(ta.clone(), false)?;
+        // available locally — but ONLY if the response was signed by the apex.
+        // A status response is informational; letting any trusted (possibly
+        // non-apex) signer inject new trust anchors would let one compromised
+        // signer escalate to provisioning fresh signers the apex never
+        // authorized. Adding anchors is reserved for an apex-signed message.
+        if self.signer_is_apex(&verified.signer_key_id) {
+            if let StatusResponse::Verbose(v) = &response.response {
+                for ta in &v.ta_info {
+                    self.store.upsert(ta.clone(), false)?;
+                }
             }
+        } else {
+            tracing::debug!(
+                "status response not apex-signed; returning it without merging anchors into the store"
+            );
         }
 
         Ok(response)
@@ -259,18 +278,37 @@ impl TampClient {
     fn apply_status_response(&mut self, verified: &VerifiedMessage) -> Result<Processed> {
         let response = TampStatusResponse::from_der(&verified.econtent)
             .map_err(|e| EstError::tamp(format!("decode TAMPStatusResponse: {e}")))?;
+
+        // Only an apex-signed status response may add trust anchors (see
+        // `status_query`). A response signed by any other trusted anchor is
+        // accepted as information but does not mutate the trust set.
+        let from_apex = self.signer_is_apex(&verified.signer_key_id);
         let mut added = 0usize;
-        if let StatusResponse::Verbose(v) = &response.response {
+        if from_apex
+            && let StatusResponse::Verbose(v) = &response.response
+        {
             for ta in &v.ta_info {
                 self.store.upsert(ta.clone(), false)?;
                 added += 1;
             }
         }
+        let summary = if from_apex {
+            format!("status response applied; {added} trust anchor(s) recorded")
+        } else {
+            "status response verified but not apex-signed; trust store unchanged".to_string()
+        };
         Ok(Processed {
             content_type: TampContentType::StatusResponse,
-            summary: format!("status response applied; {added} trust anchor(s) recorded"),
+            summary,
             reply: None,
         })
+    }
+
+    /// Whether `signer_key_id` identifies the store's apex trust anchor.
+    fn signer_is_apex(&self, signer_key_id: &[u8]) -> bool {
+        self.store
+            .apex()
+            .is_some_and(|a| a.key_id.as_slice() == signer_key_id)
     }
 
     fn apply_update(&mut self, verified: &VerifiedMessage) -> Result<Processed> {
@@ -330,15 +368,31 @@ impl TampClient {
         let apex = TampApexUpdate::from_der(&verified.econtent)
             .map_err(|e| EstError::tamp(format!("decode TAMPApexUpdate: {e}")))?;
 
-        self.store.check_seq_num(&verified.signer_key_id, apex.msg_ref.seq_num)?;
+        // Authorization (RFC 5934 §7.2): an apex update MUST be signed by the
+        // current apex trust anchor. Without this, any trusted non-apex signer
+        // could replace the root of the management trust.
+        if !self.signer_is_apex(&verified.signer_key_id) {
+            return Err(EstError::tamp(
+                "apex update not signed by the current apex trust anchor; rejected",
+            ));
+        }
+
+        self.store
+            .check_seq_num(&verified.signer_key_id, apex.msg_ref.seq_num)?;
+
+        // Commit the sequence number on the current apex BEFORE mutating the
+        // store, so the replay counter is recorded while the signing entry still
+        // exists (the subsequent demote keeps the entry and its counter).
+        self.store
+            .accept_seq_num(&verified.signer_key_id, apex.msg_ref.seq_num)?;
 
         if apex.clear_trust_anchors {
             self.store.clear_non_apex();
         }
-        // Install the new apex trust anchor.
+        // Retire the old apex (keeping its entry + replay counter) and install
+        // the new one as the sole apex.
+        self.store.demote_apex();
         self.store.upsert(apex.apex_ta.clone(), true)?;
-        self.store
-            .accept_seq_num(&verified.signer_key_id, apex.msg_ref.seq_num)?;
 
         Ok(Processed {
             content_type: TampContentType::ApexUpdate,

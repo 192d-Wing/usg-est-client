@@ -27,6 +27,48 @@ pub(crate) fn sha256(data: &[u8]) -> [u8; 32] {
     }
 }
 
+/// Compute the SHA-384 digest of `data`.
+///
+/// Uses the aws-lc-rs FIPS module under the `fips` feature, otherwise `sha2`.
+/// Centralizing SHA-384 here (alongside [`sha256`]) keeps a FIPS build from
+/// computing hashes outside the validated module — callers must route through
+/// this layer rather than reaching for `sha2` or `aws_lc_rs` directly.
+#[cfg(feature = "tamp")]
+pub(crate) fn sha384(data: &[u8]) -> [u8; 48] {
+    #[cfg(feature = "fips")]
+    {
+        let digest = aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA384, data);
+        let mut out = [0u8; 48];
+        out.copy_from_slice(digest.as_ref());
+        out
+    }
+    #[cfg(not(feature = "fips"))]
+    {
+        use sha2::{Digest, Sha384};
+        Sha384::digest(data).into()
+    }
+}
+
+/// Compute the SHA-512 digest of `data`.
+///
+/// Uses the aws-lc-rs FIPS module under the `fips` feature, otherwise `sha2`.
+/// See [`sha384`] for why digest selection is centralized here.
+#[cfg(feature = "tamp")]
+pub(crate) fn sha512(data: &[u8]) -> [u8; 64] {
+    #[cfg(feature = "fips")]
+    {
+        let digest = aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA512, data);
+        let mut out = [0u8; 64];
+        out.copy_from_slice(digest.as_ref());
+        out
+    }
+    #[cfg(not(feature = "fips"))]
+    {
+        use sha2::{Digest, Sha512};
+        Sha512::digest(data).into()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -50,6 +50,18 @@ A received management message is honored only if **both** hold:
 A trust root (typically the **apex** trust anchor) must therefore be
 provisioned out of band before any response can be trusted.
 
+**Trust-store mutation requires apex authority.** Adding new trust anchors —
+whether from a `TAMPStatusResponse` or an Apex Update — is accepted only when the
+message is signed by the **apex** anchor. A response signed by some other trusted
+(non-apex) anchor is verified and returned but does **not** mutate the local
+trust set, so a single compromised non-apex signer cannot provision new roots.
+
+**FIPS boundary caveat.** Under `fips`, TAMP TLS, signature *verification*, and
+hashing run inside the validated aws-lc-rs module. TAMP message *signing*
+(client-originated `TAMPStatusQuery` / `*Confirm` / `TAMPError`) currently uses
+the RustCrypto signers on every build and is **not** yet routed through the
+validated module.
+
 ## Library usage
 
 ```rust,no_run

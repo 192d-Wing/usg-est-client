@@ -109,8 +109,11 @@ use crate::error::{EstError, Result};
 /// - HTTP client builder fails
 pub fn build_http_client(config: &EstClientConfig) -> Result<reqwest::Client> {
     // Windows CNG FIPS path: native-tls (SChannel) + CNG key provider.
-    // This branch owns the full client build and returns early.
-    #[cfg(feature = "fips-cng")]
+    // This branch owns the full client build and returns early. Gated on the
+    // windows target as well as the feature: `fips-cng` is a Windows-only feature
+    // (build.rs enforces this), and the body references `crate::windows`, which
+    // only exists under `cfg(all(windows, feature = "windows"))`.
+    #[cfg(all(windows, feature = "fips-cng"))]
     return build_http_client_fips_cng(config);
 
     // Fail closed: when built for FIPS, ensure the FIPS-validated rustls provider
@@ -233,7 +236,7 @@ pub fn build_http_client(config: &EstClientConfig) -> Result<reqwest::Client> {
 ///
 /// The `client_cert_resolver` (PKCS#11 token) path is not supported here because it
 /// requires a rustls `ResolvesClientCert`; use a PEM identity backed by CNG instead.
-#[cfg(feature = "fips-cng")]
+#[cfg(all(windows, feature = "fips-cng"))]
 fn build_http_client_fips_cng(config: &EstClientConfig) -> Result<reqwest::Client> {
     // Fail-closed: verify the OS FIPS algorithm policy before building any TLS context.
     if !crate::windows::CngKeyProvider::is_fips_mode_enabled()
@@ -272,9 +275,18 @@ fn build_http_client_fips_cng(config: &EstClientConfig) -> Result<reqwest::Clien
             // for a domain-joined machine whose root CAs are pushed via Group Policy.
         }
         TrustAnchors::Explicit(ca_certs) => {
-            // Add the caller-supplied CAs on top of the Windows store.  native-tls on
-            // Windows cannot *replace* the store (only reqwest+rustls can do that via
-            // tls_certs_only), so explicit anchors are additive here.
+            // native-tls on Windows cannot *replace* the system trust store (only
+            // reqwest+rustls can, via tls_certs_only), so explicit anchors are
+            // ADDITIVE: the caller's CAs are trusted *in addition to* every CA in
+            // the Windows store. This is weaker than the pinned-trust the rustls
+            // path gives. Warn loudly so the widened trust boundary is not silent;
+            // a deployment needing strict pinning must use the non-fips-cng
+            // (rustls) build.
+            tracing::warn!(
+                "fips-cng: TrustAnchors::Explicit is additive to the Windows certificate store \
+                 (native-tls/SChannel cannot replace it); the explicit anchors do NOT pin trust. \
+                 Use the rustls build for strict pinning."
+            );
             for ca_pem in ca_certs {
                 let cert = reqwest::Certificate::from_pem(ca_pem).map_err(|e| {
                     EstError::tls(format!("Failed to parse CA certificate: {e}"))
