@@ -163,10 +163,10 @@ jobs:
   # Publish the crate to crates.io
   # ===========================================================================
   # Gated on a successful multi-platform build (crates.io publishes are
-  # irreversible — versions can only be yanked, never replaced). Requires the
-  # CARGO_REGISTRY_TOKEN repository secret (a crates.io API token with
-  # publish-update scope). Idempotent: re-running an already-published tag is a
-  # no-op rather than a failure.
+  # irreversible — versions can only be yanked, never replaced). Uses the
+  # org-level `CRATES_IO` secret (a crates.io API token with publish-update
+  # scope). Idempotent: re-running an already-published tag is a no-op rather
+  # than a failure.
   crates-io:
     name: Publish to crates.io
     needs: build
@@ -211,4 +211,5 @@ jobs:
         if: steps.published.outputs.exists == 'false'
         run: cargo publish --locked
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          # Org-level secret `CRATES_IO` mapped to the env var cargo expects.
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO }}
