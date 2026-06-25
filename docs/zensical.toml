@@ -29,7 +29,6 @@ nav = [
         ] },
     ] },
     { Examples = "examples.md" },
-    { "API Reference" = "api-reference.md" },
     { Metrics = "metrics.md" },
     { Migration = "migration-from-adcs.md" },
     { Troubleshooting = "troubleshooting.md" },

@@ -23,7 +23,6 @@ docs/
 │   ├── enterprise/             # Enterprise guides
 │   │   └── group-policy.md     # Group Policy deployment
 │   ├── examples.md             # Usage examples
-│   ├── api-reference.md        # API reference
 │   ├── metrics.md              # Metrics and observability
 │   ├── migration-from-adcs.md  # Migrating from ADCS
 │   └── troubleshooting.md      # Troubleshooting

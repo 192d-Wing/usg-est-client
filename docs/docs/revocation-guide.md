@@ -1139,7 +1139,7 @@ pub enum CheckOrder {
 
 - [Security Considerations](security.md) - Full security guide including revocation
 - [DoD PKI Integration](dod-pki.md) - DoD-specific revocation requirements
-- [API Reference](api-reference.md) - Complete API documentation
+- [API Reference (docs.rs)](https://docs.rs/usg-est-client) - Complete API documentation
 - [Examples](examples.md) - Additional code examples
 
 ---

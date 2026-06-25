@@ -8,7 +8,7 @@ Welcome to the documentation for `usg-est-client`, an RFC 7030 compliant EST (En
 2. [EST Operations](operations.md) - Detailed guide to all EST operations
 3. [Configuration](configuration.md) - Configuring the EST client
 4. [Security Considerations](security.md) - Security best practices and considerations
-5. [API Reference](api-reference.md) - Complete API documentation
+5. [API Reference (docs.rs)](https://docs.rs/usg-est-client) - Complete API documentation
 6. [Examples](examples.md) - Usage examples and patterns
 
 ## What is EST?
