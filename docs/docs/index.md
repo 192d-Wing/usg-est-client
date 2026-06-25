@@ -8,7 +8,7 @@ A Rust implementation of an RFC 7030 compliant EST (Enrollment over Secure Trans
 - [Configuration](configuration.md)
 - [Operations](operations.md)
 - [Security](security.md)
-- [API Reference](api-reference.md)
+- [API Reference (docs.rs)](https://docs.rs/usg-est-client)
 - [Examples](examples.md)
 - [Troubleshooting](troubleshooting.md)
 

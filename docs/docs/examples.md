@@ -713,4 +713,4 @@ cargo run --example bootstrap -- \
 
 - Review [Configuration](configuration.md) for advanced options
 - Read [Security Considerations](security.md) before deploying
-- Check [API Reference](api-reference.md) for complete API details
+- Check the [API Reference on docs.rs](https://docs.rs/usg-est-client) for complete API details
