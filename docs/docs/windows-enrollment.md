@@ -47,21 +47,21 @@ You can also override the location using the `EST_CONFIG_PATH` environment varia
 
 ### Minimal Configuration
 
-    ```toml
-    [server]
-    url = "https://est.example.com"
-    
-    [certificate]
-    common_name = "${COMPUTERNAME}.${USERDNSDOMAIN}"
-    ```
+```toml
+[server]
+url = "https://est.example.com"
+
+[certificate]
+common_name = "${COMPUTERNAME}.${USERDNSDOMAIN}"
+```
 
 ### IDE Support
 
 All example configuration files include a JSON schema reference for IDE autocompletion:
 
-    ```toml
-    # yaml-language-server: $schema=../../schema/est-config.schema.json
-    ```
+```toml
+# yaml-language-server: $schema=../../schema/est-config.schema.json
+```
 
 This enables IntelliSense, validation, and inline documentation in VS Code, IntelliJ, and other modern editors.
 
@@ -87,27 +87,27 @@ Configuration values support variable expansion using `${VARIABLE_NAME}` syntax.
 
 Any environment variable can be referenced. If the variable is not found, it is left unchanged:
 
-    ```toml
-    [certificate]
-    # Uses environment variable MY_CUSTOM_CN if set
-    common_name = "${MY_CUSTOM_CN}"
-    ```
+```toml
+[certificate]
+# Uses environment variable MY_CUSTOM_CN if set
+common_name = "${MY_CUSTOM_CN}"
+```
 
 ### Examples
 
-    ```toml
-    # Machine certificate CN with domain
-    common_name = "${COMPUTERNAME}.${USERDNSDOMAIN}"
-    # Result: DESKTOP-ABC123.corp.contoso.com
-    
-    # Machine account username (Active Directory style)
-    username = "${COMPUTERNAME}$"
-    # Result: DESKTOP-ABC123$
-    
-    # Subject Alternative Names
-    dns = ["${COMPUTERNAME}.${USERDNSDOMAIN}", "${COMPUTERNAME}"]
-    # Result: ["DESKTOP-ABC123.corp.contoso.com", "DESKTOP-ABC123"]
-    ```
+```toml
+# Machine certificate CN with domain
+common_name = "${COMPUTERNAME}.${USERDNSDOMAIN}"
+# Result: DESKTOP-ABC123.corp.contoso.com
+
+# Machine account username (Active Directory style)
+username = "${COMPUTERNAME}$"
+# Result: DESKTOP-ABC123$
+
+# Subject Alternative Names
+dns = ["${COMPUTERNAME}.${USERDNSDOMAIN}", "${COMPUTERNAME}"]
+# Result: ["DESKTOP-ABC123.corp.contoso.com", "DESKTOP-ABC123"]
+```
 
 ## Configuration Sections
 
@@ -115,40 +115,40 @@ Any environment variable can be referenced. If the variable is not found, it is 
 
 EST server connection settings.
 
-    ```toml
-    [server]
-    # EST server URL (required, must be HTTPS)
-    url = "https://est.example.com"
-    
-    # Optional CA label for multi-CA deployments
-    # When set, URLs become: /.well-known/est/{ca_label}/{operation}
-    ca_label = "machines"
-    
-    # Request timeout in seconds (default: 60)
-    timeout_seconds = 60
-    
-    # Enable TLS channel binding per RFC 7030 Section 3.5
-    # Places tls-unique value in CSR challenge-password field
-    channel_binding = true
-    ```
+```toml
+[server]
+# EST server URL (required, must be HTTPS)
+url = "https://est.example.com"
+
+# Optional CA label for multi-CA deployments
+# When set, URLs become: /.well-known/est/{ca_label}/{operation}
+ca_label = "machines"
+
+# Request timeout in seconds (default: 60)
+timeout_seconds = 60
+
+# Enable TLS channel binding per RFC 7030 Section 3.5
+# Places tls-unique value in CSR challenge-password field
+channel_binding = true
+```
 
 ### [trust]
 
 Server certificate trust verification.
 
-    ```toml
-    [trust]
-    # Trust mode: "webpki", "explicit", "bootstrap", or "insecure"
-    mode = "explicit"
-    
-    # Path to CA certificate bundle (PEM format)
-    # Required when mode is "explicit"
-    ca_bundle_path = "C:\\ProgramData\\Department of War\\EST\\ca-bundle.pem"
-    
-    # Expected CA fingerprint for bootstrap mode
-    # Format: SHA-256 hash with optional colons
-    bootstrap_fingerprint = "sha256:AB:CD:EF:01:23:45:67:89:..."
-    ```
+```toml
+[trust]
+# Trust mode: "webpki", "explicit", "bootstrap", or "insecure"
+mode = "explicit"
+
+# Path to CA certificate bundle (PEM format)
+# Required when mode is "explicit"
+ca_bundle_path = "C:\\ProgramData\\Department of War\\EST\\ca-bundle.pem"
+
+# Expected CA fingerprint for bootstrap mode
+# Format: SHA-256 hash with optional colons
+bootstrap_fingerprint = "sha256:AB:CD:EF:01:23:45:67:89:..."
+```
 
 **Trust Modes:**
 
@@ -161,24 +161,24 @@ Server certificate trust verification.
 
 Authentication credentials for EST server.
 
-    ```toml
-    [authentication]
-    # Authentication method: "none", "http_basic", "client_cert", or "auto"
-    method = "auto"
-    
-    # --- HTTP Basic Authentication ---
-    username = "${COMPUTERNAME}$"
-    password_source = "env:EST_PASSWORD"
-    
-    # --- Client Certificate Authentication ---
-    # Option 1: Windows certificate store (Windows only)
-    cert_store = "LocalMachine\\My"
-    cert_thumbprint = "auto"  # or specific thumbprint
-    
-    # Option 2: PEM files
-    cert_path = "C:\\ProgramData\\Department of War\\EST\\client.pem"
-    key_path = "C:\\ProgramData\\Department of War\\EST\\client.key"
-    ```
+```toml
+[authentication]
+# Authentication method: "none", "http_basic", "client_cert", or "auto"
+method = "auto"
+
+# --- HTTP Basic Authentication ---
+username = "${COMPUTERNAME}$"
+password_source = "env:EST_PASSWORD"
+
+# --- Client Certificate Authentication ---
+# Option 1: Windows certificate store (Windows only)
+cert_store = "LocalMachine\\My"
+cert_thumbprint = "auto"  # or specific thumbprint
+
+# Option 2: PEM files
+cert_path = "C:\\ProgramData\\Department of War\\EST\\client.pem"
+key_path = "C:\\ProgramData\\Department of War\\EST\\client.key"
+```
 
 **Authentication Methods:**
 
@@ -197,46 +197,46 @@ Authentication credentials for EST server.
 
 Certificate request configuration (subject, SANs, extensions).
 
-    ```toml
-    [certificate]
-    # Subject Distinguished Name fields
-    common_name = "${COMPUTERNAME}.${USERDNSDOMAIN}"  # Required
-    organization = "Example Corporation"
-    organizational_unit = "IT Department"
-    country = "US"  # ISO 3166-1 alpha-2 code
-    state = "Virginia"
-    locality = "Arlington"
-    
-    [certificate.san]
-    # Subject Alternative Names
-    dns = [
-        "${COMPUTERNAME}.${USERDNSDOMAIN}",
-        "${COMPUTERNAME}",
-        "alias.example.com"
-    ]
-    ip = ["192.168.1.100", "10.0.1.100"]
-    include_ip = true  # Auto-detect local IPs
-    
-    [certificate.key]
-    # Key algorithm: "ecdsa-p256", "ecdsa-p384", "rsa-2048", "rsa-3072", "rsa-4096"
-    algorithm = "ecdsa-p256"
-    
-    # Key provider: "software", "cng", "tpm", "pkcs11"
-    provider = "software"
-    
-    # Mark private key as non-exportable (CNG/TPM only)
-    non_exportable = true
-    
-    # Enable TPM key attestation (requires server support)
-    attestation = false
-    
-    [certificate.extensions]
-    # Key usage flags
-    key_usage = ["digital_signature", "key_encipherment"]
-    
-    # Extended key usage OIDs
-    extended_key_usage = ["client_auth", "server_auth"]
-    ```
+```toml
+[certificate]
+# Subject Distinguished Name fields
+common_name = "${COMPUTERNAME}.${USERDNSDOMAIN}"  # Required
+organization = "Example Corporation"
+organizational_unit = "IT Department"
+country = "US"  # ISO 3166-1 alpha-2 code
+state = "Virginia"
+locality = "Arlington"
+
+[certificate.san]
+# Subject Alternative Names
+dns = [
+    "${COMPUTERNAME}.${USERDNSDOMAIN}",
+    "${COMPUTERNAME}",
+    "alias.example.com"
+]
+ip = ["192.168.1.100", "10.0.1.100"]
+include_ip = true  # Auto-detect local IPs
+
+[certificate.key]
+# Key algorithm: "ecdsa-p256", "ecdsa-p384", "rsa-2048", "rsa-3072", "rsa-4096"
+algorithm = "ecdsa-p256"
+
+# Key provider: "software", "cng", "tpm", "pkcs11"
+provider = "software"
+
+# Mark private key as non-exportable (CNG/TPM only)
+non_exportable = true
+
+# Enable TPM key attestation (requires server support)
+attestation = false
+
+[certificate.extensions]
+# Key usage flags
+key_usage = ["digital_signature", "key_encipherment"]
+
+# Extended key usage OIDs
+extended_key_usage = ["client_auth", "server_auth"]
+```
 
 **Key Algorithms:**
 
@@ -267,23 +267,23 @@ Certificate request configuration (subject, SANs, extensions).
 
 Automatic certificate renewal settings.
 
-    ```toml
-    [renewal]
-    # Enable automatic renewal
-    enabled = true
-    
-    # Days before expiration to trigger renewal
-    threshold_days = 30
-    
-    # Hours between certificate expiration checks
-    check_interval_hours = 6
-    
-    # Maximum renewal retry attempts
-    max_retries = 5
-    
-    # Minutes between retry attempts (base for exponential backoff)
-    retry_delay_minutes = 30
-    ```
+```toml
+[renewal]
+# Enable automatic renewal
+enabled = true
+
+# Days before expiration to trigger renewal
+threshold_days = 30
+
+# Hours between certificate expiration checks
+check_interval_hours = 6
+
+# Maximum renewal retry attempts
+max_retries = 5
+
+# Minutes between retry attempts (base for exponential backoff)
+retry_delay_minutes = 30
+```
 
 **Renewal Logic:**
 
@@ -296,20 +296,20 @@ Automatic certificate renewal settings.
 
 Certificate and key storage configuration.
 
-    ```toml
-    [storage]
-    # --- Windows Certificate Store (Windows only) ---
-    windows_store = "LocalMachine\\My"
-    friendly_name = "EST Machine Certificate"
-    
-    # --- PEM Files (cross-platform) ---
-    cert_path = "C:\\ProgramData\\Department of War\\EST\\machine.pem"
-    key_path = "C:\\ProgramData\\Department of War\\EST\\machine.key"
-    chain_path = "C:\\ProgramData\\Department of War\\EST\\chain.pem"
-    
-    # Archive old certificates instead of deleting
-    archive_old = true
-    ```
+```toml
+[storage]
+# --- Windows Certificate Store (Windows only) ---
+windows_store = "LocalMachine\\My"
+friendly_name = "EST Machine Certificate"
+
+# --- PEM Files (cross-platform) ---
+cert_path = "C:\\ProgramData\\Department of War\\EST\\machine.pem"
+key_path = "C:\\ProgramData\\Department of War\\EST\\machine.key"
+chain_path = "C:\\ProgramData\\Department of War\\EST\\chain.pem"
+
+# Archive old certificates instead of deleting
+archive_old = true
+```
 
 **Windows Certificate Stores:**
 
@@ -322,43 +322,43 @@ Certificate and key storage configuration.
 
 Logging and monitoring configuration.
 
-    ```toml
-    [logging]
-    # Log level: "debug", "info", "warn", "error"
-    level = "info"
-    
-    # Log file path
-    path = "C:\\ProgramData\\Department of War\\EST\\logs\\est-enroll.log"
-    
-    # Enable Windows Event Log integration (Windows only)
-    windows_event_log = true
-    
-    # Enable JSON formatted logging (for log aggregation)
-    json_format = false
-    
-    # Log rotation settings
-    max_size_mb = 10
-    max_files = 5
-    ```
+```toml
+[logging]
+# Log level: "debug", "info", "warn", "error"
+level = "info"
+
+# Log file path
+path = "C:\\ProgramData\\Department of War\\EST\\logs\\est-enroll.log"
+
+# Enable Windows Event Log integration (Windows only)
+windows_event_log = true
+
+# Enable JSON formatted logging (for log aggregation)
+json_format = false
+
+# Log rotation settings
+max_size_mb = 10
+max_files = 5
+```
 
 ### [service]
 
 Windows Service configuration (Windows only).
 
-    ```toml
-    [service]
-    # Service start type: "automatic", "delayed", "manual", "disabled"
-    start_type = "automatic"
-    
-    # Service account
-    run_as = "LocalSystem"  # or "NetworkService", "DOMAIN\\ServiceAccount"
-    
-    # Service dependencies (must start before this service)
-    dependencies = ["Tcpip", "Dnscache"]
-    
-    # Health check HTTP port (optional)
-    health_check_port = 8080
-    ```
+```toml
+[service]
+# Service start type: "automatic", "delayed", "manual", "disabled"
+start_type = "automatic"
+
+# Service account
+run_as = "LocalSystem"  # or "NetworkService", "DOMAIN\\ServiceAccount"
+
+# Service dependencies (must start before this service)
+dependencies = ["Tcpip", "Dnscache"]
+
+# Health check HTTP port (optional)
+health_check_port = 8080
+```
 
 ## Deployment Scenarios
 
@@ -428,23 +428,23 @@ Minimal configuration for resource-constrained devices.
 
 First-time enrollment when CA certificate is unknown.
 
-    ```toml
-    [server]
-    url = "https://est.newdeployment.com"
-    
-    [trust]
-    # Bootstrap mode - TOFU with fingerprint verification
-    mode = "bootstrap"
-    bootstrap_fingerprint = "sha256:AB:CD:EF:01:23:45:67:89:..."
-    
-    [authentication]
-    method = "http_basic"
-    username = "bootstrap-account"
-    password_source = "env:BOOTSTRAP_PASSWORD"
-    
-    [certificate]
-    common_name = "${COMPUTERNAME}.newdeployment.com"
-    ```
+```toml
+[server]
+url = "https://est.newdeployment.com"
+
+[trust]
+# Bootstrap mode - TOFU with fingerprint verification
+mode = "bootstrap"
+bootstrap_fingerprint = "sha256:AB:CD:EF:01:23:45:67:89:..."
+
+[authentication]
+method = "http_basic"
+username = "bootstrap-account"
+password_source = "env:BOOTSTRAP_PASSWORD"
+
+[certificate]
+common_name = "${COMPUTERNAME}.newdeployment.com"
+```
 
 **Important:** After successful bootstrap, switch to `explicit` trust mode with the retrieved CA certificate. Never use `bootstrap` mode in production long-term.
 
@@ -975,13 +975,13 @@ sc.exe start EST-AutoEnroll
 
 Run the enrollment client with `--validate-config` to check for errors:
 
-    ```powershell
-    # Windows
-    est-enroll.exe --validate-config
-    
-    # Linux
-    est-enroll --validate-config
-    ```
+```powershell
+# Windows
+est-enroll.exe --validate-config
+
+# Linux
+est-enroll --validate-config
+```
 
 **Common Validation Errors:**
 
@@ -994,16 +994,16 @@ Run the enrollment client with `--validate-config` to check for errors:
 
 Enable debug logging to see expanded values:
 
-    ```toml
-    [logging]
-    level = "debug"
-    ```
+```toml
+[logging]
+level = "debug"
+```
 
 Look for log entries like:
 
-    ```
-    Expanded common_name: DESKTOP-ABC123.corp.contoso.com
-    ```
+```
+Expanded common_name: DESKTOP-ABC123.corp.contoso.com
+```
 
 **Common Issues:**
 
@@ -1021,23 +1021,23 @@ Look for log entries like:
 
 1. Verify EST server URL is correct and accessible:
 
-       ```powershell
-       curl https://est.example.com/.well-known/est/cacerts
-       ```
+   ```powershell
+   curl https://est.example.com/.well-known/est/cacerts
+   ```
 
 2. Check trust anchor configuration:
 
-       ```powershell
-       # Verify CA bundle file exists and is valid
-       openssl x509 -in C:\ProgramData\EST\ca-bundle.pem -text -noout
-       ```
+   ```powershell
+   # Verify CA bundle file exists and is valid
+   openssl x509 -in C:\ProgramData\EST\ca-bundle.pem -text -noout
+   ```
 
 3. Test TLS connection:
 
-       ```powershell
-       # Windows
-       Test-NetConnection -ComputerName est.example.com -Port 443
-       ```
+   ```powershell
+   # Windows
+   Test-NetConnection -ComputerName est.example.com -Port 443
+   ```
 
 4. Check firewall and proxy settings
 
@@ -1054,44 +1054,44 @@ Look for log entries like:
 
 1. Verify credentials are correct:
 
-       ```powershell
-       # Check environment variable is set
-       echo $env:EST_PASSWORD
-       ```
+   ```powershell
+   # Check environment variable is set
+   echo $env:EST_PASSWORD
+   ```
 
 2. Test credentials manually:
 
-       ```powershell
-       $cred = Get-Credential
-       Invoke-WebRequest -Uri https://est.example.com/.well-known/est/cacerts -Credential $cred
-       ```
+   ```powershell
+   $cred = Get-Credential
+   Invoke-WebRequest -Uri https://est.example.com/.well-known/est/cacerts -Credential $cred
+   ```
 
 **For Client Certificate:**
 
 1. Verify certificate exists in store or file:
 
-       ```powershell
-       # Windows Store
-       Get-ChildItem Cert:\LocalMachine\My
-    
-       # PEM file
-       openssl x509 -in client.pem -text -noout
-       ```
+   ```powershell
+   # Windows Store
+   Get-ChildItem Cert:\LocalMachine\My
+
+   # PEM file
+   openssl x509 -in client.pem -text -noout
+   ```
 
 2. Check certificate is not expired:
 
-       ```powershell
-       openssl x509 -in client.pem -noout -dates
-       ```
+   ```powershell
+   openssl x509 -in client.pem -noout -dates
+   ```
 
 3. Verify private key matches certificate:
 
-       ```powershell
-       # Extract public key from cert and key, compare
-       openssl x509 -in client.pem -pubkey -noout > cert-pub.pem
-       openssl pkey -in client.key -pubout > key-pub.pem
-       diff cert-pub.pem key-pub.pem
-       ```
+   ```powershell
+   # Extract public key from cert and key, compare
+   openssl x509 -in client.pem -pubkey -noout > cert-pub.pem
+   openssl pkey -in client.key -pubout > key-pub.pem
+   diff cert-pub.pem key-pub.pem
+   ```
 
 ### Enrollment Errors
 
@@ -1119,30 +1119,30 @@ Look for log entries like:
 
 1. Check renewal is enabled:
 
-       ```toml
-       [renewal]
-       enabled = true
-       ```
+   ```toml
+   [renewal]
+   enabled = true
+   ```
 
 2. Verify certificate is within renewal threshold:
 
-       ```powershell
-       # Check expiration date
-       openssl x509 -in machine.pem -noout -dates
-    
-       # Calculate days until expiration
-       # (Compare with threshold_days in config)
-       ```
+   ```powershell
+   # Check expiration date
+   openssl x509 -in machine.pem -noout -dates
+
+   # Calculate days until expiration
+   # (Compare with threshold_days in config)
+   ```
 
 3. Check renewal service is running:
 
-       ```powershell
-       # Windows
-       Get-Service EST-Enrollment
-    
-       # Linux
-       systemctl status est-enrollment
-       ```
+   ```powershell
+   # Windows
+   Get-Service EST-Enrollment
+
+   # Linux
+   systemctl status est-enrollment
+   ```
 
 4. Review logs for renewal attempts and errors
 
@@ -1170,11 +1170,11 @@ Look for log entries like:
 
 **Enable Debug Logging:**
 
-    ```toml
-    [logging]
-    level = "debug"
-    path = "C:\\ProgramData\\Department of War\\EST\\logs\\debug.log"
-    ```
+```toml
+[logging]
+level = "debug"
+path = "C:\\ProgramData\\Department of War\\EST\\logs\\debug.log"
+```
 
 **Key Log Events:**
 

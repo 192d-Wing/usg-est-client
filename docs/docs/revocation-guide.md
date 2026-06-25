@@ -98,7 +98,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-usg-est-client = { version = "0.1", features = ["revocation"] }
+usg-est-client = { version = "2.1", features = ["revocation"] }
 ```
 
 ---
@@ -644,61 +644,61 @@ async fn check_with_custom_fallback(
 
 1. **Cache Tuning**:
 
-   ```rust
-   // Longer cache for stable CAs
-   .crl_cache_duration(Duration::from_secs(7200))  // 2 hours
+```rust
+// Longer cache for stable CAs
+.crl_cache_duration(Duration::from_secs(7200))  // 2 hours
 
-   // Larger cache for many CAs
-   .crl_cache_max_entries(500)
-   ```
+// Larger cache for many CAs
+.crl_cache_max_entries(500)
+```
 
 2. **Parallel Checks**:
 
-   ```rust
-   use futures::future::join_all;
+```rust
+use futures::future::join_all;
 
-   async fn check_multiple_parallel(
-       certs: Vec<(Certificate, Certificate)>
-   ) -> Vec<Result<RevocationStatus>> {
-       let checker = Arc::new(RevocationChecker::new(config));
+async fn check_multiple_parallel(
+    certs: Vec<(Certificate, Certificate)>
+) -> Vec<Result<RevocationStatus>> {
+    let checker = Arc::new(RevocationChecker::new(config));
 
-       let futures = certs.into_iter().map(|(cert, issuer)| {
-           let checker = Arc::clone(&checker);
-           async move {
-               checker.check_revocation(&cert, &issuer)
-                   .await
-                   .map(|r| r.status)
-           }
-       });
+    let futures = certs.into_iter().map(|(cert, issuer)| {
+        let checker = Arc::clone(&checker);
+        async move {
+            checker.check_revocation(&cert, &issuer)
+                .await
+                .map(|r| r.status)
+        }
+    });
 
-       join_all(futures).await
-   }
-   ```
+    join_all(futures).await
+}
+```
 
 3. **Pre-warm Cache**:
 
-   ```rust
-   // Pre-download common CRLs
-   async fn prewarm_crl_cache(checker: &RevocationChecker) {
-       let common_certs = load_common_certificates();
+```rust
+// Pre-download common CRLs
+async fn prewarm_crl_cache(checker: &RevocationChecker) {
+    let common_certs = load_common_certificates();
 
-       for (cert, issuer) in common_certs {
-           let _ = checker.check_revocation(&cert, &issuer).await;
-       }
-   }
-   ```
+    for (cert, issuer) in common_certs {
+        let _ = checker.check_revocation(&cert, &issuer).await;
+    }
+}
+```
 
 ### OCSP Optimization
 
 1. **Timeout Tuning**:
 
-   ```rust
-   // Fast fail for interactive applications
-   .ocsp_timeout(Duration::from_secs(5))
+```rust
+// Fast fail for interactive applications
+.ocsp_timeout(Duration::from_secs(5))
 
-   // Longer timeout for batch processing
-   .ocsp_timeout(Duration::from_secs(15))
-   ```
+// Longer timeout for batch processing
+.ocsp_timeout(Duration::from_secs(15))
+```
 
 2. **Connection Pooling**:
 
@@ -706,13 +706,13 @@ async fn check_with_custom_fallback(
 
 3. **Response Caching** (optional):
 
-   ```rust
-   // Cache OCSP responses (not built-in, implement if needed)
-   struct OcspCache {
-       cache: Arc<RwLock<HashMap<SerialNumber, (RevocationStatus, Instant)>>>,
-       ttl: Duration,
-   }
-   ```
+```rust
+// Cache OCSP responses (not built-in, implement if needed)
+struct OcspCache {
+    cache: Arc<RwLock<HashMap<SerialNumber, (RevocationStatus, Instant)>>>,
+    ttl: Duration,
+}
+```
 
 ---
 
@@ -822,54 +822,54 @@ async fn check_with_retry(
 
 2. **Use HTTPS for Distribution Points**:
 
-   ```rust
-   // Validate CRL/OCSP URLs
-   fn is_secure_url(url: &str) -> bool {
-       url.starts_with("https://")
-   }
-   ```
+```rust
+// Validate CRL/OCSP URLs
+fn is_secure_url(url: &str) -> bool {
+    url.starts_with("https://")
+}
+```
 
 3. **Implement Timeouts**:
 
-   ```rust
-   .ocsp_timeout(Duration::from_secs(10))
-   .crl_timeout(Duration::from_secs(30))
-   ```
+```rust
+.ocsp_timeout(Duration::from_secs(10))
+.crl_timeout(Duration::from_secs(30))
+```
 
 4. **Monitor Revocation Failures**:
 
-   ```rust
-   if let Err(e) = checker.check_revocation(&cert, &issuer).await {
-       metrics.increment("revocation_check_failures");
-       log_security_event("revocation_check_failed", &e);
-   }
-   ```
+```rust
+if let Err(e) = checker.check_revocation(&cert, &issuer).await {
+    metrics.increment("revocation_check_failures");
+    log_security_event("revocation_check_failed", &e);
+}
+```
 
 5. **Hard-Fail for High-Security Environments**:
 
-   ```rust
-   let config = RevocationConfig::builder()
-       .fail_on_unknown(true)  // Reject unknown status
-       .build();
-   ```
+```rust
+let config = RevocationConfig::builder()
+    .fail_on_unknown(true)  // Reject unknown status
+    .build();
+```
 
 ### Performance Best Practices
 
 1. **Cache Aggressively**:
 
-   ```rust
-   .crl_cache_duration(Duration::from_secs(3600))
-   ```
+```rust
+.crl_cache_duration(Duration::from_secs(3600))
+```
 
 2. **Use OCSP for Interactive, CRL for Batch**:
 
-   ```rust
-   // Interactive
-   .check_order(CheckOrder::OcspFirst)
+```rust
+// Interactive
+.check_order(CheckOrder::OcspFirst)
 
-   // Batch
-   .check_order(CheckOrder::CrlFirst)
-   ```
+// Batch
+.check_order(CheckOrder::CrlFirst)
+```
 
 3. **Parallelize Batch Checks**:
 
@@ -883,11 +883,11 @@ async fn check_with_retry(
 
 1. **Monitor Metrics**:
 
-   ```rust
-   metrics.increment("revocation_checks_total");
-   metrics.increment(format!("revocation_status_{}", status));
-   metrics.gauge("revocation_check_duration_ms", duration.as_millis());
-   ```
+```rust
+metrics.increment("revocation_checks_total");
+metrics.increment(format!("revocation_status_{}", status));
+metrics.gauge("revocation_check_duration_ms", duration.as_millis());
+```
 
 2. **Alert on Anomalies**:
    - Sudden increase in revoked certificates
@@ -918,21 +918,21 @@ async fn check_with_retry(
 
 1. Check network connectivity to OCSP responder:
 
-   ```bash
-   curl -I https://ocsp.example.com
-   ```
+```bash
+curl -I https://ocsp.example.com
+```
 
 2. Increase timeout:
 
-   ```rust
-   .ocsp_timeout(Duration::from_secs(20))
-   ```
+```rust
+.ocsp_timeout(Duration::from_secs(20))
+```
 
 3. Enable CRL fallback:
 
-   ```rust
-   .enable_crl(true)
-   ```
+```rust
+.enable_crl(true)
+```
 
 #### Issue: "CRL signature verification failed"
 
@@ -942,15 +942,15 @@ async fn check_with_retry(
 
 1. Verify issuer certificate is correct:
 
-   ```bash
-   openssl crl -in crl.der -inform DER -noout -issuer
-   ```
+```bash
+openssl crl -in crl.der -inform DER -noout -issuer
+```
 
 2. Check CRL signature algorithm is supported:
 
-   ```bash
-   openssl crl -in crl.der -inform DER -noout -text | grep "Signature Algorithm"
-   ```
+```bash
+openssl crl -in crl.der -inform DER -noout -text | grep "Signature Algorithm"
+```
 
 3. Ensure you're using the correct issuer certificate (not end-entity).
 
@@ -962,21 +962,21 @@ async fn check_with_retry(
 
 1. Check if CRL is current:
 
-   ```bash
-   openssl crl -in crl.der -inform DER -noout -nextupdate
-   ```
+```bash
+openssl crl -in crl.der -inform DER -noout -nextupdate
+```
 
 2. Download latest CRL:
 
-   ```rust
-   checker.clear_cache().await;  // Force re-download
-   ```
+```rust
+checker.clear_cache().await;  // Force re-download
+```
 
 3. Verify certificate serial number:
 
-   ```bash
-   openssl x509 -in cert.pem -noout -serial
-   ```
+```bash
+openssl x509 -in cert.pem -noout -serial
+```
 
 #### Issue: "Memory usage growing with CRL cache"
 
@@ -986,27 +986,27 @@ async fn check_with_retry(
 
 1. Limit cache size:
 
-   ```rust
-   .crl_cache_max_entries(50)  // Reduce from default
-   ```
+```rust
+.crl_cache_max_entries(50)  // Reduce from default
+```
 
 2. Reduce cache duration:
 
-   ```rust
-   .crl_cache_duration(Duration::from_secs(1800))  // 30 minutes
-   ```
+```rust
+.crl_cache_duration(Duration::from_secs(1800))  // 30 minutes
+```
 
 3. Periodically clear cache:
 
-   ```rust
-   tokio::spawn(async move {
-       let mut interval = tokio::time::interval(Duration::from_hours(6));
-       loop {
-           interval.tick().await;
-           checker.clear_cache().await;
-       }
-   });
-   ```
+```rust
+tokio::spawn(async move {
+    let mut interval = tokio::time::interval(Duration::from_hours(6));
+    loop {
+        interval.tick().await;
+        checker.clear_cache().await;
+    }
+});
+```
 
 ### Debug Logging
 
@@ -1145,5 +1145,5 @@ pub enum CheckOrder {
 ---
 
 **Last Updated**: 2026-01-12
-**Library Version**: 0.1.0
+**Library Version**: 2.1.2
 **Revocation Implementation**: Production-ready (Phase 10.2.2)

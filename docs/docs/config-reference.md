@@ -23,21 +23,21 @@ EST client configuration uses TOML format with support for:
 
 ### Minimal Required Configuration
 
-    ```toml
-    [server]
-    url = "https://est.example.com"
-    
-    [certificate]
-    common_name = "device.example.com"
-    ```
+```toml
+[server]
+url = "https://est.example.com"
+
+[certificate]
+common_name = "device.example.com"
+```
 
 ### IDE Support
 
 Add this line at the top of configuration files for IDE autocompletion:
 
-    ```toml
-    # yaml-language-server: $schema=../../schema/est-config.schema.json
-    ```
+```toml
+# yaml-language-server: $schema=../../schema/est-config.schema.json
+```
 
 ## File Locations
 
@@ -51,263 +51,263 @@ Add this line at the top of configuration files for IDE autocompletion:
 
 ### Override with Environment Variable
 
-    ```bash
-    # Windows
-    set EST_CONFIG_PATH=C:\custom\path\config.toml
-    
-    # Linux/macOS
-    export EST_CONFIG_PATH=/custom/path/config.toml
-    ```
+```bash
+# Windows
+set EST_CONFIG_PATH=C:\custom\path\config.toml
+
+# Linux/macOS
+export EST_CONFIG_PATH=/custom/path/config.toml
+```
 
 ### Command Line Override
 
-    ```bash
-    est-enroll --config /path/to/config.toml
-    ```
+```bash
+est-enroll --config /path/to/config.toml
+```
 
 ## Complete Configuration Schema
 
-    ```toml
-    # =============================================================================
-    # EST Client Configuration Reference
-    # =============================================================================
-    
-    # -----------------------------------------------------------------------------
-    # Server Configuration
-    # -----------------------------------------------------------------------------
-    [server]
-    # EST server URL (required, must be HTTPS for production)
-    url = "https://est.example.com"
-    
-    # Optional CA label for multi-CA deployments
-    # Changes endpoints from /.well-known/est/{operation} to
-    # /.well-known/est/{ca_label}/{operation}
-    ca_label = ""
-    
-    # Request timeout in seconds (default: 60)
-    timeout_seconds = 60
-    
-    # Enable TLS channel binding (RFC 7030 Section 3.5)
-    # Places tls-unique value in CSR challenge-password field
-    channel_binding = false
-    
-    # -----------------------------------------------------------------------------
-    # Trust Anchor Configuration
-    # -----------------------------------------------------------------------------
-    [trust]
-    # Trust mode: "webpki", "explicit", "bootstrap", "insecure"
-    # - webpki: Mozilla root CA store (default)
-    # - explicit: Use specific CA certificates
-    # - bootstrap: Trust-On-First-Use with fingerprint verification
-    # - insecure: Accept any certificate (TESTING ONLY)
-    mode = "webpki"
-    
-    # Path to CA certificate bundle (PEM format)
-    # Required when mode = "explicit"
-    ca_bundle_path = ""
-    
-    # Expected CA fingerprint for bootstrap mode
-    # Format: "sha256:XX:XX:XX..." (colon-separated hex)
-    bootstrap_fingerprint = ""
-    
-    # -----------------------------------------------------------------------------
-    # Authentication Configuration
-    # -----------------------------------------------------------------------------
-    [authentication]
-    # Authentication method: "none", "http_basic", "client_cert", "auto"
-    # - none: No authentication (rarely used)
-    # - http_basic: Username/password
-    # - client_cert: TLS client certificate (mutual TLS)
-    # - auto: Try client_cert, fallback to http_basic
-    method = "auto"
-    
-    # HTTP Basic Authentication
-    username = ""
-    # Password source: "env:VARIABLE", "file:/path", "credential_manager"
-    password_source = ""
-    
-    # Client Certificate Authentication (Windows)
-    cert_store = ""        # e.g., "LocalMachine\\My"
-    cert_thumbprint = ""   # "auto" or specific thumbprint
-    
-    # Client Certificate Authentication (PEM files)
-    cert_path = ""         # Path to certificate PEM
-    key_path = ""          # Path to private key PEM
-    
-    # -----------------------------------------------------------------------------
-    # Certificate Request Configuration
-    # -----------------------------------------------------------------------------
-    [certificate]
-    # Subject Distinguished Name (common_name is required)
-    common_name = ""
-    organization = ""
-    organizational_unit = ""
-    country = ""           # ISO 3166-1 alpha-2 code
-    state = ""
-    locality = ""
-    
-    # Subject Alternative Names
-    [certificate.san]
-    dns = []               # DNS names: ["host.example.com", "alias.example.com"]
-    ip = []                # IP addresses: ["192.168.1.100"]
-    email = []             # Email addresses: ["admin@example.com"]
-    uri = []               # URIs: ["https://example.com/"]
-    include_ip = false     # Auto-detect local IPs
-    
-    # Key Configuration
-    [certificate.key]
-    # Algorithm: "ecdsa-p256", "ecdsa-p384", "rsa-2048", "rsa-3072", "rsa-4096"
-    algorithm = "ecdsa-p256"
-    
-    # Provider: "software", "cng", "tpm", "pkcs11"
-    provider = "software"
-    
-    # Mark private key as non-exportable (CNG/TPM only)
-    non_exportable = false
-    
-    # Enable TPM key attestation
-    attestation = false
-    
-    # PKCS#11 configuration (when provider = "pkcs11")
-    pkcs11_library = ""    # Path to PKCS#11 library
-    pkcs11_slot = 0        # Slot ID (or -1 for auto-select)
-    pkcs11_pin_source = "" # "env:PIN_VAR" or "file:/path"
-    
-    # Certificate Extensions
-    [certificate.extensions]
-    # Key usage flags
-    key_usage = ["digital_signature"]
-    
-    # Extended key usage OIDs or short names
-    extended_key_usage = ["client_auth"]
-    
-    # Custom extensions (OID = value pairs)
-    # custom = { "2.5.29.99" = "custom value" }
-    
-    # -----------------------------------------------------------------------------
-    # Renewal Configuration
-    # -----------------------------------------------------------------------------
-    [renewal]
-    # Enable automatic renewal
-    enabled = false
-    
-    # Days before expiration to trigger renewal
-    threshold_days = 30
-    
-    # Hours between expiration checks
-    check_interval_hours = 6
-    
-    # Maximum retry attempts before giving up
-    max_retries = 5
-    
-    # Base delay between retries (minutes)
-    # Actual delay uses exponential backoff
-    retry_delay_minutes = 30
-    
-    # Jitter percentage (0-100) to randomize retry timing
-    jitter_percent = 20
-    
-    # -----------------------------------------------------------------------------
-    # Storage Configuration
-    # -----------------------------------------------------------------------------
-    [storage]
-    # Windows Certificate Store (Windows only)
-    windows_store = ""     # e.g., "LocalMachine\\My"
-    friendly_name = ""     # Certificate friendly name
-    
-    # PEM File Storage (cross-platform)
-    cert_path = ""         # Output certificate path
-    key_path = ""          # Output private key path
-    chain_path = ""        # Output certificate chain path
-    
-    # Archive old certificates before replacement
-    archive_old = false
-    archive_path = ""      # Archive directory
-    
-    # File permissions (Unix only, octal)
-    cert_mode = "0644"
-    key_mode = "0600"
-    
-    # -----------------------------------------------------------------------------
-    # Logging Configuration
-    # -----------------------------------------------------------------------------
-    [logging]
-    # Log level: "trace", "debug", "info", "warn", "error"
-    level = "info"
-    
-    # Log file path (leave empty for no file logging)
-    path = ""
-    
-    # Enable Windows Event Log (Windows only)
-    windows_event_log = false
-    
-    # Enable JSON formatted logging (for log aggregation)
-    json_format = false
-    
-    # Log rotation
-    max_size_mb = 10       # Max size before rotation
-    max_files = 5          # Number of rotated files to keep
-    
-    # Include timestamps in logs
-    timestamps = true
-    
-    # Include source location in debug logs
-    source_location = false
-    
-    # -----------------------------------------------------------------------------
-    # Windows Service Configuration (Windows only)
-    # -----------------------------------------------------------------------------
-    [service]
-    # Service start type: "automatic", "delayed", "manual", "disabled"
-    start_type = "automatic"
-    
-    # Service account
-    # Options: "LocalSystem", "NetworkService", "LocalService", "DOMAIN\\User"
-    run_as = "LocalSystem"
-    
-    # Service dependencies (services that must start first)
-    dependencies = []      # e.g., ["Tcpip", "Dnscache"]
-    
-    # Health check HTTP port (0 = disabled)
-    health_check_port = 0
-    
-    # Recovery actions: "restart", "none"
-    recovery_action = "restart"
-    recovery_delay_seconds = 60
-    
-    # -----------------------------------------------------------------------------
-    # Metrics Configuration (optional)
-    # -----------------------------------------------------------------------------
-    [metrics]
-    # Enable metrics collection
-    enabled = false
-    
-    # Prometheus metrics endpoint port (0 = disabled)
-    prometheus_port = 0
-    
-    # StatsD server address
-    statsd_address = ""
-    
-    # Metrics prefix
-    prefix = "est_client"
-    
-    # -----------------------------------------------------------------------------
-    # Proxy Configuration (optional)
-    # -----------------------------------------------------------------------------
-    [proxy]
-    # HTTP proxy URL
-    http_proxy = ""
-    
-    # HTTPS proxy URL
-    https_proxy = ""
-    
-    # No proxy list (comma-separated)
-    no_proxy = ""
-    
-    # Proxy authentication
-    proxy_username = ""
-    proxy_password_source = ""  # "env:VAR" or "file:/path"
-    ```
+```toml
+# =============================================================================
+# EST Client Configuration Reference
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Server Configuration
+# -----------------------------------------------------------------------------
+[server]
+# EST server URL (required, must be HTTPS for production)
+url = "https://est.example.com"
+
+# Optional CA label for multi-CA deployments
+# Changes endpoints from /.well-known/est/{operation} to
+# /.well-known/est/{ca_label}/{operation}
+ca_label = ""
+
+# Request timeout in seconds (default: 60)
+timeout_seconds = 60
+
+# Enable TLS channel binding (RFC 7030 Section 3.5)
+# Places tls-unique value in CSR challenge-password field
+channel_binding = false
+
+# -----------------------------------------------------------------------------
+# Trust Anchor Configuration
+# -----------------------------------------------------------------------------
+[trust]
+# Trust mode: "webpki", "explicit", "bootstrap", "insecure"
+# - webpki: Mozilla root CA store (default)
+# - explicit: Use specific CA certificates
+# - bootstrap: Trust-On-First-Use with fingerprint verification
+# - insecure: Accept any certificate (TESTING ONLY)
+mode = "webpki"
+
+# Path to CA certificate bundle (PEM format)
+# Required when mode = "explicit"
+ca_bundle_path = ""
+
+# Expected CA fingerprint for bootstrap mode
+# Format: "sha256:XX:XX:XX..." (colon-separated hex)
+bootstrap_fingerprint = ""
+
+# -----------------------------------------------------------------------------
+# Authentication Configuration
+# -----------------------------------------------------------------------------
+[authentication]
+# Authentication method: "none", "http_basic", "client_cert", "auto"
+# - none: No authentication (rarely used)
+# - http_basic: Username/password
+# - client_cert: TLS client certificate (mutual TLS)
+# - auto: Try client_cert, fallback to http_basic
+method = "auto"
+
+# HTTP Basic Authentication
+username = ""
+# Password source: "env:VARIABLE", "file:/path", "credential_manager"
+password_source = ""
+
+# Client Certificate Authentication (Windows)
+cert_store = ""        # e.g., "LocalMachine\\My"
+cert_thumbprint = ""   # "auto" or specific thumbprint
+
+# Client Certificate Authentication (PEM files)
+cert_path = ""         # Path to certificate PEM
+key_path = ""          # Path to private key PEM
+
+# -----------------------------------------------------------------------------
+# Certificate Request Configuration
+# -----------------------------------------------------------------------------
+[certificate]
+# Subject Distinguished Name (common_name is required)
+common_name = ""
+organization = ""
+organizational_unit = ""
+country = ""           # ISO 3166-1 alpha-2 code
+state = ""
+locality = ""
+
+# Subject Alternative Names
+[certificate.san]
+dns = []               # DNS names: ["host.example.com", "alias.example.com"]
+ip = []                # IP addresses: ["192.168.1.100"]
+email = []             # Email addresses: ["admin@example.com"]
+uri = []               # URIs: ["https://example.com/"]
+include_ip = false     # Auto-detect local IPs
+
+# Key Configuration
+[certificate.key]
+# Algorithm: "ecdsa-p256", "ecdsa-p384", "rsa-2048", "rsa-3072", "rsa-4096"
+algorithm = "ecdsa-p256"
+
+# Provider: "software", "cng", "tpm", "pkcs11"
+provider = "software"
+
+# Mark private key as non-exportable (CNG/TPM only)
+non_exportable = false
+
+# Enable TPM key attestation
+attestation = false
+
+# PKCS#11 configuration (when provider = "pkcs11")
+pkcs11_library = ""    # Path to PKCS#11 library
+pkcs11_slot = 0        # Slot ID (or -1 for auto-select)
+pkcs11_pin_source = "" # "env:PIN_VAR" or "file:/path"
+
+# Certificate Extensions
+[certificate.extensions]
+# Key usage flags
+key_usage = ["digital_signature"]
+
+# Extended key usage OIDs or short names
+extended_key_usage = ["client_auth"]
+
+# Custom extensions (OID = value pairs)
+# custom = { "2.5.29.99" = "custom value" }
+
+# -----------------------------------------------------------------------------
+# Renewal Configuration
+# -----------------------------------------------------------------------------
+[renewal]
+# Enable automatic renewal
+enabled = false
+
+# Days before expiration to trigger renewal
+threshold_days = 30
+
+# Hours between expiration checks
+check_interval_hours = 6
+
+# Maximum retry attempts before giving up
+max_retries = 5
+
+# Base delay between retries (minutes)
+# Actual delay uses exponential backoff
+retry_delay_minutes = 30
+
+# Jitter percentage (0-100) to randomize retry timing
+jitter_percent = 20
+
+# -----------------------------------------------------------------------------
+# Storage Configuration
+# -----------------------------------------------------------------------------
+[storage]
+# Windows Certificate Store (Windows only)
+windows_store = ""     # e.g., "LocalMachine\\My"
+friendly_name = ""     # Certificate friendly name
+
+# PEM File Storage (cross-platform)
+cert_path = ""         # Output certificate path
+key_path = ""          # Output private key path
+chain_path = ""        # Output certificate chain path
+
+# Archive old certificates before replacement
+archive_old = false
+archive_path = ""      # Archive directory
+
+# File permissions (Unix only, octal)
+cert_mode = "0644"
+key_mode = "0600"
+
+# -----------------------------------------------------------------------------
+# Logging Configuration
+# -----------------------------------------------------------------------------
+[logging]
+# Log level: "trace", "debug", "info", "warn", "error"
+level = "info"
+
+# Log file path (leave empty for no file logging)
+path = ""
+
+# Enable Windows Event Log (Windows only)
+windows_event_log = false
+
+# Enable JSON formatted logging (for log aggregation)
+json_format = false
+
+# Log rotation
+max_size_mb = 10       # Max size before rotation
+max_files = 5          # Number of rotated files to keep
+
+# Include timestamps in logs
+timestamps = true
+
+# Include source location in debug logs
+source_location = false
+
+# -----------------------------------------------------------------------------
+# Windows Service Configuration (Windows only)
+# -----------------------------------------------------------------------------
+[service]
+# Service start type: "automatic", "delayed", "manual", "disabled"
+start_type = "automatic"
+
+# Service account
+# Options: "LocalSystem", "NetworkService", "LocalService", "DOMAIN\\User"
+run_as = "LocalSystem"
+
+# Service dependencies (services that must start first)
+dependencies = []      # e.g., ["Tcpip", "Dnscache"]
+
+# Health check HTTP port (0 = disabled)
+health_check_port = 0
+
+# Recovery actions: "restart", "none"
+recovery_action = "restart"
+recovery_delay_seconds = 60
+
+# -----------------------------------------------------------------------------
+# Metrics Configuration (optional)
+# -----------------------------------------------------------------------------
+[metrics]
+# Enable metrics collection
+enabled = false
+
+# Prometheus metrics endpoint port (0 = disabled)
+prometheus_port = 0
+
+# StatsD server address
+statsd_address = ""
+
+# Metrics prefix
+prefix = "est_client"
+
+# -----------------------------------------------------------------------------
+# Proxy Configuration (optional)
+# -----------------------------------------------------------------------------
+[proxy]
+# HTTP proxy URL
+http_proxy = ""
+
+# HTTPS proxy URL
+https_proxy = ""
+
+# No proxy list (comma-separated)
+no_proxy = ""
+
+# Proxy authentication
+proxy_username = ""
+proxy_password_source = ""  # "env:VAR" or "file:/path"
+```
 
 ## Section Reference
 
@@ -495,31 +495,31 @@ Add this line at the top of configuration files for IDE autocompletion:
 
 ### Expansion Examples
 
-    ```toml
-    [certificate]
-    # Expands to: DESKTOP-ABC123.corp.contoso.com
-    common_name = "${COMPUTERNAME}.${USERDNSDOMAIN}"
-    
-    [certificate.san]
-    # Expands to: ["DESKTOP-ABC123.corp.contoso.com", "DESKTOP-ABC123"]
-    dns = ["${COMPUTERNAME}.${USERDNSDOMAIN}", "${COMPUTERNAME}"]
-    
-    [authentication]
-    # Machine account style username
-    username = "${COMPUTERNAME}$"
-    ```
+```toml
+[certificate]
+# Expands to: DESKTOP-ABC123.corp.contoso.com
+common_name = "${COMPUTERNAME}.${USERDNSDOMAIN}"
+
+[certificate.san]
+# Expands to: ["DESKTOP-ABC123.corp.contoso.com", "DESKTOP-ABC123"]
+dns = ["${COMPUTERNAME}.${USERDNSDOMAIN}", "${COMPUTERNAME}"]
+
+[authentication]
+# Machine account style username
+username = "${COMPUTERNAME}$"
+```
 
 ### Custom Environment Variables
 
 Any environment variable can be referenced:
 
-    ```toml
-    [certificate]
-    organization = "${MY_ORG_NAME}"
-    
-    [authentication]
-    username = "${DEVICE_ID}"
-    ```
+```toml
+[certificate]
+organization = "${MY_ORG_NAME}"
+
+[authentication]
+username = "${DEVICE_ID}"
+```
 
 ## Validation Rules
 
@@ -552,165 +552,165 @@ Any environment variable can be referenced:
 
 ### Domain Workstation
 
-    ```toml
-    [server]
-    url = "https://est.corp.contoso.com"
-    
-    [trust]
-    mode = "explicit"
-    ca_bundle_path = "C:\\ProgramData\\EST\\ca-bundle.pem"
-    
-    [authentication]
-    method = "http_basic"
-    username = "${COMPUTERNAME}$"
-    password_source = "env:EST_PASSWORD"
-    
-    [certificate]
-    common_name = "${COMPUTERNAME}.${USERDNSDOMAIN}"
-    organization = "Contoso Corporation"
-    organizational_unit = "Workstations"
-    
-    [certificate.san]
-    dns = ["${COMPUTERNAME}.${USERDNSDOMAIN}", "${COMPUTERNAME}"]
-    
-    [certificate.key]
-    algorithm = "ecdsa-p256"
-    provider = "cng"
-    non_exportable = true
-    
-    [certificate.extensions]
-    key_usage = ["digital_signature", "key_encipherment"]
-    extended_key_usage = ["client_auth"]
-    
-    [renewal]
-    enabled = true
-    threshold_days = 45
-    check_interval_hours = 6
-    
-    [storage]
-    windows_store = "LocalMachine\\My"
-    friendly_name = "Domain Workstation Certificate"
-    
-    [logging]
-    level = "info"
-    windows_event_log = true
-    ```
+```toml
+[server]
+url = "https://est.corp.contoso.com"
+
+[trust]
+mode = "explicit"
+ca_bundle_path = "C:\\ProgramData\\EST\\ca-bundle.pem"
+
+[authentication]
+method = "http_basic"
+username = "${COMPUTERNAME}$"
+password_source = "env:EST_PASSWORD"
+
+[certificate]
+common_name = "${COMPUTERNAME}.${USERDNSDOMAIN}"
+organization = "Contoso Corporation"
+organizational_unit = "Workstations"
+
+[certificate.san]
+dns = ["${COMPUTERNAME}.${USERDNSDOMAIN}", "${COMPUTERNAME}"]
+
+[certificate.key]
+algorithm = "ecdsa-p256"
+provider = "cng"
+non_exportable = true
+
+[certificate.extensions]
+key_usage = ["digital_signature", "key_encipherment"]
+extended_key_usage = ["client_auth"]
+
+[renewal]
+enabled = true
+threshold_days = 45
+check_interval_hours = 6
+
+[storage]
+windows_store = "LocalMachine\\My"
+friendly_name = "Domain Workstation Certificate"
+
+[logging]
+level = "info"
+windows_event_log = true
+```
 
 ### Web Server
 
-    ```toml
-    [server]
-    url = "https://est.example.com"
-    ca_label = "servers"
-    
-    [trust]
-    mode = "explicit"
-    ca_bundle_path = "/etc/est/ca-bundle.pem"
-    
-    [authentication]
-    method = "client_cert"
-    cert_path = "/etc/est/client.pem"
-    key_path = "/etc/est/client.key"
-    
-    [certificate]
-    common_name = "www.example.com"
-    organization = "Example Corp"
-    country = "US"
-    
-    [certificate.san]
-    dns = ["www.example.com", "example.com", "*.example.com"]
-    ip = ["203.0.113.50"]
-    
-    [certificate.key]
-    algorithm = "rsa-2048"
-    provider = "software"
-    
-    [certificate.extensions]
-    key_usage = ["digital_signature", "key_encipherment"]
-    extended_key_usage = ["server_auth"]
-    
-    [renewal]
-    enabled = true
-    threshold_days = 60
-    check_interval_hours = 12
-    
-    [storage]
-    cert_path = "/etc/ssl/certs/server.pem"
-    key_path = "/etc/ssl/private/server.key"
-    chain_path = "/etc/ssl/certs/chain.pem"
-    ```
+```toml
+[server]
+url = "https://est.example.com"
+ca_label = "servers"
+
+[trust]
+mode = "explicit"
+ca_bundle_path = "/etc/est/ca-bundle.pem"
+
+[authentication]
+method = "client_cert"
+cert_path = "/etc/est/client.pem"
+key_path = "/etc/est/client.key"
+
+[certificate]
+common_name = "www.example.com"
+organization = "Example Corp"
+country = "US"
+
+[certificate.san]
+dns = ["www.example.com", "example.com", "*.example.com"]
+ip = ["203.0.113.50"]
+
+[certificate.key]
+algorithm = "rsa-2048"
+provider = "software"
+
+[certificate.extensions]
+key_usage = ["digital_signature", "key_encipherment"]
+extended_key_usage = ["server_auth"]
+
+[renewal]
+enabled = true
+threshold_days = 60
+check_interval_hours = 12
+
+[storage]
+cert_path = "/etc/ssl/certs/server.pem"
+key_path = "/etc/ssl/private/server.key"
+chain_path = "/etc/ssl/certs/chain.pem"
+```
 
 ### IoT Device
 
-    ```toml
-    [server]
-    url = "https://est.iot.example.com"
-    timeout_seconds = 30
-    
-    [trust]
-    mode = "explicit"
-    ca_bundle_path = "/opt/device/ca.pem"
-    
-    [authentication]
-    method = "http_basic"
-    username = "${DEVICE_ID}"
-    password_source = "file:/opt/device/credentials"
-    
-    [certificate]
-    common_name = "${DEVICE_ID}.iot.example.com"
-    
-    [certificate.key]
-    algorithm = "ecdsa-p256"
-    provider = "tpm"
-    attestation = true
-    
-    [renewal]
-    enabled = true
-    threshold_days = 14
-    check_interval_hours = 24
-    
-    [storage]
-    cert_path = "/opt/device/cert.pem"
-    key_path = "/opt/device/key.pem"
-    
-    [logging]
-    level = "warn"
-    path = "/var/log/est-client.log"
-    max_size_mb = 5
-    max_files = 2
-    ```
+```toml
+[server]
+url = "https://est.iot.example.com"
+timeout_seconds = 30
+
+[trust]
+mode = "explicit"
+ca_bundle_path = "/opt/device/ca.pem"
+
+[authentication]
+method = "http_basic"
+username = "${DEVICE_ID}"
+password_source = "file:/opt/device/credentials"
+
+[certificate]
+common_name = "${DEVICE_ID}.iot.example.com"
+
+[certificate.key]
+algorithm = "ecdsa-p256"
+provider = "tpm"
+attestation = true
+
+[renewal]
+enabled = true
+threshold_days = 14
+check_interval_hours = 24
+
+[storage]
+cert_path = "/opt/device/cert.pem"
+key_path = "/opt/device/key.pem"
+
+[logging]
+level = "warn"
+path = "/var/log/est-client.log"
+max_size_mb = 5
+max_files = 2
+```
 
 ### HSM-Protected Key
 
-    ```toml
-    [server]
-    url = "https://est.secure.example.com"
-    
-    [trust]
-    mode = "explicit"
-    ca_bundle_path = "/etc/pki/ca-bundle.pem"
-    
-    [authentication]
-    method = "client_cert"
-    cert_path = "/etc/pki/client.pem"
-    key_path = "/etc/pki/client.key"
-    
-    [certificate]
-    common_name = "secure-server.example.com"
-    organization = "Example Corp"
-    organizational_unit = "Security"
-    
-    [certificate.key]
-    algorithm = "ecdsa-p256"
-    provider = "pkcs11"
-    pkcs11_library = "/usr/lib/softhsm/libsofthsm2.so"
-    pkcs11_slot = 0
-    pkcs11_pin_source = "env:HSM_PIN"
-    
-    [storage]
-    cert_path = "/etc/pki/server.pem"
-    # Key stays in HSM, no key_path needed
-    ```
+```toml
+[server]
+url = "https://est.secure.example.com"
+
+[trust]
+mode = "explicit"
+ca_bundle_path = "/etc/pki/ca-bundle.pem"
+
+[authentication]
+method = "client_cert"
+cert_path = "/etc/pki/client.pem"
+key_path = "/etc/pki/client.key"
+
+[certificate]
+common_name = "secure-server.example.com"
+organization = "Example Corp"
+organizational_unit = "Security"
+
+[certificate.key]
+algorithm = "ecdsa-p256"
+provider = "pkcs11"
+pkcs11_library = "/usr/lib/softhsm/libsofthsm2.so"
+pkcs11_slot = 0
+pkcs11_pin_source = "env:HSM_PIN"
+
+[storage]
+cert_path = "/etc/pki/server.pem"
+# Key stays in HSM, no key_path needed
+```
 
 ## Related Documentation
 

@@ -23,4 +23,4 @@ A Rust implementation of an RFC 7030 compliant EST (Enrollment over Secure Trans
 
 - Crate: [usg-est-client on crates.io](https://crates.io/crates/usg-est-client)
 - API docs: [docs.rs/usg-est-client](https://docs.rs/usg-est-client)
-- Source: [GitHub repository](https://github.com/192d-Cyberspace-Control-Squadron/usg-est-client)
+- Source: [GitHub repository](https://github.com/192d-Wing/usg-est-client)

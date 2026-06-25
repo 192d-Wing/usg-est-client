@@ -30,28 +30,28 @@ The library enforces this automatically through rustls.
 **Always validate the EST server's certificate in production:**
 
 ✅ **Secure:**
-    ```rust
-    // Use WebPKI roots
-    let config = EstClientConfig::builder()
-        .server_url("https://est.example.com")?
-        .build()?;
-    
-    // Or explicit trust anchors
-    let ca_cert = std::fs::read("ca.pem")?;
-    let config = EstClientConfig::builder()
-        .server_url("https://est.example.com")?
-        .trust_explicit(vec![ca_cert])
-        .build()?;
-    ```
+```rust
+// Use WebPKI roots
+let config = EstClientConfig::builder()
+    .server_url("https://est.example.com")?
+    .build()?;
+
+// Or explicit trust anchors
+let ca_cert = std::fs::read("ca.pem")?;
+let config = EstClientConfig::builder()
+    .server_url("https://est.example.com")?
+    .trust_explicit(vec![ca_cert])
+    .build()?;
+```
 
 ❌ **Insecure:**
-    ```rust
-    // NEVER use in production!
-    let config = EstClientConfig::builder()
-        .server_url("https://est.example.com")?
-        .trust_any_insecure()
-        .build()?;
-    ```
+```rust
+// NEVER use in production!
+let config = EstClientConfig::builder()
+    .server_url("https://est.example.com")?
+    .trust_any_insecure()
+    .build()?;
+```
 
 ### Hostname Verification
 
@@ -65,12 +65,12 @@ The library automatically verifies that the server's certificate matches the hos
 
 **Preferred method** for EST re-enrollment:
 
-    ```rust
-    let config = EstClientConfig::builder()
-        .server_url("https://est.example.com")?
-        .client_identity(ClientIdentity::new(cert_pem, key_pem))
-        .build()?;
-    ```
+```rust
+let config = EstClientConfig::builder()
+    .server_url("https://est.example.com")?
+    .client_identity(ClientIdentity::new(cert_pem, key_pem))
+    .build()?;
+```
 
 **Security considerations:**
 - Protects private key in transit (only certificate is sent)
@@ -78,27 +78,27 @@ The library automatically verifies that the server's certificate matches the hos
 - Required for re-enrollment operations
 
 **Private Key Protection:**
-    ```rust
-    // ✅ Load from secure storage with proper permissions
-    let key_pem = std::fs::read("/etc/pki/private/key.pem")?;
-    
-    // ❌ Don't hardcode private keys
-    const KEY: &str = "-----BEGIN PRIVATE KEY-----...";  // BAD!
-    ```
+```rust
+// ✅ Load from secure storage with proper permissions
+let key_pem = std::fs::read("/etc/pki/private/key.pem")?;
+
+// ❌ Don't hardcode private keys
+const KEY: &str = "-----BEGIN PRIVATE KEY-----...";  // BAD!
+```
 
 ### HTTP Basic Authentication
 
 **Use with caution:**
 
-    ```rust
-    let config = EstClientConfig::builder()
-        .server_url("https://est.example.com")?
-        .http_auth(HttpAuth {
-            username: "user".to_string(),
-            password: "password".to_string(),
-        })
-        .build()?;
-    ```
+```rust
+let config = EstClientConfig::builder()
+    .server_url("https://est.example.com")?
+    .http_auth(HttpAuth {
+        username: "user".to_string(),
+        password: "password".to_string(),
+    })
+    .build()?;
+```
 
 **Security considerations:**
 - Credentials are base64-encoded (not encrypted)
@@ -107,17 +107,17 @@ The library automatically verifies that the server's certificate matches the hos
 - Use environment variables or secure credential stores
 
 **Better approach:**
-    ```rust
-    use std::env;
-    
-    let username = env::var("EST_USERNAME")?;
-    let password = env::var("EST_PASSWORD")?;
-    
-    let config = EstClientConfig::builder()
-        .server_url("https://est.example.com")?
-        .http_auth(HttpAuth { username, password })
-        .build()?;
-    ```
+```rust
+use std::env;
+
+let username = env::var("EST_USERNAME")?;
+let password = env::var("EST_PASSWORD")?;
+
+let config = EstClientConfig::builder()
+    .server_url("https://est.example.com")?
+    .http_auth(HttpAuth { username, password })
+    .build()?;
+```
 
 ---
 
@@ -134,36 +134,36 @@ Initial enrollment has a chicken-and-egg problem:
 ### Secure Bootstrap Process
 
 **1. Fetch CA certificates (unverified):**
-    ```rust
-    let bootstrap = BootstrapClient::new("https://est.example.com")?;
-    let (ca_certs, fingerprints) = bootstrap.fetch_ca_certs().await?;
-    ```
+```rust
+let bootstrap = BootstrapClient::new("https://est.example.com")?;
+let (ca_certs, fingerprints) = bootstrap.fetch_ca_certs().await?;
+```
 
 **2. Verify fingerprints out-of-band:**
-    ```rust
-    // Display fingerprints
-    for (i, fp) in fingerprints.iter().enumerate() {
-        println!("CA {} fingerprint: {}",
-            i + 1,
-            BootstrapClient::format_fingerprint(fp)
-        );
-    }
-    
-    // User MUST verify these through alternate channel:
-    // - Phone call to administrator
-    // - Pre-configured fingerprint from manufacturer
-    // - Secure provisioning system
-    // - Physical label on device/documentation
-    ```
+```rust
+// Display fingerprints
+for (i, fp) in fingerprints.iter().enumerate() {
+    println!("CA {} fingerprint: {}",
+        i + 1,
+        BootstrapClient::format_fingerprint(fp)
+    );
+}
+
+// User MUST verify these through alternate channel:
+// - Phone call to administrator
+// - Pre-configured fingerprint from manufacturer
+// - Secure provisioning system
+// - Physical label on device/documentation
+```
 
 **3. Only proceed after verification:**
-    ```rust
-    // After out-of-band verification
-    let config = EstClientConfig::builder()
-        .server_url("https://est.example.com")?
-        .trust_explicit(ca_certs.to_pem_vec()?)
-        .build()?;
-    ```
+```rust
+// After out-of-band verification
+let config = EstClientConfig::builder()
+    .server_url("https://est.example.com")?
+    .trust_explicit(ca_certs.to_pem_vec()?)
+    .build()?;
+```
 
 ### Bootstrap Threats
 
@@ -178,17 +178,17 @@ Initial enrollment has a chicken-and-egg problem:
 - Consider pre-provisioning CA certificates
 
 **Bootstrap Authentication:**
-    ```rust
-    // Even during bootstrap, use authentication if available
-    let bootstrap_config = EstClientConfig::builder()
-        .server_url("https://est.example.com")?
-        .trust_any_insecure()  // Only during bootstrap
-        .http_auth(HttpAuth {
-            username: device_id,
-            password: device_secret,
-        })
-        .build()?;
-    ```
+```rust
+// Even during bootstrap, use authentication if available
+let bootstrap_config = EstClientConfig::builder()
+    .server_url("https://est.example.com")?
+    .trust_any_insecure()  // Only during bootstrap
+    .http_auth(HttpAuth {
+        username: device_id,
+        password: device_secret,
+    })
+    .build()?;
+```
 
 ---
 
@@ -198,14 +198,14 @@ Initial enrollment has a chicken-and-egg problem:
 
 Generate keys locally and never transmit private keys:
 
-    ```rust
-    let (csr_der, key_pair) = CsrBuilder::new()
-        .common_name("device.example.com")
-        .build()?;
-    
-    // Private key never leaves the device
-    let private_key_pem = key_pair.serialize_pem();
-    ```
+```rust
+let (csr_der, key_pair) = CsrBuilder::new()
+    .common_name("device.example.com")
+    .build()?;
+
+// Private key never leaves the device
+let private_key_pem = key_pair.serialize_pem();
+```
 
 **Benefits:**
 - Private key never transmitted over network
@@ -216,10 +216,10 @@ Generate keys locally and never transmit private keys:
 
 Use with caution:
 
-    ```rust
-    let response = client.server_keygen(&csr_der).await?;
-    // Private key transmitted from server to client!
-    ```
+```rust
+let response = client.server_keygen(&csr_der).await?;
+// Private key transmitted from server to client!
+```
 
 **Security considerations:**
 - Private key is transmitted over TLS
@@ -228,32 +228,32 @@ Use with caution:
 - Only use when necessary (e.g., HSM scenarios)
 
 **If you must use server keygen:**
-    ```rust
-    // Check if key is encrypted
-    if response.key_encrypted {
-        // Better, but still requires decryption key management
-        let decrypted = decrypt_private_key(
-            &response.private_key,
-            &decryption_key
-        )?;
-    }
-    
-    // Store immediately with proper protection
-    secure_store_private_key(&response.private_key)?;
-    ```
+```rust
+// Check if key is encrypted
+if response.key_encrypted {
+    // Better, but still requires decryption key management
+    let decrypted = decrypt_private_key(
+        &response.private_key,
+        &decryption_key
+    )?;
+}
+
+// Store immediately with proper protection
+secure_store_private_key(&response.private_key)?;
+```
 
 ### Key Storage
 
 **File Permissions:**
-    ```bash
-    # Linux/Unix
-    chmod 600 /path/to/private-key.pem
-    chown appuser:appgroup /path/to/private-key.pem
-    
-    # Verify
-    ls -l /path/to/private-key.pem
-    # Should show: -rw------- 1 appuser appgroup
-    ```
+```bash
+# Linux/Unix
+chmod 600 /path/to/private-key.pem
+chown appuser:appgroup /path/to/private-key.pem
+
+# Verify
+ls -l /path/to/private-key.pem
+# Should show: -rw------- 1 appuser appgroup
+```
 
 **Secure Storage Options:**
 - Hardware Security Modules (HSM)
@@ -272,24 +272,24 @@ Use with caution:
 
 The library provides PKCS#11 support for hardware-backed key storage through the `pkcs11` feature:
 
-    ```rust
-    use usg_est_client::hsm::pkcs11::Pkcs11KeyProvider;
-    use usg_est_client::hsm::{KeyProvider, KeyAlgorithm};
-    
-    // Initialize PKCS#11 provider
-    let provider = Pkcs11KeyProvider::new(
-        "/usr/lib/softhsm/libsofthsm2.so",  // PKCS#11 library path
-        None,                                // Use first available slot
-        "1234",                              // PIN
-    )?;
-    
-    // Generate key in HSM
-    let key_handle = provider
-        .generate_key_pair(KeyAlgorithm::EcdsaP256, Some("device-key"))
-        .await?;
-    
-    // Private key never leaves the HSM
-    ```
+```rust
+use usg_est_client::hsm::pkcs11::Pkcs11KeyProvider;
+use usg_est_client::hsm::{KeyProvider, KeyAlgorithm};
+
+// Initialize PKCS#11 provider
+let provider = Pkcs11KeyProvider::new(
+    "/usr/lib/softhsm/libsofthsm2.so",  // PKCS#11 library path
+    None,                                // Use first available slot
+    "1234",                              // PIN
+)?;
+
+// Generate key in HSM
+let key_handle = provider
+    .generate_key_pair(KeyAlgorithm::EcdsaP256, Some("device-key"))
+    .await?;
+
+// Private key never leaves the HSM
+```
 
 #### PKCS#11 Security Benefits
 
@@ -316,15 +316,15 @@ The library provides PKCS#11 support for hardware-backed key storage through the
 
 **PIN/Password Protection:**
 
-    ```rust
-    // ❌ Don't hardcode PINs
-    let provider = Pkcs11KeyProvider::new(lib, None, "1234")?;  // BAD!
-    
-    // ✅ Use environment variables or secure credential stores
-    use std::env;
-    let pin = env::var("HSM_PIN")?;
-    let provider = Pkcs11KeyProvider::new(lib, None, &pin)?;
-    ```
+```rust
+// ❌ Don't hardcode PINs
+let provider = Pkcs11KeyProvider::new(lib, None, "1234")?;  // BAD!
+
+// ✅ Use environment variables or secure credential stores
+use std::env;
+let pin = env::var("HSM_PIN")?;
+let provider = Pkcs11KeyProvider::new(lib, None, &pin)?;
+```
 
 **Token Security:**
 
@@ -341,17 +341,17 @@ The library provides PKCS#11 support for hardware-backed key storage through the
 
 **Slot Selection:**
 
-    ```rust
-    // Verify you're using the correct slot
-    let provider = Pkcs11KeyProvider::new(
-        lib_path,
-        Some(0),  // Specify exact slot ID
-        &pin,
-    )?;
-    
-    let info = provider.provider_info();
-    println!("Using token: {}", info.name);
-    ```
+```rust
+// Verify you're using the correct slot
+let provider = Pkcs11KeyProvider::new(
+    lib_path,
+    Some(0),  // Specify exact slot ID
+    &pin,
+)?;
+
+let info = provider.provider_info();
+println!("Using token: {}", info.name);
+```
 
 #### Supported PKCS#11 Implementations
 
@@ -374,30 +374,30 @@ The library provides PKCS#11 support for hardware-backed key storage through the
 
 ✅ **Key Generation:**
 
-    ```rust
-    // Generate keys directly in HSM (never import)
-    let handle = provider
-        .generate_key_pair(
-            KeyAlgorithm::EcdsaP256,
-            Some("device-key-2025"),  // Descriptive label
-        )
-        .await?;
-    ```
+```rust
+// Generate keys directly in HSM (never import)
+let handle = provider
+    .generate_key_pair(
+        KeyAlgorithm::EcdsaP256,
+        Some("device-key-2025"),  // Descriptive label
+    )
+    .await?;
+```
 
 ✅ **Key Lifecycle:**
 
-    ```rust
-    // Find existing keys
-    if let Some(handle) = provider.find_key("device-key").await? {
-        // Reuse existing key
-    } else {
-        // Generate new key
-        provider.generate_key_pair(algorithm, Some("device-key")).await?
-    }
-    
-    // Delete keys when no longer needed
-    provider.delete_key(&handle).await?;
-    ```
+```rust
+// Find existing keys
+if let Some(handle) = provider.find_key("device-key").await? {
+    // Reuse existing key
+} else {
+    // Generate new key
+    provider.generate_key_pair(algorithm, Some("device-key")).await?
+}
+
+// Delete keys when no longer needed
+provider.delete_key(&handle).await?;
+```
 
 ✅ **Monitoring:**
 
@@ -435,41 +435,41 @@ For production HSM-based CSR generation, you'll need to:
 
 **SoftHSM Setup for Testing:**
 
-    ```bash
-    # Install SoftHSM
-    # Ubuntu/Debian:
-    sudo apt-get install softhsm2
-    
-    # macOS:
-    brew install softhsm
-    
-    # Initialize token
-    softhsm2-util --init-token --slot 0 --label "TestToken" --so-pin 0000 --pin 1234
-    
-    # Verify
-    softhsm2-util --show-slots
-    ```
+```bash
+# Install SoftHSM
+# Ubuntu/Debian:
+sudo apt-get install softhsm2
+
+# macOS:
+brew install softhsm
+
+# Initialize token
+softhsm2-util --init-token --slot 0 --label "TestToken" --so-pin 0000 --pin 1234
+
+# Verify
+softhsm2-util --show-slots
+```
 
 **Test Key Generation:**
 
-    ```rust
-    #[tokio::test]
-    async fn test_hsm_key_generation() {
-        let provider = Pkcs11KeyProvider::new(
-            "/usr/lib/softhsm/libsofthsm2.so",
-            Some(0),
-            "1234",
-        ).unwrap();
-    
-        let handle = provider
-            .generate_key_pair(KeyAlgorithm::EcdsaP256, Some("test-key"))
-            .await
-            .unwrap();
-    
-        // Verify key is non-extractable
-        assert!(!handle.metadata().extractable);
-    }
-    ```
+```rust
+#[tokio::test]
+async fn test_hsm_key_generation() {
+    let provider = Pkcs11KeyProvider::new(
+        "/usr/lib/softhsm/libsofthsm2.so",
+        Some(0),
+        "1234",
+    ).unwrap();
+
+    let handle = provider
+        .generate_key_pair(KeyAlgorithm::EcdsaP256, Some("test-key"))
+        .await
+        .unwrap();
+
+    // Verify key is non-extractable
+    assert!(!handle.metadata().extractable);
+}
+```
 
 #### PKCS#11 Security Checklist
 
@@ -502,61 +502,61 @@ The `validation` feature provides comprehensive RFC 5280 certificate path valida
 
 ### Enabling Validation
 
-    ```rust
-    use usg_est_client::{EstClientConfig, CertificateValidationConfig};
-    use x509_cert::Certificate;
-    
-    // Load trust anchor certificates
-    let trust_anchors: Vec<Certificate> = load_ca_certificates()?;
-    
-    // Create validation configuration
-    let validation_config = CertificateValidationConfig::new(trust_anchors)
-        .max_chain_length(5)
-        .disable_name_constraints();  // Optional: relax name constraint checking
-    
-    // Configure EST client with validation
-    let config = EstClientConfig::builder()
-        .server_url("https://est.example.com")?
-        .validation_config(validation_config)
-        .build()?;
-    
-    let client = EstClient::new(config).await?;
-    
-    // Certificate validation is now automatic on enrollment
-    let response = client.simple_enroll(&csr_der).await?;
-    // If validation fails, this returns an error
-    ```
+```rust
+use usg_est_client::{EstClientConfig, CertificateValidationConfig};
+use x509_cert::Certificate;
+
+// Load trust anchor certificates
+let trust_anchors: Vec<Certificate> = load_ca_certificates()?;
+
+// Create validation configuration
+let validation_config = CertificateValidationConfig::new(trust_anchors)
+    .max_chain_length(5)
+    .disable_name_constraints();  // Optional: relax name constraint checking
+
+// Configure EST client with validation
+let config = EstClientConfig::builder()
+    .server_url("https://est.example.com")?
+    .validation_config(validation_config)
+    .build()?;
+
+let client = EstClient::new(config).await?;
+
+// Certificate validation is now automatic on enrollment
+let response = client.simple_enroll(&csr_der).await?;
+// If validation fails, this returns an error
+```
 
 ### Standalone Validation
 
 For manual certificate chain validation:
 
-    ```rust
-    use usg_est_client::validation::{CertificateValidator, ValidationConfig};
-    
-    // Create validator
-    let config = ValidationConfig {
-        max_chain_length: 10,
-        check_revocation: false,
-        enforce_name_constraints: true,
-        enforce_policy_constraints: true,
-        allow_expired: false,
-    };
-    
-    let validator = CertificateValidator::with_config(trust_anchors, config);
-    
-    // Validate a certificate
-    let result = validator.validate(&end_entity_cert, &intermediates)?;
-    
-    if result.is_valid {
-        println!("Certificate chain valid");
-        println!("Chain length: {}", result.chain.len());
-    } else {
-        for error in &result.errors {
-            eprintln!("Validation error: {}", error);
-        }
+```rust
+use usg_est_client::validation::{CertificateValidator, ValidationConfig};
+
+// Create validator
+let config = ValidationConfig {
+    max_chain_length: 10,
+    check_revocation: false,
+    enforce_name_constraints: true,
+    enforce_policy_constraints: true,
+    allow_expired: false,
+};
+
+let validator = CertificateValidator::with_config(trust_anchors, config);
+
+// Validate a certificate
+let result = validator.validate(&end_entity_cert, &intermediates)?;
+
+if result.is_valid {
+    println!("Certificate chain valid");
+    println!("Chain length: {}", result.chain.len());
+} else {
+    for error in &result.errors {
+        eprintln!("Validation error: {}", error);
     }
-    ```
+}
+```
 
 ### Name Constraints (RFC 5280 Section 4.2.1.10)
 
@@ -582,16 +582,16 @@ Name constraints restrict the namespace within which all subject names in subseq
 
 **Example: CA with Name Constraints**
 
-    ```text
-    CA Certificate with nameConstraints:
-      Permitted DNS: .example.com
-      Excluded DNS:  .bad.example.com
-    
-    Valid end-entity:     server.example.com      ✅
-    Valid end-entity:     deep.sub.example.com    ✅
-    Invalid end-entity:   server.otherdomain.com  ❌
-    Invalid end-entity:   server.bad.example.com  ❌
-    ```
+```text
+CA Certificate with nameConstraints:
+  Permitted DNS: .example.com
+  Excluded DNS:  .bad.example.com
+
+Valid end-entity:     server.example.com      ✅
+Valid end-entity:     deep.sub.example.com    ✅
+Invalid end-entity:   server.otherdomain.com  ❌
+Invalid end-entity:   server.bad.example.com  ❌
+```
 
 ### Policy Constraints (RFC 5280 Section 4.2.1.11)
 
@@ -602,13 +602,13 @@ Policy constraints limit the certification path validation based on certificate 
 1. **requireExplicitPolicy**: After N certificates, explicit policy required
 2. **inhibitPolicyMapping**: After N certificates, policy mapping prohibited
 
-    ```rust
-    // Policy constraints are checked automatically when enabled
-    let config = ValidationConfig {
-        enforce_policy_constraints: true,
-        ..Default::default()
-    };
-    ```
+```rust
+// Policy constraints are checked automatically when enabled
+let config = ValidationConfig {
+    enforce_policy_constraints: true,
+    ..Default::default()
+};
+```
 
 ### Signature Verification
 
@@ -649,20 +649,20 @@ The validation module verifies certificate signatures in the chain:
 
 For testing, you may need to disable some checks:
 
-    ```rust
-    let test_config = CertificateValidationConfig::new(trust_anchors)
-        .allow_expired()                  // For testing with expired certs
-        .disable_name_constraints()       // If test certs lack constraints
-        .disable_policy_constraints();    // If test certs lack policies
-    ```
+```rust
+let test_config = CertificateValidationConfig::new(trust_anchors)
+    .allow_expired()                  // For testing with expired certs
+    .disable_name_constraints()       // If test certs lack constraints
+    .disable_policy_constraints();    // If test certs lack policies
+```
 
 ### Validation Example
 
 Run the validation example:
 
-    ```bash
-    cargo run --example validate_chain --features validation
-    ```
+```bash
+cargo run --example validate_chain --features validation
+```
 
 ---
 
@@ -672,45 +672,45 @@ Run the validation example:
 
 Always verify certificates received from the server:
 
-    ```rust
-    match client.simple_enroll(&csr_der).await? {
-        EnrollmentResponse::Issued { certificate } => {
-            // Verify certificate properties
-    
-            // 1. Check expiration
-            let not_after = certificate.tbs_certificate.validity.not_after;
-            // Verify not_after is reasonable
-    
-            // 2. Check subject matches CSR
-            let subject = &certificate.tbs_certificate.subject;
-            // Verify subject matches what you requested
-    
-            // 3. Verify signature chain
-            // Use x509-cert or openssl to validate chain
-    
-            // Only then save and use the certificate
-            save_certificate(&certificate)?;
-        }
-        _ => {}
+```rust
+match client.simple_enroll(&csr_der).await? {
+    EnrollmentResponse::Issued { certificate } => {
+        // Verify certificate properties
+
+        // 1. Check expiration
+        let not_after = certificate.tbs_certificate.validity.not_after;
+        // Verify not_after is reasonable
+
+        // 2. Check subject matches CSR
+        let subject = &certificate.tbs_certificate.subject;
+        // Verify subject matches what you requested
+
+        // 3. Verify signature chain
+        // Use x509-cert or openssl to validate chain
+
+        // Only then save and use the certificate
+        save_certificate(&certificate)?;
     }
-    ```
+    _ => {}
+}
+```
 
 ### Certificate Renewal Timing
 
 Renew certificates before expiration:
 
-    ```rust
-    use time::OffsetDateTime;
-    
-    fn should_renew(cert: &Certificate) -> bool {
-        let not_after = cert.tbs_certificate.validity.not_after.to_unix_duration();
-        let now = OffsetDateTime::now_utc().unix_timestamp();
-    
-        // Renew if less than 30 days remaining
-        let days_remaining = (not_after - now) / 86400;
-        days_remaining < 30
-    }
-    ```
+```rust
+use time::OffsetDateTime;
+
+fn should_renew(cert: &Certificate) -> bool {
+    let not_after = cert.tbs_certificate.validity.not_after.to_unix_duration();
+    let now = OffsetDateTime::now_utc().unix_timestamp();
+
+    // Renew if less than 30 days remaining
+    let days_remaining = (not_after - now) / 86400;
+    days_remaining < 30
+}
+```
 
 ---
 
@@ -720,17 +720,17 @@ Renew certificates before expiration:
 
 The library validates URLs, but be aware:
 
-    ```rust
-    // ✅ HTTPS is enforced for security
-    let config = EstClientConfig::builder()
-        .server_url("https://est.example.com")?
-        .build()?;
-    
-    // ⚠️ HTTP is allowed but insecure
-    let config = EstClientConfig::builder()
-        .server_url("http://est.example.com")?  // No TLS!
-        .build()?;
-    ```
+```rust
+// ✅ HTTPS is enforced for security
+let config = EstClientConfig::builder()
+    .server_url("https://est.example.com")?
+    .build()?;
+
+// ⚠️ HTTP is allowed but insecure
+let config = EstClientConfig::builder()
+    .server_url("http://est.example.com")?  // No TLS!
+    .build()?;
+```
 
 **Always use HTTPS in production.**
 
@@ -738,21 +738,21 @@ The library validates URLs, but be aware:
 
 Validate CSR contents before submission:
 
-    ```rust
-    use pkcs10::CertificationRequest;
-    use der::Decode;
-    
-    // Parse and validate CSR
-    let csr = CertificationRequest::from_der(&csr_der)?;
-    
-    // Check subject
-    let subject = &csr.info.subject;
-    // Verify it contains expected fields
-    
-    // Check public key
-    let public_key = &csr.info.public_key;
-    // Verify key type and size meet requirements
-    ```
+```rust
+use pkcs10::CertificationRequest;
+use der::Decode;
+
+// Parse and validate CSR
+let csr = CertificationRequest::from_der(&csr_der)?;
+
+// Check subject
+let subject = &csr.info.subject;
+// Verify it contains expected fields
+
+// Check public key
+let public_key = &csr.info.public_key;
+// Verify key type and size meet requirements
+```
 
 ---
 
@@ -760,37 +760,37 @@ Validate CSR contents before submission:
 
 ### Don't Expose Sensitive Information
 
-    ```rust
-    // ❌ Bad: Exposes internal details
-    match client.simple_enroll(&csr_der).await {
-        Err(e) => {
-            println!("Error: {:?}", e);  // May expose sensitive info
-        }
-        _ => {}
+```rust
+// ❌ Bad: Exposes internal details
+match client.simple_enroll(&csr_der).await {
+    Err(e) => {
+        println!("Error: {:?}", e);  // May expose sensitive info
     }
-    
-    // ✅ Good: Generic error message
-    match client.simple_enroll(&csr_der).await {
-        Err(e) => {
-            eprintln!("Enrollment failed");
-            log::error!("Enrollment error: {}", e);  // Log to secure location
-        }
-        _ => {}
+    _ => {}
+}
+
+// ✅ Good: Generic error message
+match client.simple_enroll(&csr_der).await {
+    Err(e) => {
+        eprintln!("Enrollment failed");
+        log::error!("Enrollment error: {}", e);  // Log to secure location
     }
-    ```
+    _ => {}
+}
+```
 
 ### Timing Attacks
 
 Be aware of timing differences:
 
-    ```rust
-    // Constant-time comparison for sensitive values
-    use subtle::ConstantTimeEq;
-    
-    fn verify_fingerprint(received: &[u8], expected: &[u8]) -> bool {
-        received.ct_eq(expected).into()
-    }
-    ```
+```rust
+// Constant-time comparison for sensitive values
+use subtle::ConstantTimeEq;
+
+fn verify_fingerprint(received: &[u8], expected: &[u8]) -> bool {
+    received.ct_eq(expected).into()
+}
+```
 
 ---
 
@@ -798,18 +798,18 @@ Be aware of timing differences:
 
 ### Secure Logging
 
-    ```rust
-    use tracing::{info, warn, error};
-    
-    // ✅ Log non-sensitive information
-    info!("Starting enrollment for device {}", device_id);
-    
-    // ❌ Don't log sensitive data
-    // error!("Auth failed with password: {}", password);  // BAD!
-    
-    // ✅ Log sanitized information
-    warn!("Authentication failed for user: {}", username);
-    ```
+```rust
+use tracing::{info, warn, error};
+
+// ✅ Log non-sensitive information
+info!("Starting enrollment for device {}", device_id);
+
+// ❌ Don't log sensitive data
+// error!("Auth failed with password: {}", password);  // BAD!
+
+// ✅ Log sanitized information
+warn!("Authentication failed for user: {}", username);
+```
 
 ### What to Log
 
@@ -1146,21 +1146,21 @@ fn load_dod_root_certificates() -> Result<Vec<x509_cert::Certificate>, Box<dyn s
 
 CRLs are referenced in certificates via the CRL Distribution Points extension (OID 2.5.29.31):
 
-    ```rust
-    // The library automatically extracts CRL URLs from certificates
-    let crl_urls = checker.extract_crl_urls(&cert)?;
-    ```
+```rust
+// The library automatically extracts CRL URLs from certificates
+let crl_urls = checker.extract_crl_urls(&cert)?;
+```
 
 #### CRL Caching
 
 CRLs are cached to minimize network traffic:
 
-    ```rust
-    let config = RevocationConfig::builder()
-        .crl_cache_duration(Duration::from_secs(3600))  // 1 hour
-        .crl_cache_max_entries(100)                     // Max cache size
-        .build();
-    ```
+```rust
+let config = RevocationConfig::builder()
+    .crl_cache_duration(Duration::from_secs(3600))  // 1 hour
+    .crl_cache_max_entries(100)                     // Max cache size
+    .build();
+```
 
 **Cache Strategy:**
 
@@ -1206,19 +1206,19 @@ CRLs are cached to minimize network traffic:
 
 OCSP endpoints are referenced in certificates via the Authority Information Access extension (OID 1.3.6.1.5.5.7.1.1):
 
-    ```rust
-    // The library automatically extracts OCSP URLs from certificates
-    let ocsp_url = checker.extract_ocsp_url(&cert)?;
-    ```
+```rust
+// The library automatically extracts OCSP URLs from certificates
+let ocsp_url = checker.extract_ocsp_url(&cert)?;
+```
 
 #### OCSP Configuration
 
-    ```rust
-    let config = RevocationConfig::builder()
-        .enable_ocsp(true)
-        .ocsp_timeout(Duration::from_secs(10))  // Request timeout
-        .build();
-    ```
+```rust
+let config = RevocationConfig::builder()
+    .enable_ocsp(true)
+    .ocsp_timeout(Duration::from_secs(10))  // Request timeout
+    .build();
+```
 
 #### OCSP Security Considerations
 
@@ -1254,22 +1254,22 @@ OCSP Stapling (TLS Certificate Status Request extension) improves privacy and pe
 
 **Hard-Fail (Strict):**
 
-    ```rust
-    let config = RevocationConfig::builder()
-        .fail_on_unknown(true)  // Reject if status cannot be determined
-        .build();
-    ```
+```rust
+let config = RevocationConfig::builder()
+    .fail_on_unknown(true)  // Reject if status cannot be determined
+    .build();
+```
 
 - Pros: Maximum security
 - Cons: May block valid certificates if revocation service is unavailable
 
 **Soft-Fail (Permissive):**
 
-    ```rust
-    let config = RevocationConfig::builder()
-        .fail_on_unknown(false)  // Allow if status cannot be determined
-        .build();
-    ```
+```rust
+let config = RevocationConfig::builder()
+    .fail_on_unknown(false)  // Allow if status cannot be determined
+    .build();
+```
 
 - Pros: Better availability
 - Cons: Revoked certificates may be accepted if revocation service is down
@@ -1278,15 +1278,15 @@ OCSP Stapling (TLS Certificate Status Request extension) improves privacy and pe
 
 For most production systems:
 
-    ```rust
-    let config = RevocationConfig::builder()
-        .enable_crl(true)        // Enable CRL checking
-        .enable_ocsp(true)       // Enable OCSP checking
-        .fail_on_unknown(false)  // Soft-fail for availability
-        .crl_cache_duration(Duration::from_secs(3600))
-        .ocsp_timeout(Duration::from_secs(10))
-        .build();
-    ```
+```rust
+let config = RevocationConfig::builder()
+    .enable_crl(true)        // Enable CRL checking
+    .enable_ocsp(true)       // Enable OCSP checking
+    .fail_on_unknown(false)  // Soft-fail for availability
+    .crl_cache_duration(Duration::from_secs(3600))
+    .ocsp_timeout(Duration::from_secs(10))
+    .build();
+```
 
 **Checking Order:**
 
@@ -1298,14 +1298,14 @@ For most production systems:
 
 For environments requiring maximum security:
 
-    ```rust
-    let config = RevocationConfig::builder()
-        .enable_crl(true)
-        .enable_ocsp(true)
-        .fail_on_unknown(true)   // Hard-fail: reject unknown status
-        .ocsp_timeout(Duration::from_secs(5))
-        .build();
-    ```
+```rust
+let config = RevocationConfig::builder()
+    .enable_crl(true)
+    .enable_ocsp(true)
+    .fail_on_unknown(true)   // Hard-fail: reject unknown status
+    .ocsp_timeout(Duration::from_secs(5))
+    .build();
+```
 
 Monitor revocation check failures and have fallback procedures for legitimate outages.
 
@@ -1384,15 +1384,15 @@ The revocation system is ready for production use:
 
 Track these metrics for revocation checking:
 
-    ```rust
-    // Example metrics to track
-    metrics.increment("revocation_checks_total");
-    metrics.increment(format!("revocation_status_{}", status));  // good/revoked/unknown
-    metrics.increment("revocation_crl_cache_hits");
-    metrics.increment("revocation_crl_cache_misses");
-    metrics.increment("revocation_ocsp_timeouts");
-    metrics.gauge("revocation_check_duration_ms", duration.as_millis() as f64);
-    ```
+```rust
+// Example metrics to track
+metrics.increment("revocation_checks_total");
+metrics.increment(format!("revocation_status_{}", status));  // good/revoked/unknown
+metrics.increment("revocation_crl_cache_hits");
+metrics.increment("revocation_crl_cache_misses");
+metrics.increment("revocation_ocsp_timeouts");
+metrics.gauge("revocation_check_duration_ms", duration.as_millis() as f64);
+```
 
 **Recommended Alerts:**
 
@@ -1405,40 +1405,40 @@ Track these metrics for revocation checking:
 
 #### Test with Revoked Certificates
 
-    ```rust
-    #[tokio::test]
-    async fn test_revoked_certificate_detected() {
-        let checker = RevocationChecker::new(RevocationConfig::default());
-    
-        // Use a known-revoked test certificate
-        let cert = load_test_cert("revoked.pem");
-        let issuer = load_test_cert("ca.pem");
-    
-        let result = checker.check_revocation(&cert, &issuer).await.unwrap();
-        assert!(result.is_revoked());
-    }
-    ```
+```rust
+#[tokio::test]
+async fn test_revoked_certificate_detected() {
+    let checker = RevocationChecker::new(RevocationConfig::default());
+
+    // Use a known-revoked test certificate
+    let cert = load_test_cert("revoked.pem");
+    let issuer = load_test_cert("ca.pem");
+
+    let result = checker.check_revocation(&cert, &issuer).await.unwrap();
+    assert!(result.is_revoked());
+}
+```
 
 #### Mock OCSP Responder
 
 For testing, use a local OCSP responder or wiremock:
 
-    ```rust
-    use wiremock::{MockServer, Mock, ResponseTemplate};
-    
-    #[tokio::test]
-    async fn test_ocsp_revoked_response() {
-        let mock_server = MockServer::start().await;
-    
-        Mock::given(method("POST"))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_bytes(create_ocsp_revoked_response()))
-            .mount(&mock_server)
-            .await;
-    
-        // Test with mock OCSP responder
-    }
-    ```
+```rust
+use wiremock::{MockServer, Mock, ResponseTemplate};
+
+#[tokio::test]
+async fn test_ocsp_revoked_response() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200)
+            .set_body_bytes(create_ocsp_revoked_response()))
+        .mount(&mock_server)
+        .await;
+
+    // Test with mock OCSP responder
+}
+```
 
 ### Security Checklist for Revocation
 
