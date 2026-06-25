@@ -6,10 +6,10 @@ This document describes the TLS backend options available in `usg-est-client` an
 
 By default, `usg-est-client` uses [rustls](https://github.com/rustls/rustls), a modern TLS library written entirely in Rust.
 
-    ```toml
-    [dependencies]
-    usg-est-client = "0.1"
-    ```
+```toml
+[dependencies]
+usg-est-client = "0.1"
+```
 
 ### Advantages
 
@@ -38,10 +38,10 @@ The `native-tls-backend` feature uses the operating system's TLS implementation:
 | macOS | Security.framework |
 | Linux | OpenSSL |
 
-    ```toml
-    [dependencies]
-    usg-est-client = { version = "0.1", features = ["native-tls-backend"] }
-    ```
+```toml
+[dependencies]
+usg-est-client = { version = "0.1", features = ["native-tls-backend"] }
+```
 
 ### When to Use native-tls
 
@@ -75,26 +75,26 @@ The `native-tls-backend` feature uses the operating system's TLS implementation:
 
 For Linux deployments where OpenSSL may not be available (Alpine, musl, AWS Lambda), use vendored OpenSSL:
 
-    ```toml
-    [dependencies]
-    usg-est-client = { version = "0.1", features = ["native-tls-vendored"] }
-    ```
+```toml
+[dependencies]
+usg-est-client = { version = "0.1", features = ["native-tls-vendored"] }
+```
 
 This compiles OpenSSL from source and statically links it, eliminating runtime dependencies.
 
 ### Build Requirements
 
-    ```bash
-    # Debian/Ubuntu
-    sudo apt-get install build-essential perl
-    
-    # Alpine
-    apk add build-base perl
-    
-    # RHEL/CentOS
-    sudo yum groupinstall "Development Tools"
-    sudo yum install perl
-    ```
+```bash
+# Debian/Ubuntu
+sudo apt-get install build-essential perl
+
+# Alpine
+apk add build-base perl
+
+# RHEL/CentOS
+sudo yum groupinstall "Development Tools"
+sudo yum install perl
+```
 
 ### Use Cases
 
@@ -122,33 +122,33 @@ This compiles OpenSSL from source and statically links it, eliminating runtime d
 
 rustls uses Mozilla's root certificates by default via `webpki-roots`:
 
-    ```rust
-    let config = EstClientConfig::builder()
-        .server_url("https://est.example.com")?
-        // Uses Mozilla root CAs by default
-        .build()?;
-    ```
+```rust
+let config = EstClientConfig::builder()
+    .server_url("https://est.example.com")?
+    // Uses Mozilla root CAs by default
+    .build()?;
+```
 
 To use custom CA certificates:
 
-    ```rust
-    let config = EstClientConfig::builder()
-        .server_url("https://est.example.com")?
-        .explicit_trust_anchor_pem(&ca_pem)?
-        .build()?;
-    ```
+```rust
+let config = EstClientConfig::builder()
+    .server_url("https://est.example.com")?
+    .explicit_trust_anchor_pem(&ca_pem)?
+    .build()?;
+```
 
 ### With native-tls
 
 native-tls automatically uses the OS certificate store. Additional CAs can still be added:
 
-    ```rust
-    let config = EstClientConfig::builder()
-        .server_url("https://est.example.com")?
-        // Also trusts OS certificates when native-tls-backend is enabled
-        .explicit_trust_anchor_pem(&additional_ca_pem)?
-        .build()?;
-    ```
+```rust
+let config = EstClientConfig::builder()
+    .server_url("https://est.example.com")?
+    // Also trusts OS certificates when native-tls-backend is enabled
+    .explicit_trust_anchor_pem(&additional_ca_pem)?
+    .build()?;
+```
 
 ## Performance Considerations
 
@@ -177,22 +177,22 @@ native-tls automatically uses the OS certificate store. Additional CAs can still
 
 ### OpenSSL Not Found (Linux)
 
-    ```
-    error: failed to run custom build command for `openssl-sys`
-    ```
+```
+error: failed to run custom build command for `openssl-sys`
+```
 
 **Solution**: Install OpenSSL development headers:
 
-    ```bash
-    # Debian/Ubuntu
-    sudo apt-get install libssl-dev
-    
-    # RHEL/CentOS
-    sudo yum install openssl-devel
-    
-    # Alpine
-    apk add openssl-dev
-    ```
+```bash
+# Debian/Ubuntu
+sudo apt-get install libssl-dev
+
+# RHEL/CentOS
+sudo yum install openssl-devel
+
+# Alpine
+apk add openssl-dev
+```
 
 Or use `native-tls-vendored` to compile OpenSSL from source.
 

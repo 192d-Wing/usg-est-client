@@ -26,16 +26,16 @@ The revocation checking implementation is **production-ready for CRL-based revoc
 - ✅ Comprehensive logging and error handling
 
 **API:**
-    ```rust
-    let checker = RevocationChecker::new(RevocationConfig::default());
-    let result = checker.check_revocation(&cert, &issuer).await?;
-    
-    match result.status {
-        RevocationStatus::Valid => { /* certificate not in CRL */ }
-        RevocationStatus::Revoked => { /* certificate is revoked */ }
-        RevocationStatus::Unknown => { /* no CRL available */ }
-    }
-    ```
+```rust
+let checker = RevocationChecker::new(RevocationConfig::default());
+let result = checker.check_revocation(&cert, &issuer).await?;
+
+match result.status {
+    RevocationStatus::Valid => { /* certificate not in CRL */ }
+    RevocationStatus::Revoked => { /* certificate is revoked */ }
+    RevocationStatus::Unknown => { /* no CRL available */ }
+}
+```
 
 **Configuration Options:**
 - `enable_crl`: Enable/disable CRL checking
@@ -63,24 +63,24 @@ The revocation checking implementation is **production-ready for CRL-based revoc
 - **Mitigation**: Use HTTPS for CRL downloads (recommended in RFC 5280)
 
 **To Implement:**
-    ```rust
-    fn verify_crl_signature(&self, crl: &CertificateList, issuer: &Certificate) -> Result<()> {
-        // 1. Extract public key from issuer certificate
-        let public_key = extract_public_key_from_cert(issuer)?;
-    
-        // 2. Get signature algorithm from CRL
-        let sig_alg = &crl.signature_algorithm;
-    
-        // 3. Verify signature
-        match sig_alg.oid {
-            RSA_WITH_SHA256 => verify_rsa_signature(crl, public_key)?,
-            ECDSA_WITH_SHA256 => verify_ecdsa_signature(crl, public_key)?,
-            _ => return Err(EstError::protocol("Unsupported signature algorithm")),
-        }
-    
-        Ok(())
+```rust
+fn verify_crl_signature(&self, crl: &CertificateList, issuer: &Certificate) -> Result<()> {
+    // 1. Extract public key from issuer certificate
+    let public_key = extract_public_key_from_cert(issuer)?;
+
+    // 2. Get signature algorithm from CRL
+    let sig_alg = &crl.signature_algorithm;
+
+    // 3. Verify signature
+    match sig_alg.oid {
+        RSA_WITH_SHA256 => verify_rsa_signature(crl, public_key)?,
+        ECDSA_WITH_SHA256 => verify_ecdsa_signature(crl, public_key)?,
+        _ => return Err(EstError::protocol("Unsupported signature algorithm")),
     }
-    ```
+
+    Ok(())
+}
+```
 
 **Required Dependencies:**
 - `rsa = "0.9"` for RSA signature verification
@@ -114,27 +114,27 @@ The revocation checking implementation is **production-ready for CRL-based revoc
 
 **ASN.1 Structures Required:**
 
-    ```asn1
-    OCSPRequest ::= SEQUENCE {
-       tbsRequest      TBSRequest,
-       optionalSignature   [0] EXPLICIT Signature OPTIONAL }
-    
-    TBSRequest ::= SEQUENCE {
-       version             [0] EXPLICIT Version DEFAULT v1,
-       requestorName       [1] EXPLICIT GeneralName OPTIONAL,
-       requestList         SEQUENCE OF Request,
-       requestExtensions   [2] EXPLICIT Extensions OPTIONAL }
-    
-    Request ::= SEQUENCE {
-       reqCert                  CertID,
-       singleRequestExtensions  [0] EXPLICIT Extensions OPTIONAL }
-    
-    CertID ::= SEQUENCE {
-       hashAlgorithm       AlgorithmIdentifier,
-       issuerNameHash      OCTET STRING,  -- SHA-1 hash
-       issuerKeyHash       OCTET STRING,  -- SHA-1 hash
-       serialNumber        CertificateSerialNumber }
-    ```
+```asn1
+OCSPRequest ::= SEQUENCE {
+   tbsRequest      TBSRequest,
+   optionalSignature   [0] EXPLICIT Signature OPTIONAL }
+
+TBSRequest ::= SEQUENCE {
+   version             [0] EXPLICIT Version DEFAULT v1,
+   requestorName       [1] EXPLICIT GeneralName OPTIONAL,
+   requestList         SEQUENCE OF Request,
+   requestExtensions   [2] EXPLICIT Extensions OPTIONAL }
+
+Request ::= SEQUENCE {
+   reqCert                  CertID,
+   singleRequestExtensions  [0] EXPLICIT Extensions OPTIONAL }
+
+CertID ::= SEQUENCE {
+   hashAlgorithm       AlgorithmIdentifier,
+   issuerNameHash      OCTET STRING,  -- SHA-1 hash
+   issuerKeyHash       OCTET STRING,  -- SHA-1 hash
+   serialNumber        CertificateSerialNumber }
+```
 
 **Implementation Path:**
 
@@ -151,19 +151,19 @@ Option 3: Use a dedicated OCSP crate (if one exists in RustCrypto ecosystem)
 
 ### Recommended Configuration
 
-    ```rust
-    use usg_est_client::revocation::{RevocationChecker, RevocationConfig};
-    
-    let config = RevocationConfig::builder()
-        .enable_crl(true)           // Enable CRL checking
-        .enable_ocsp(false)         // Disable OCSP until implemented
-        .crl_cache_duration(Duration::from_secs(3600))  // 1 hour
-        .crl_cache_max_entries(100) // Cache up to 100 CRLs
-        .fail_on_unknown(false)     // Soft-fail if CRL unavailable
-        .build();
-    
-    let checker = RevocationChecker::new(config);
-    ```
+```rust
+use usg_est_client::revocation::{RevocationChecker, RevocationConfig};
+
+let config = RevocationConfig::builder()
+    .enable_crl(true)           // Enable CRL checking
+    .enable_ocsp(false)         // Disable OCSP until implemented
+    .crl_cache_duration(Duration::from_secs(3600))  // 1 hour
+    .crl_cache_max_entries(100) // Cache up to 100 CRLs
+    .fail_on_unknown(false)     // Soft-fail if CRL unavailable
+    .build();
+
+let checker = RevocationChecker::new(config);
+```
 
 ### Security Best Practices
 

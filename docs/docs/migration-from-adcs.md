@@ -72,37 +72,25 @@ This guide covers migration of:
 
 ### Phased Approach (Recommended)
 
-    ```text
-    Week 1-2:    Assessment & Planning
-    Week 3-4:    Infrastructure Setup
-    Week 5-6:    Pilot Deployment (5-10%)
-    Week 7-8:    Expanded Pilot (10-25%)
-    Week 9-12:   Gradual Rollout (25-75%)
-    Week 13-16:  Full Migration (75-100%)
-    Week 17+:    ADCS Decommissioning (optional)
-    ```
+```text
+Week 1-2:    Assessment & Planning
+Week 3-4:    Infrastructure Setup
+Week 5-6:    Pilot Deployment (5-10%)
+Week 7-8:    Expanded Pilot (10-25%)
+Week 9-12:   Gradual Rollout (25-75%)
+Week 13-16:  Full Migration (75-100%)
+Week 17+:    ADCS Decommissioning (optional)
+```
 
 ### Parallel Operation Period
 
 Run both systems in parallel during migration:
 
-    ```text
-    ┌─────────────────────────────────────────────────────────┐
-    │                    Parallel Operation                    │
-    ├──────────────────────────────────────────────────────────┤
-    │                                                          │
-    │  ADCS Auto-Enrollment ──────────────────┐                │
-    │  (existing machines)                     │                │
-    │                                          ▼                │
-    │                                    ┌──────────┐           │
-    │                                    │  Clients │           │
-    │                                    └──────────┘           │
-    │                                          ▲                │
-    │  EST Enrollment ────────────────────────┘                │
-    │  (new machines + migrated)                               │
-    │                                                          │
-    └──────────────────────────────────────────────────────────┘
-    ```
+```mermaid
+flowchart LR
+    ADCS["ADCS Auto-Enrollment<br/>(existing machines)"] --> Clients["Clients"]
+    EST["EST Enrollment<br/>(new machines + migrated)"] --> Clients
+```
 
 ## Phase 1: Assessment
 
@@ -110,13 +98,13 @@ Run both systems in parallel during migration:
 
 **Certificate Templates Inventory:**
 
-    ```powershell
-    # List all certificate templates
-    certutil -CATemplates
-    
-    # Export template details
-    Get-CATemplate | Export-Csv -Path ".\templates.csv"
-    ```
+```powershell
+# List all certificate templates
+certutil -CATemplates
+
+# Export template details
+Get-CATemplate | Export-Csv -Path ".\templates.csv"
+```
 
 Record for each template:
 
@@ -129,14 +117,14 @@ Record for each template:
 
 **Enrollment Statistics:**
 
-    ```powershell
-    # Count certificates issued by template
-    $templates = Get-CATemplate
-    foreach ($template in $templates) {
-        $count = Get-IssuedRequest -Filter "CertificateTemplate -eq '$($template.Name)'"
-        Write-Host "$($template.Name): $count certificates"
-    }
-    ```
+```powershell
+# Count certificates issued by template
+$templates = Get-CATemplate
+foreach ($template in $templates) {
+    $count = Get-IssuedRequest -Filter "CertificateTemplate -eq '$($template.Name)'"
+    Write-Host "$($template.Name): $count certificates"
+}
+```
 
 ### 1.2 Map Templates to EST Configuration
 
@@ -170,46 +158,42 @@ Document systems that depend on ADCS certificates:
 
 #### **Option A: Use Existing CA with EST Front-End**
 
-    ```text
-    ┌─────────────┐     ┌────────────┐     ┌──────────┐
-    │  EST Client │────▶│ EST Server │────▶│ Backend  │
-    │             │     │   (EJBCA)  │     │    CA    │
-    └─────────────┘     └────────────┘     └──────────┘
-    ```
+```mermaid
+flowchart LR
+    Client["EST Client"] --> Server["EST Server<br/>(EJBCA)"] --> CA["Backend CA"]
+```
 
 #### **Option B: Migrate to New CA**
 
-    ```text
-    ┌─────────────┐     ┌────────────────────────┐
-    │  EST Client │────▶│  New CA with EST       │
-    │             │     │  (EJBCA, Dogtag, etc.) │
-    └─────────────┘     └────────────────────────┘
-    ```
+```mermaid
+flowchart LR
+    Client["EST Client"] --> CA["New CA with EST<br/>(EJBCA, Dogtag, etc.)"]
+```
 
 ### 2.2 Configure Trust Anchors
 
 Export CA certificate chain:
 
-    ```powershell
-    # From ADCS (if using same root CA)
-    certutil -ca.cert ca-cert.pem
-    
-    # Or from new CA
-    openssl s_client -connect est.example.com:443 -showcerts < /dev/null 2>/dev/null | \
-      openssl x509 -outform PEM > ca-bundle.pem
-    ```
+```powershell
+# From ADCS (if using same root CA)
+certutil -ca.cert ca-cert.pem
+
+# Or from new CA
+openssl s_client -connect est.example.com:443 -showcerts < /dev/null 2>/dev/null | \
+  openssl x509 -outform PEM > ca-bundle.pem
+```
 
 ### 2.3 Create EST Service Account
 
 Create authentication credentials:
 
-    ```powershell
-    # Create service account in AD
-    New-ADServiceAccount -Name "est-enroll" -DNSHostName "est.example.com"
-    
-    # Or create local account on EST server
-    # Configure in EST server with enrollment permissions
-    ```
+```powershell
+# Create service account in AD
+New-ADServiceAccount -Name "est-enroll" -DNSHostName "est.example.com"
+
+# Or create local account on EST server
+# Configure in EST server with enrollment permissions
+```
 
 ### 2.4 Prepare Configuration Templates
 
@@ -217,48 +201,48 @@ Create configuration file templates for each certificate type:
 
 **Machine Certificate Template:**
 
-    ```toml
-    # machine-cert.toml
-    [server]
-    url = "https://est.example.com"
-    
-    [trust]
-    mode = "explicit"
-    ca_bundle_path = "${PROGRAMDATA}\\EST\\ca-bundle.pem"
-    
-    [authentication]
-    method = "http_basic"
-    username = "${COMPUTERNAME}$"
-    password_source = "env:EST_PASSWORD"
-    
-    [certificate]
-    common_name = "${COMPUTERNAME}.${USERDNSDOMAIN}"
-    organization = "Your Organization"
-    
-    [certificate.san]
-    dns = ["${COMPUTERNAME}.${USERDNSDOMAIN}", "${COMPUTERNAME}"]
-    
-    [certificate.key]
-    algorithm = "ecdsa-p256"
-    provider = "cng"
-    non_exportable = true
-    
-    [certificate.extensions]
-    key_usage = ["digital_signature", "key_encipherment"]
-    extended_key_usage = ["client_auth"]
-    
-    [renewal]
-    enabled = true
-    threshold_days = 45
-    
-    [storage]
-    windows_store = "LocalMachine\\My"
-    friendly_name = "Machine Certificate (EST)"
-    
-    [logging]
-    level = "info"
-    windows_event_log = true
-    ```
+```toml
+# machine-cert.toml
+[server]
+url = "https://est.example.com"
+
+[trust]
+mode = "explicit"
+ca_bundle_path = "${PROGRAMDATA}\\EST\\ca-bundle.pem"
+
+[authentication]
+method = "http_basic"
+username = "${COMPUTERNAME}$"
+password_source = "env:EST_PASSWORD"
+
+[certificate]
+common_name = "${COMPUTERNAME}.${USERDNSDOMAIN}"
+organization = "Your Organization"
+
+[certificate.san]
+dns = ["${COMPUTERNAME}.${USERDNSDOMAIN}", "${COMPUTERNAME}"]
+
+[certificate.key]
+algorithm = "ecdsa-p256"
+provider = "cng"
+non_exportable = true
+
+[certificate.extensions]
+key_usage = ["digital_signature", "key_encipherment"]
+extended_key_usage = ["client_auth"]
+
+[renewal]
+enabled = true
+threshold_days = 45
+
+[storage]
+windows_store = "LocalMachine\\My"
+friendly_name = "Machine Certificate (EST)"
+
+[logging]
+level = "info"
+windows_event_log = true
+```
 
 ## Phase 3: Pilot Deployment
 
@@ -275,70 +259,70 @@ Choose 5-10 machines for initial testing:
 
 #### **Step 1: Install EST Client**
 
-    ```powershell
-    # Deploy via SCCM, GPO, or manually
-    msiexec /i est-client.msi /quiet
-    
-    # Verify installation
-    est-enroll --version
-    ```
+```powershell
+# Deploy via SCCM, GPO, or manually
+msiexec /i est-client.msi /quiet
+
+# Verify installation
+est-enroll --version
+```
 
 #### **Step 2: Deploy Configuration**
 
-    ```powershell
-    # Create configuration directory
-    New-Item -ItemType Directory -Path "C:\ProgramData\EST" -Force
-    
-    # Copy configuration
-    Copy-Item .\config.toml "C:\ProgramData\EST\config.toml"
-    
-    # Copy CA bundle
-    Copy-Item .\ca-bundle.pem "C:\ProgramData\EST\ca-bundle.pem"
-    ```
+```powershell
+# Create configuration directory
+New-Item -ItemType Directory -Path "C:\ProgramData\EST" -Force
+
+# Copy configuration
+Copy-Item .\config.toml "C:\ProgramData\EST\config.toml"
+
+# Copy CA bundle
+Copy-Item .\ca-bundle.pem "C:\ProgramData\EST\ca-bundle.pem"
+```
 
 #### **Step 3: Set Credentials**
 
-    ```powershell
-    # Via Group Policy Preferences (recommended)
-    # Or via environment variable
-    [Environment]::SetEnvironmentVariable("EST_PASSWORD", "secure-password", "Machine")
-    ```
+```powershell
+# Via Group Policy Preferences (recommended)
+# Or via environment variable
+[Environment]::SetEnvironmentVariable("EST_PASSWORD", "secure-password", "Machine")
+```
 
 #### **Step 4: Validate Configuration**
 
-    ```powershell
-    est-enroll --validate-config
-    ```
+```powershell
+est-enroll --validate-config
+```
 
 #### **Step 5: Test Enrollment**
 
-    ```powershell
-    # Manual enrollment
-    est-enroll --enroll --verbose
-    
-    # Check certificate
-    Get-ChildItem Cert:\LocalMachine\My | Where-Object {$_.FriendlyName -like "*EST*"}
-    ```
+```powershell
+# Manual enrollment
+est-enroll --enroll --verbose
+
+# Check certificate
+Get-ChildItem Cert:\LocalMachine\My | Where-Object {$_.FriendlyName -like "*EST*"}
+```
 
 ### 3.3 Disable ADCS Auto-Enrollment for Pilot
 
 For pilot machines, disable ADCS auto-enrollment:
 
-    ```powershell
-    # Remove from auto-enrollment GPO
-    Remove-ADGroupMember -Identity "ADCS-AutoEnroll" -Members "PILOT-PC01$"
-    
-    # Or use WMI filter in GPO
-    ```
+```powershell
+# Remove from auto-enrollment GPO
+Remove-ADGroupMember -Identity "ADCS-AutoEnroll" -Members "PILOT-PC01$"
+
+# Or use WMI filter in GPO
+```
 
 ### 3.4 Monitor and Validate
 
 **Check Certificate Validity:**
 
-    ```powershell
-    $cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object {$_.FriendlyName -like "*EST*"}
-    $cert | Select-Object Subject, NotAfter, Issuer
-    ```
+```powershell
+$cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object {$_.FriendlyName -like "*EST*"}
+$cert | Select-Object Subject, NotAfter, Issuer
+```
 
 **Verify Application Functionality:**
 
@@ -365,44 +349,44 @@ Create deployment groups:
 
 **PowerShell Deployment Script:**
 
-    ```powershell
-    param(
-        [string]$TargetOU = "OU=Workstations,DC=corp,DC=contoso,DC=com"
-    )
-    
-    # Get computers in target OU
-    $computers = Get-ADComputer -SearchBase $TargetOU -Filter *
-    
-    foreach ($computer in $computers) {
-        Write-Host "Deploying to $($computer.Name)..."
-    
-        # Copy files
-        $dest = "\\$($computer.Name)\C$\ProgramData\EST"
-        New-Item -ItemType Directory -Path $dest -Force
-        Copy-Item ".\config.toml" "$dest\config.toml"
-        Copy-Item ".\ca-bundle.pem" "$dest\ca-bundle.pem"
-    
-        # Trigger enrollment
-        Invoke-Command -ComputerName $computer.Name -ScriptBlock {
-            & "C:\Program Files\EST\est-enroll.exe" --enroll
-        }
+```powershell
+param(
+    [string]$TargetOU = "OU=Workstations,DC=corp,DC=contoso,DC=com"
+)
+
+# Get computers in target OU
+$computers = Get-ADComputer -SearchBase $TargetOU -Filter *
+
+foreach ($computer in $computers) {
+    Write-Host "Deploying to $($computer.Name)..."
+
+    # Copy files
+    $dest = "\\$($computer.Name)\C$\ProgramData\EST"
+    New-Item -ItemType Directory -Path $dest -Force
+    Copy-Item ".\config.toml" "$dest\config.toml"
+    Copy-Item ".\ca-bundle.pem" "$dest\ca-bundle.pem"
+
+    # Trigger enrollment
+    Invoke-Command -ComputerName $computer.Name -ScriptBlock {
+        & "C:\Program Files\EST\est-enroll.exe" --enroll
     }
-    ```
+}
+```
 
 ### 4.3 Coexistence with ADCS
 
 During migration, machines may have both ADCS and EST certificates:
 
-    ```powershell
-    # View all machine certificates
-    Get-ChildItem Cert:\LocalMachine\My | Select-Object Subject, FriendlyName, Issuer
-    
-    # Output:
-    # Subject                    FriendlyName              Issuer
-    # -------                    ------------              ------
-    # CN=DESKTOP-ABC123.corp...  Machine Certificate       CN=ADCS-CA...
-    # CN=DESKTOP-ABC123.corp...  Machine Certificate (EST) CN=EST-CA...
-    ```
+```powershell
+# View all machine certificates
+Get-ChildItem Cert:\LocalMachine\My | Select-Object Subject, FriendlyName, Issuer
+
+# Output:
+# Subject                    FriendlyName              Issuer
+# -------                    ------------              ------
+# CN=DESKTOP-ABC123.corp...  Machine Certificate       CN=ADCS-CA...
+# CN=DESKTOP-ABC123.corp...  Machine Certificate (EST) CN=EST-CA...
+```
 
 **Certificate Selection Priority:**
 
@@ -414,11 +398,11 @@ Applications typically use the certificate based on:
 
 Configure application bindings to use EST certificates:
 
-    ```powershell
-    # IIS
-    $estCert = Get-ChildItem Cert:\LocalMachine\My | Where-Object {$_.FriendlyName -like "*EST*"}
-    New-IISSiteBinding -Name "Default Web Site" -BindingInformation "*:443:" -CertificateThumbprint $estCert.Thumbprint -CertificateStoreName "My"
-    ```
+```powershell
+# IIS
+$estCert = Get-ChildItem Cert:\LocalMachine\My | Where-Object {$_.FriendlyName -like "*EST*"}
+New-IISSiteBinding -Name "Default Web Site" -BindingInformation "*:443:" -CertificateThumbprint $estCert.Thumbprint -CertificateStoreName "My"
+```
 
 ## Phase 5: Full Migration
 
@@ -434,10 +418,10 @@ After successful gradual rollout:
 
 #### **Option A: Disable GPO**
 
-    ```powershell
-    # Disable the auto-enrollment GPO
-    Set-GPLink -Name "Certificate Auto-Enrollment" -Target "DC=corp,DC=contoso,DC=com" -LinkEnabled No
-    ```
+```powershell
+# Disable the auto-enrollment GPO
+Set-GPLink -Name "Certificate Auto-Enrollment" -Target "DC=corp,DC=contoso,DC=com" -LinkEnabled No
+```
 
 #### **Option B: Modify GPO Settings**
 
@@ -450,18 +434,18 @@ In Group Policy Editor:
 
 After successful migration and validation:
 
-    ```powershell
-    # Remove old ADCS certificates (optional)
-    $oldCerts = Get-ChildItem Cert:\LocalMachine\My | Where-Object {
-        $_.Issuer -like "*ADCS-CA*" -and
-        $_.FriendlyName -notlike "*EST*"
-    }
-    
-    foreach ($cert in $oldCerts) {
-        Write-Host "Removing old certificate: $($cert.Subject)"
-        # Remove-Item $cert.PSPath  # Uncomment to actually remove
-    }
-    ```
+```powershell
+# Remove old ADCS certificates (optional)
+$oldCerts = Get-ChildItem Cert:\LocalMachine\My | Where-Object {
+    $_.Issuer -like "*ADCS-CA*" -and
+    $_.FriendlyName -notlike "*EST*"
+}
+
+foreach ($cert in $oldCerts) {
+    Write-Host "Removing old certificate: $($cert.Subject)"
+    # Remove-Item $cert.PSPath  # Uncomment to actually remove
+}
+```
 
 ## Certificate Template Mapping
 
@@ -469,86 +453,86 @@ After successful migration and validation:
 
 **ADCS Template:**
 
-    ```text
-    Template Name: Workstation Authentication
-    Subject Name: Built from AD
-    Key Usage: Digital Signature
-    Enhanced Key Usage: Client Authentication (1.3.6.1.5.5.7.3.2)
-    Key Size: 2048
-    ```
+```text
+Template Name: Workstation Authentication
+Subject Name: Built from AD
+Key Usage: Digital Signature
+Enhanced Key Usage: Client Authentication (1.3.6.1.5.5.7.3.2)
+Key Size: 2048
+```
 
 **EST Configuration:**
 
-    ```toml
-    [certificate]
-    common_name = "${COMPUTERNAME}.${USERDNSDOMAIN}"
-    
-    [certificate.key]
-    algorithm = "ecdsa-p256"  # Or "rsa-2048" for compatibility
-    
-    [certificate.extensions]
-    key_usage = ["digital_signature"]
-    extended_key_usage = ["client_auth"]
-    ```
+```toml
+[certificate]
+common_name = "${COMPUTERNAME}.${USERDNSDOMAIN}"
+
+[certificate.key]
+algorithm = "ecdsa-p256"  # Or "rsa-2048" for compatibility
+
+[certificate.extensions]
+key_usage = ["digital_signature"]
+extended_key_usage = ["client_auth"]
+```
 
 ### Web Server
 
 **ADCS Template:**
 
-    ```text
-    Template Name: Web Server
-    Subject Name: Supply in request
-    Key Usage: Digital Signature, Key Encipherment
-    Enhanced Key Usage: Server Authentication (1.3.6.1.5.5.7.3.1)
-    Key Size: 2048
-    ```
+```text
+Template Name: Web Server
+Subject Name: Supply in request
+Key Usage: Digital Signature, Key Encipherment
+Enhanced Key Usage: Server Authentication (1.3.6.1.5.5.7.3.1)
+Key Size: 2048
+```
 
 **EST Configuration:**
 
-    ```toml
-    [certificate]
-    common_name = "www.example.com"
-    
-    [certificate.san]
-    dns = ["www.example.com", "example.com"]
-    
-    [certificate.key]
-    algorithm = "rsa-2048"
-    
-    [certificate.extensions]
-    key_usage = ["digital_signature", "key_encipherment"]
-    extended_key_usage = ["server_auth"]
-    ```
+```toml
+[certificate]
+common_name = "www.example.com"
+
+[certificate.san]
+dns = ["www.example.com", "example.com"]
+
+[certificate.key]
+algorithm = "rsa-2048"
+
+[certificate.extensions]
+key_usage = ["digital_signature", "key_encipherment"]
+extended_key_usage = ["server_auth"]
+```
 
 ### Smart Card Logon
 
 **ADCS Template:**
 
-    ```text
-    Template Name: Smartcard Logon
-    Subject Name: Built from AD (UPN)
-    Key Usage: Digital Signature
-    Enhanced Key Usage: Smart Card Logon (1.3.6.1.4.1.311.20.2.2), Client Auth
-    Key Size: 2048
-    ```
+```text
+Template Name: Smartcard Logon
+Subject Name: Built from AD (UPN)
+Key Usage: Digital Signature
+Enhanced Key Usage: Smart Card Logon (1.3.6.1.4.1.311.20.2.2), Client Auth
+Key Size: 2048
+```
 
 **EST Configuration:**
 
-    ```toml
-    [certificate]
-    common_name = "${USERNAME}@${USERDNSDOMAIN}"
-    
-    [certificate.san]
-    email = ["${USERNAME}@${USERDNSDOMAIN}"]
-    
-    [certificate.key]
-    algorithm = "rsa-2048"
-    provider = "tpm"  # Or smart card
-    
-    [certificate.extensions]
-    key_usage = ["digital_signature"]
-    extended_key_usage = ["smart_card_logon", "client_auth"]
-    ```
+```toml
+[certificate]
+common_name = "${USERNAME}@${USERDNSDOMAIN}"
+
+[certificate.san]
+email = ["${USERNAME}@${USERDNSDOMAIN}"]
+
+[certificate.key]
+algorithm = "rsa-2048"
+provider = "tpm"  # Or smart card
+
+[certificate.extensions]
+key_usage = ["digital_signature"]
+extended_key_usage = ["smart_card_logon", "client_auth"]
+```
 
 ## Authentication Mapping
 
@@ -565,30 +549,30 @@ After successful migration and validation:
 
 ADCS uses Kerberos with machine account. EST typically uses HTTP Basic:
 
-    ```toml
-    [authentication]
-    method = "http_basic"
-    # Use machine account style username
-    username = "${COMPUTERNAME}$"
-    password_source = "credential_manager"  # Or env:EST_PASSWORD
-    ```
+```toml
+[authentication]
+method = "http_basic"
+# Use machine account style username
+username = "${COMPUTERNAME}$"
+password_source = "credential_manager"  # Or env:EST_PASSWORD
+```
 
 ### Transitioning to Certificate Authentication
 
 After initial enrollment, switch to certificate-based re-enrollment:
 
-    ```toml
-    [authentication]
-    method = "auto"  # Tries client_cert first, falls back to http_basic
-    
-    # Initial enrollment uses HTTP Basic
-    username = "${COMPUTERNAME}$"
-    password_source = "env:EST_PASSWORD"
-    
-    # Re-enrollment uses the EST-issued certificate
-    cert_store = "LocalMachine\\My"
-    cert_thumbprint = "auto"  # Automatically selects matching certificate
-    ```
+```toml
+[authentication]
+method = "auto"  # Tries client_cert first, falls back to http_basic
+
+# Initial enrollment uses HTTP Basic
+username = "${COMPUTERNAME}$"
+password_source = "env:EST_PASSWORD"
+
+# Re-enrollment uses the EST-issued certificate
+cert_store = "LocalMachine\\My"
+cert_thumbprint = "auto"  # Automatically selects matching certificate
+```
 
 ## Common Migration Scenarios
 
@@ -596,133 +580,133 @@ After initial enrollment, switch to certificate-based re-enrollment:
 
 Machines not domain-joined:
 
-    ```toml
-    [server]
-    url = "https://est.example.com"
-    
-    [trust]
-    mode = "explicit"
-    ca_bundle_path = "C:\\EST\\ca-bundle.pem"
-    
-    [authentication]
-    method = "http_basic"
-    username = "${COMPUTERNAME}"
-    password_source = "file:C:\\EST\\credentials.txt"
-    
-    [certificate]
-    common_name = "${COMPUTERNAME}.standalone.example.com"
-    
-    [storage]
-    windows_store = "LocalMachine\\My"
-    ```
+```toml
+[server]
+url = "https://est.example.com"
+
+[trust]
+mode = "explicit"
+ca_bundle_path = "C:\\EST\\ca-bundle.pem"
+
+[authentication]
+method = "http_basic"
+username = "${COMPUTERNAME}"
+password_source = "file:C:\\EST\\credentials.txt"
+
+[certificate]
+common_name = "${COMPUTERNAME}.standalone.example.com"
+
+[storage]
+windows_store = "LocalMachine\\My"
+```
 
 ### Scenario 2: Multi-Forest Environment
 
 Machines in different AD forests:
 
-    ```toml
-    [server]
-    url = "https://est.corp.example.com"
-    ca_label = "forest-a"  # Use different CA labels per forest
-    
-    [certificate]
-    # Include forest identifier in DN
-    common_name = "${COMPUTERNAME}.${USERDNSDOMAIN}"
-    organizational_unit = "Forest-A"
-    ```
+```toml
+[server]
+url = "https://est.corp.example.com"
+ca_label = "forest-a"  # Use different CA labels per forest
+
+[certificate]
+# Include forest identifier in DN
+common_name = "${COMPUTERNAME}.${USERDNSDOMAIN}"
+organizational_unit = "Forest-A"
+```
 
 ### Scenario 3: DMZ Servers
 
 Servers without domain connectivity:
 
-    ```toml
-    [server]
-    url = "https://est-dmz.example.com"
-    
-    [trust]
-    mode = "explicit"
-    ca_bundle_path = "/etc/est/ca-bundle.pem"
-    
-    [authentication]
-    method = "http_basic"
-    username = "dmz-server-001"
-    password_source = "file:/etc/est/credentials"
-    
-    [certificate]
-    common_name = "dmz-server-001.dmz.example.com"
-    
-    [certificate.san]
-    dns = ["dmz-server-001.dmz.example.com"]
-    ip = ["10.0.1.100"]
-    ```
+```toml
+[server]
+url = "https://est-dmz.example.com"
+
+[trust]
+mode = "explicit"
+ca_bundle_path = "/etc/est/ca-bundle.pem"
+
+[authentication]
+method = "http_basic"
+username = "dmz-server-001"
+password_source = "file:/etc/est/credentials"
+
+[certificate]
+common_name = "dmz-server-001.dmz.example.com"
+
+[certificate.san]
+dns = ["dmz-server-001.dmz.example.com"]
+ip = ["10.0.1.100"]
+```
 
 ### Scenario 4: IoT/Embedded Devices
 
 Constrained devices:
 
-    ```toml
-    [server]
-    url = "https://est.iot.example.com"
-    timeout_seconds = 30
-    
-    [trust]
-    mode = "explicit"
-    ca_bundle_path = "/opt/device/ca.pem"
-    
-    [authentication]
-    method = "http_basic"
-    username = "${DEVICE_SERIAL}"
-    password_source = "file:/opt/device/credentials"
-    
-    [certificate]
-    common_name = "${DEVICE_SERIAL}.iot.example.com"
-    
-    [certificate.key]
-    algorithm = "ecdsa-p256"
-    provider = "tpm"
-    
-    [renewal]
-    enabled = true
-    threshold_days = 14
-    check_interval_hours = 24
-    
-    [logging]
-    level = "warn"
-    ```
+```toml
+[server]
+url = "https://est.iot.example.com"
+timeout_seconds = 30
+
+[trust]
+mode = "explicit"
+ca_bundle_path = "/opt/device/ca.pem"
+
+[authentication]
+method = "http_basic"
+username = "${DEVICE_SERIAL}"
+password_source = "file:/opt/device/credentials"
+
+[certificate]
+common_name = "${DEVICE_SERIAL}.iot.example.com"
+
+[certificate.key]
+algorithm = "ecdsa-p256"
+provider = "tpm"
+
+[renewal]
+enabled = true
+threshold_days = 14
+check_interval_hours = 24
+
+[logging]
+level = "warn"
+```
 
 ## Rollback Procedures
 
 ### Immediate Rollback (Single Machine)
 
-    ```powershell
-    # Re-enable ADCS auto-enrollment
-    gpupdate /force
-    
-    # Trigger ADCS enrollment
-    certreq -machine -enroll
-    
-    # Disable EST service
-    Stop-Service EST-Enrollment
-    Set-Service EST-Enrollment -StartupType Disabled
-    ```
+```powershell
+# Re-enable ADCS auto-enrollment
+gpupdate /force
+
+# Trigger ADCS enrollment
+certreq -machine -enroll
+
+# Disable EST service
+Stop-Service EST-Enrollment
+Set-Service EST-Enrollment -StartupType Disabled
+```
 
 ### Group Rollback
 
-    ```powershell
-    # Re-enable ADCS GPO
-    Set-GPLink -Name "Certificate Auto-Enrollment" -Target "OU=Workstations,..." -LinkEnabled Yes
-    
-    # Force group policy update
-    Invoke-GPUpdate -Computer $computers -Force
-    
-    # Disable EST on affected machines
-    $computers | ForEach-Object {
-        Invoke-Command -ComputerName $_ -ScriptBlock {
-            Stop-Service EST-Enrollment -ErrorAction SilentlyContinue
-            Set-Service EST-Enrollment -StartupType Disabled -ErrorAction SilentlyContinue
-        }
+```powershell
+# Re-enable ADCS GPO
+Set-GPLink -Name "Certificate Auto-Enrollment" -Target "OU=Workstations,..." -LinkEnabled Yes
+
+# Force group policy update
+Invoke-GPUpdate -Computer $computers -Force
+
+# Disable EST on affected machines
+$computers | ForEach-Object {
+    Invoke-Command -ComputerName $_ -ScriptBlock {
+        Stop-Service EST-Enrollment -ErrorAction SilentlyContinue
+        Set-Service EST-Enrollment -StartupType Disabled -ErrorAction SilentlyContinue
     }
-    ```
+}
+```
 
 ### Full Rollback
 
@@ -748,36 +732,36 @@ Constrained devices:
 
 **Certificate Expiration Report:**
 
-    ```powershell
-    $computers = Get-ADComputer -Filter * -Properties *
-    $report = @()
-    
-    foreach ($computer in $computers) {
-        $cert = Invoke-Command -ComputerName $computer.Name -ScriptBlock {
-            Get-ChildItem Cert:\LocalMachine\My |
-            Where-Object {$_.FriendlyName -like "*EST*"} |
-            Select-Object Subject, NotAfter, Thumbprint
-        } -ErrorAction SilentlyContinue
-    
-        $report += [PSCustomObject]@{
-            Computer = $computer.Name
-            Subject = $cert.Subject
-            Expires = $cert.NotAfter
-            DaysRemaining = ($cert.NotAfter - (Get-Date)).Days
-        }
+```powershell
+$computers = Get-ADComputer -Filter * -Properties *
+$report = @()
+
+foreach ($computer in $computers) {
+    $cert = Invoke-Command -ComputerName $computer.Name -ScriptBlock {
+        Get-ChildItem Cert:\LocalMachine\My |
+        Where-Object {$_.FriendlyName -like "*EST*"} |
+        Select-Object Subject, NotAfter, Thumbprint
+    } -ErrorAction SilentlyContinue
+
+    $report += [PSCustomObject]@{
+        Computer = $computer.Name
+        Subject = $cert.Subject
+        Expires = $cert.NotAfter
+        DaysRemaining = ($cert.NotAfter - (Get-Date)).Days
     }
-    
-    $report | Where-Object {$_.DaysRemaining -lt 30} | Export-Csv "expiring-certs.csv"
-    ```
+}
+
+$report | Where-Object {$_.DaysRemaining -lt 30} | Export-Csv "expiring-certs.csv"
+```
 
 **Event Log Monitoring:**
 
-    ```powershell
-    # EST enrollment events
-    Get-WinEvent -LogName "Application" -FilterXPath "*[System[Provider[@Name='EST-Enrollment']]]" |
-    Select-Object TimeCreated, Id, Message |
-    Export-Csv "est-events.csv"
-    ```
+```powershell
+# EST enrollment events
+Get-WinEvent -LogName "Application" -FilterXPath "*[System[Provider[@Name='EST-Enrollment']]]" |
+Select-Object TimeCreated, Id, Message |
+Export-Csv "est-events.csv"
+```
 
 ### Success Metrics
 

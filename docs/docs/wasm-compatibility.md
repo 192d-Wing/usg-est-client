@@ -126,22 +126,22 @@ This document analyzes the compatibility of `usg-est-client` with WebAssembly ta
 
 For browser environments, rely on the browser's native capabilities:
 
-    ```
-    ┌─────────────────────────────────────────────┐
-    │                Browser                       │
-    ├─────────────────────────────────────────────┤
-    │  JavaScript (glue code)                      │
-    │    ↓                                         │
-    │  WASM Module (usg-est-client-wasm)          │
-    │    - Certificate parsing (x509-cert, der)   │
-    │    - CSR building (pure Rust)               │
-    │    - Base64/encoding                         │
-    │    ↓                                         │
-    │  Browser Fetch API (via wasm-bindgen)       │
-    │    - TLS handled by browser                 │
-    │    - Cookies handled by browser             │
-    └─────────────────────────────────────────────┘
-    ```
+```
+┌─────────────────────────────────────────────┐
+│                Browser                       │
+├─────────────────────────────────────────────┤
+│  JavaScript (glue code)                      │
+│    ↓                                         │
+│  WASM Module (usg-est-client-wasm)          │
+│    - Certificate parsing (x509-cert, der)   │
+│    - CSR building (pure Rust)               │
+│    - Base64/encoding                         │
+│    ↓                                         │
+│  Browser Fetch API (via wasm-bindgen)       │
+│    - TLS handled by browser                 │
+│    - Cookies handled by browser             │
+└─────────────────────────────────────────────┘
+```
 
 **Advantages**:
 - TLS handled by browser (trusted, optimized)
@@ -164,20 +164,20 @@ For browser environments, rely on the browser's native capabilities:
 
 For server-side WASM runtimes (Wasmtime, WasmEdge):
 
-    ```
-    ┌─────────────────────────────────────────────┐
-    │            WASI Runtime                      │
-    │         (Wasmtime, WasmEdge)                │
-    ├─────────────────────────────────────────────┤
-    │  WASM Module (usg-est-client-wasi)          │
-    │    - Uses tokio_wasi                        │
-    │    - Uses patched reqwest                   │
-    │    ↓                                         │
-    │  WASI Sockets API                           │
-    │    - TCP/TLS via host                       │
-    │    - wasi-crypto (if available)             │
-    └─────────────────────────────────────────────┘
-    ```
+```
+┌─────────────────────────────────────────────┐
+│            WASI Runtime                      │
+│         (Wasmtime, WasmEdge)                │
+├─────────────────────────────────────────────┤
+│  WASM Module (usg-est-client-wasi)          │
+│    - Uses tokio_wasi                        │
+│    - Uses patched reqwest                   │
+│    ↓                                         │
+│  WASI Sockets API                           │
+│    - TCP/TLS via host                       │
+│    - wasi-crypto (if available)             │
+└─────────────────────────────────────────────┘
+```
 
 **Advantages**:
 - Full networking capabilities (via host)
@@ -199,13 +199,13 @@ For server-side WASM runtimes (Wasmtime, WasmEdge):
 
 Create a minimal WASM-compatible library for certificate/CSR operations only:
 
-    ```rust
-    // New crate: usg-est-types (pure Rust, no I/O)
-    pub mod certificate;  // x509-cert wrappers
-    pub mod csr;          // CSR building (pure Rust)
-    pub mod pkcs7;        // PKCS#7 parsing
-    pub mod encoding;     // Base64, DER, PEM
-    ```
+```rust
+// New crate: usg-est-types (pure Rust, no I/O)
+pub mod certificate;  // x509-cert wrappers
+pub mod csr;          // CSR building (pure Rust)
+pub mod pkcs7;        // PKCS#7 parsing
+pub mod encoding;     // Base64, DER, PEM
+```
 
 **Advantages**:
 - Guaranteed WASM compatibility
@@ -243,50 +243,50 @@ Create a minimal WASM-compatible library for certificate/CSR operations only:
 
 ### New Feature Flags
 
-    ```toml
-    [features]
-    # ... existing features ...
-    wasm = []  # Enable WASM-compatible code paths
-    wasi = ["wasm"]  # WASI-specific support
-    ```
+```toml
+[features]
+# ... existing features ...
+wasm = []  # Enable WASM-compatible code paths
+wasi = ["wasm"]  # WASI-specific support
+```
 
 ### Conditional Compilation
 
-    ```rust
-    // In src/lib.rs
-    #[cfg(not(target_arch = "wasm32"))]
-    mod native_client;
-    
-    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-    mod wasm_client;
-    
-    #[cfg(all(target_arch = "wasm32", target_os = "wasi"))]
-    mod wasi_client;
-    ```
+```rust
+// In src/lib.rs
+#[cfg(not(target_arch = "wasm32"))]
+mod native_client;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+mod wasm_client;
+
+#[cfg(all(target_arch = "wasm32", target_os = "wasi"))]
+mod wasi_client;
+```
 
 ### Alternative HTTP Client
 
-    ```rust
-    #[cfg(target_arch = "wasm32")]
-    use gloo_net::http::Request;  // or web-sys fetch
-    
-    #[cfg(not(target_arch = "wasm32"))]
-    use reqwest::Client;
-    ```
+```rust
+#[cfg(target_arch = "wasm32")]
+use gloo_net::http::Request;  // or web-sys fetch
+
+#[cfg(not(target_arch = "wasm32"))]
+use reqwest::Client;
+```
 
 ## Testing WASM Compilation
 
-    ```bash
-    # Add WASM target
-    rustup target add wasm32-unknown-unknown
-    
-    # Test compilation (will fail with current code)
-    cargo build --target wasm32-unknown-unknown --no-default-features
-    
-    # Test with WASI target
-    rustup target add wasm32-wasi
-    cargo build --target wasm32-wasi --no-default-features
-    ```
+```bash
+# Add WASM target
+rustup target add wasm32-unknown-unknown
+
+# Test compilation (will fail with current code)
+cargo build --target wasm32-unknown-unknown --no-default-features
+
+# Test with WASI target
+rustup target add wasm32-wasi
+cargo build --target wasm32-wasi --no-default-features
+```
 
 ## References
 
