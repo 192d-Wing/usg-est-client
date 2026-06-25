@@ -58,11 +58,9 @@ jobs:
         uses: github/codeql-action/init@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
         with:
           languages: rust
-          # Build the full feature surface so SAST sees all gated modules
-          # (hsm, windows, fips, validation, ...).
-          build-mode: manual
-      - name: Build for analysis
-        run: cargo build --all-features --verbose
+          # The Rust extractor only supports build-mode `none` (it analyzes
+          # sources directly; `manual`/`autobuild` are rejected for Rust).
+          build-mode: none
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
         with:
@@ -120,9 +118,17 @@ jobs:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
         with:
           fetch-depth: 0 # full history so historical commits are scanned
-      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+      # Use the gitleaks OSS binary directly. The gitleaks-action wrapper now
+      # requires a paid license for GitHub organizations; the CLI does not.
+      - name: Run gitleaks (full git history)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: "8.30.1"
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks git . --redact --verbose --exit-code 1
 
   # ===========================================================================
   # SBOM generation (CycloneDX) + vulnerability scan (Grype)
@@ -237,7 +243,9 @@ jobs:
       - name: Smoke-fuzz ${{ matrix.target }}
         # Bounded regression fuzzing: 90s per target. A crash fails the job and
         # leaves the reproducer in fuzz/artifacts/.
-        run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=90
+        # Pin the gnu host target: cargo-fuzz otherwise defaults to the musl
+        # triple, whose nightly std/core is not installed on the runner (E0463).
+        run: cargo +nightly fuzz run ${{ matrix.target }} --target x86_64-unknown-linux-gnu -- -max_total_time=90
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: failure()
         with:
