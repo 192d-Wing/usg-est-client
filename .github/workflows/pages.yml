@@ -27,8 +27,9 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install uv
-        run: pip install --no-cache-dir uv
+      # Pinned install of uv (supply-chain hardening / OpenSSF Scorecard) —
+      # replaces an unpinned `pip install uv`.
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
 
       - name: Build documentation
         working-directory: docs
