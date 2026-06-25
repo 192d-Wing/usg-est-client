@@ -222,8 +222,7 @@ impl TampSigner {
                 parameters: None,
             },
             signature: der::asn1::OctetString::new(signature)
-                .map_err(|e| EstError::tamp(format!("wrap signature: {e}")))?
-                .into(),
+                .map_err(|e| EstError::tamp(format!("wrap signature: {e}")))?,
             unsigned_attrs: None,
         };
 

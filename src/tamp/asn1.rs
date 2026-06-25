@@ -352,6 +352,7 @@ pub struct TrustAnchorChangeInfo {
 ///   taChange       [1] TrustAnchorChangeInfo }
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Choice)]
+#[allow(clippy::large_enum_variant)]
 #[allow(missing_docs)]
 pub enum TrustAnchorChangeInfoChoice {
     #[asn1(context_specific = "0", tag_mode = "IMPLICIT", constructed = "true")]

@@ -131,17 +131,27 @@ fn verify_one(
     let (key_id, spki) = resolve_signer(&signer.sid, store)?;
 
     // 2. Determine the bytes that were signed.
-    let signed_bytes = if let Some(signed_attrs) = signer.signed_attrs.as_ref() {
-        validate_signed_attrs(signed_attrs, signer, econtent_type, econtent)?;
-        // RFC 5652 §5.4: the signature is computed over the DER encoding of the
-        // SignedAttributes value with the universal SET OF tag (not the IMPLICIT
-        // [0] tag carried in the SignerInfo).
-        signed_attrs
-            .to_der()
-            .map_err(|e| EstError::tamp(format!("re-encode signed attributes: {e}")))?
-    } else {
-        econtent.to_vec()
-    };
+    //
+    // We REQUIRE signed attributes on inbound management messages. Without them,
+    // the signature would cover only the eContent octets, leaving the message's
+    // eContentType unbound by the signature (and skipping the message-digest
+    // check). Requiring signed attributes forces the content-type + message-digest
+    // binding (RFC 5652 §5.4) on every message that can mutate the trust store.
+    // This client always emits signed attributes on its own messages, so the
+    // requirement is symmetric.
+    let signed_attrs = signer.signed_attrs.as_ref().ok_or_else(|| {
+        EstError::tamp(
+            "TAMP SignerInfo has no signed attributes; the content-type/message-digest \
+             binding is mandatory and the message is rejected",
+        )
+    })?;
+    validate_signed_attrs(signed_attrs, signer, econtent_type, econtent)?;
+    // RFC 5652 §5.4: the signature is computed over the DER encoding of the
+    // SignedAttributes value with the universal SET OF tag (not the IMPLICIT
+    // [0] tag carried in the SignerInfo).
+    let signed_bytes = signed_attrs
+        .to_der()
+        .map_err(|e| EstError::tamp(format!("re-encode signed attributes: {e}")))?;
 
     // 3. Cryptographically verify.
     let signature = signer.signature.as_bytes();
