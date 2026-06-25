@@ -392,19 +392,39 @@ impl AutoEnrollConfig {
                 )));
             }
 
-            // Extract password from credential
+            // CredReadW reports success but may not populate the out-pointer;
+            // guard against a null pointer before dereferencing (UB otherwise).
+            if pcredential.is_null() {
+                return Err(EstError::config(format!(
+                    "Windows Credential Manager returned no credential data: {}",
+                    target_name
+                )));
+            }
+
             let credential = &*pcredential;
-            let password_bytes = std::slice::from_raw_parts(
-                credential.CredentialBlob,
-                credential.CredentialBlobSize as usize,
-            );
 
-            // Password is stored as UTF-8 bytes
-            let password = String::from_utf8(password_bytes.to_vec())
-                .map_err(|_| EstError::config("Invalid UTF-8 in credential password"))?;
+            // Copy the password bytes out before freeing. `from_raw_parts`
+            // requires a non-null, aligned pointer even for zero length, so a
+            // null or empty blob must be treated as an empty password rather
+            // than passed to `from_raw_parts`.
+            let password_result =
+                if credential.CredentialBlob.is_null() || credential.CredentialBlobSize == 0 {
+                    Ok(String::new())
+                } else {
+                    let password_bytes = std::slice::from_raw_parts(
+                        credential.CredentialBlob,
+                        credential.CredentialBlobSize as usize,
+                    );
+                    // Password is stored as UTF-8 bytes.
+                    String::from_utf8(password_bytes.to_vec())
+                        .map_err(|_| EstError::config("Invalid UTF-8 in credential password"))
+                };
 
-            // Free the credential memory
+            // Free the credential memory before returning, so the error path
+            // (invalid UTF-8) does not leak the buffer allocated by CredReadW.
             CredFree(pcredential as *const _);
+
+            let password = password_result?;
 
             tracing::debug!("Successfully read credential from Windows Credential Manager");
             Ok(password)

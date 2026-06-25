@@ -6,16 +6,18 @@
 
 ## CI/CD & Security
 
-[![GitHub Actions](https://img.shields.io/github/actions/workflow/status/192d-Wing/usg-est-client/ci.yml?branch=main)](https://github.com/192d-Wing/usg-est-client/actions)
+[![CI](https://img.shields.io/github/actions/workflow/status/192d-Wing/usg-est-client/ci.yml?branch=main&label=ci)](https://github.com/192d-Wing/usg-est-client/actions/workflows/ci.yml)
+[![Security](https://img.shields.io/github/actions/workflow/status/192d-Wing/usg-est-client/security.yml?branch=main&label=security)](https://github.com/192d-Wing/usg-est-client/actions/workflows/security.yml)
 [![codecov](https://codecov.io/gh/192d-Wing/usg-est-client/graph/badge.svg)](https://codecov.io/gh/192d-Wing/usg-est-client)
-[![Security Audit](https://img.shields.io/badge/security-cargo--audit-success.svg)](https://github.com/192d-Wing/usg-est-client/actions)
 [![License Check](https://img.shields.io/badge/licenses-cargo--deny-success.svg)](deny.toml)
 
-- 🔒 **Security**: Daily automated security audits with cargo-audit and cargo-deny
-- ✅ **Testing**: Cross-platform CI/CD (Linux, macOS, Windows) with Rust stable, beta, and MSRV
-- 📊 **Coverage**: Automated code coverage reporting with tarpaulin
-- 🔍 **SAST**: Static Application Security Testing via GitHub Actions
-- 📚 **Documentation**: [Security Tools Guide](SECURITY-TOOLS.md) | [GitHub Actions CI](.github/workflows/ci.yml)
+- 🔒 **Supply chain**: CycloneDX + SPDX SBOMs, `cargo-audit` and `cargo-deny`, all GitHub Actions pinned to commit SHAs, Dependabot, least-privilege workflow tokens
+- 🔍 **SAST**: CodeQL static analysis, security-focused clippy, and `gitleaks` secret scanning
+- 🧪 **Dynamic analysis**: coverage-guided fuzzing of the PEM/PKCS#7/CSR parsers (libFuzzer); see [DAST applicability](docs/ATO-DAST-justification.md)
+- 🔏 **Signed releases**: cosign keyless signatures + SLSA build-provenance attestation on every release artifact
+- 🛡️ **FIPS**: FIPS 140-validated cryptography via the aws-lc-rs FIPS module (`fips` feature)
+- ✅ **Testing**: Cross-platform CI (Linux, macOS, Windows) on Rust stable, beta, and MSRV, with tarpaulin coverage
+- 📚 **Workflows**: [CI](.github/workflows/ci.yml) | [Security](.github/workflows/security.yml)
 
 A Rust implementation of an **RFC 7030 compliant EST (Enrollment over Secure Transport) client** for automated X.509 certificate enrollment and management.
 
@@ -61,7 +63,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-usg-est-client = "0.1"
+usg-est-client = "2.1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ```
 
@@ -200,7 +202,7 @@ Control which features are compiled into your application:
 
 ```toml
 [dependencies]
-usg-est-client = { version = "0.1", default-features = false, features = ["csr-gen", "renewal"] }
+usg-est-client = { version = "2.1", default-features = false, features = ["csr-gen", "renewal"] }
 ```
 
 ### Available Features
@@ -214,6 +216,9 @@ usg-est-client = { version = "0.1", default-features = false, features = ["csr-g
 | `metrics` | ❌ | Operation metrics collection |
 | `revocation` | ❌ | CRL and OCSP revocation checking |
 | `enveloped` | ❌ | CMS EnvelopedData decryption |
+| `fips` | ❌ | FIPS 140-validated cryptography via the aws-lc-rs FIPS module (TLS + PKI) |
+| `windows` | ❌ | Windows platform integration (CNG key provider, certificate store, DPAPI, TPM) |
+| `cli` | ❌ | Build the `est-enroll` command-line binary |
 
 ## API Documentation
 
@@ -320,30 +325,34 @@ cargo run --example simple_enroll --features csr-gen
 4. Enable automatic certificate renewal to prevent expiration
 5. Monitor metrics for enrollment failures and retry patterns
 
+### Supply Chain & Release Verification
+
+Release artifacts are keyless-signed with [cosign](https://github.com/sigstore/cosign)
+(Sigstore) and carry [SLSA build-provenance](https://slsa.dev) attestations; a
+CycloneDX SBOM is attached to each release and SPDX/CycloneDX SBOMs are kept in
+[`sbom/`](sbom/). Verify a downloaded artifact with:
+
+```bash
+# Signature (identity = the release workflow's OIDC identity)
+cosign verify-blob \
+  --certificate "<artifact>.pem" --signature "<artifact>.sig" \
+  --certificate-identity-regexp 'https://github.com/192d-Wing/usg-est-client/.*' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  "<artifact>"
+
+# Build provenance
+gh attestation verify "<artifact>" --repo 192d-Wing/usg-est-client
+```
+
 ## Architecture
 
-```text
-┌─────────────────────────────────────────┐
-│          EstClient (main API)           │
-│  - simple_enroll()                      │
-│  - simple_reenroll()                    │
-│  - get_ca_certs()                       │
-│  - server_keygen()                      │
-└─────────────┬───────────────────────────┘
-              │
-     ┌────────┴────────┐
-     ▼                 ▼
-┌──────────┐    ┌──────────────┐
-│   TLS    │    │   HTTP/REST  │
-│ rustls   │    │   reqwest    │
-└──────────┘    └──────────────┘
-     │                 │
-     └────────┬────────┘
-              ▼
-     ┌────────────────┐
-     │  EST Server    │
-     │  (RFC 7030)    │
-     └────────────────┘
+```mermaid
+flowchart TD
+    Client["<b>EstClient</b> (main API)<br/>simple_enroll() · simple_reenroll()<br/>get_ca_certs() · server_keygen()"]
+    Client --> TLS["TLS<br/>rustls / aws-lc-rs (FIPS)"]
+    Client --> HTTP["HTTP / REST<br/>reqwest"]
+    TLS --> Server["EST Server<br/>(RFC 7030)"]
+    HTTP --> Server
 ```
 
 ## Dependencies
@@ -404,11 +413,11 @@ Built with the excellent Rust cryptography ecosystem:
 
 ## Status
 
-This project is under active development. See [ROADMAP.md](ROADMAP.md) for planned features and [CHANGELOG.md](CHANGELOG.md) for version history.
+This project is in active use. See [CHANGELOG.md](CHANGELOG.md) for version history.
 
-**Current Version**: 0.1.0 (Development)
+**Current Version**: 2.1.2
 
-**Stability**: Core EST operations are stable and production-ready. Advanced features (HSM, renewal, metrics) have framework implementations ready for production completion.
+**Stability**: Core EST operations and the FIPS-validated crypto path are stable and production-ready. Advanced features (HSM, renewal, metrics, revocation) are feature-gated and maturing.
 
 ## Support
 

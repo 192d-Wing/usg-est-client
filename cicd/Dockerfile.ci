@@ -5,7 +5,8 @@
 #   docker build -f Dockerfile.ci -t ghcr.io/192d-wing/usg-est-client/ci:latest .
 #   docker push ghcr.io/192d-wing/usg-est-client/ci:latest
 
-FROM rust:1.92.0-slim
+# Base image pinned by digest (supply-chain hardening / OpenSSF Scorecard).
+FROM rust:1.92.0-slim@sha256:bf3368a992915f128293ac76917ab6e561e4dda883273c8f5c9f6f8ea37a378e
 
 LABEL maintainer="USG EST Client Team"
 LABEL description="Rust CI/CD image with pre-installed security and testing tools"

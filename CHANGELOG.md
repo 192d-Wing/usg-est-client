@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-06-25
+
+### Fixed
+
+- Windows Credential Manager (`auto_enroll::config`): `read_credential_manager`
+  dereferenced the `CredReadW` out-pointer and built a slice from
+  `CredentialBlob` with no null checks. A null out-pointer (which `CredReadW`
+  may leave on a reported success) or a null/zero-length `CredentialBlob` (valid
+  for a credential with no secret) is undefined behavior. The pointer is now
+  null-checked before dereference, a null/empty blob is treated as an empty
+  password, and the credential buffer is freed before the UTF-8 conversion can
+  early-return (previously a leak on the invalid-UTF-8 path). (#49)
+
+### Security
+
+- Supply-chain / ATO hardening of the CI and release pipeline (no library API
+  change): CodeQL SAST, CycloneDX SBOM generation + Grype vulnerability scan,
+  gitleaks secret scanning, coverage-guided fuzzing of the PEM/PKCS#7/CSR
+  parsers, OpenSSF Scorecard, cosign keyless signing + SLSA build-provenance for
+  release artifacts, all GitHub Actions pinned to commit SHAs, least-privilege
+  workflow permissions, and Docker base images pinned by digest. Added
+  `docs/ATO-DAST-justification.md` documenting DAST as not-applicable for a
+  client library with fuzzing as the dynamic-analysis control. (#47, #48, #50)
+
+### Changed
+
+- Dependency updates: `openssl` 0.10.80 → 0.10.81, `uuid` 1.23.2 → 1.23.4, and
+  GitHub Actions version bumps (checkout, codecov, setup-python, deploy-pages,
+  upload-pages-artifact). (#9, #10, #11, #12, #13, #15, #21)
+
 ## [2.1.1] - 2026-06-24
 
 ### Fixed
