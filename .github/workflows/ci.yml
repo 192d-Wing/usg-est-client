@@ -10,6 +10,12 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
 
+# Least-privilege default for GITHUB_TOKEN across all jobs (CodeQL
+# actions/missing-workflow-permissions). Every job here only reads the repo;
+# the coverage job uploads to Codecov via CODECOV_TOKEN, not GITHUB_TOKEN.
+permissions:
+  contents: read
+
 # Actions are pinned to full commit SHAs (SLSA / supply-chain hardening); the
 # trailing comment records the human-readable version. dtolnay/rust-toolchain
 # is pinned to a SHA, so the toolchain must be named explicitly via `toolchain:`
