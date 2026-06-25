@@ -60,16 +60,21 @@
 //!    number for the signing trust anchor — replay protection, see [`store`].
 
 pub mod asn1;
+pub mod client;
 pub mod oid;
 pub mod response;
 pub mod store;
 pub mod verify;
 pub mod wrapper;
-// Built up incrementally on top of the layers above:
-// pub mod client;
 
 #[doc(inline)]
 pub use oid::TampContentType;
+
+#[doc(inline)]
+pub use client::TampClient;
+
+#[doc(inline)]
+pub use response::TampSigner;
 
 #[doc(inline)]
 pub use store::{TrustAnchorStore, TrustAnchorStoreEntry};

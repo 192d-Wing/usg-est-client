@@ -168,6 +168,26 @@ impl TampContentType {
         }
     }
 
+    /// The IANA media type registered for this message (RFC 5934 §6 / Appendix B).
+    ///
+    /// Used as the HTTP `Content-Type` when sending and `Accept` when expecting a
+    /// particular response.
+    pub fn media_type(self) -> &'static str {
+        match self {
+            Self::StatusQuery => "application/tamp-status-query",
+            Self::StatusResponse => "application/tamp-status-response",
+            Self::Update => "application/tamp-update",
+            Self::UpdateConfirm => "application/tamp-update-confirm",
+            Self::ApexUpdate => "application/tamp-apex-update",
+            Self::ApexUpdateConfirm => "application/tamp-apex-update-confirm",
+            Self::CommunityUpdate => "application/tamp-community-update",
+            Self::CommunityUpdateConfirm => "application/tamp-community-update-confirm",
+            Self::SeqNumAdjust => "application/tamp-sequence-adjust",
+            Self::SeqNumAdjustConfirm => "application/tamp-sequence-adjust-confirm",
+            Self::Error => "application/tamp-error",
+        }
+    }
+
     /// True if this message kind is one a managed client *receives* (server → client).
     ///
     /// `TAMPError` is excluded here because it may travel in either direction.
