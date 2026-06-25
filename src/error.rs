@@ -455,6 +455,22 @@ pub enum EstError {
     /// - Unsupported token operation
     #[error("PKCS#11 error: {0}")]
     Pkcs11(String),
+
+    /// Trust Anchor Management Protocol (RFC 5934) error.
+    ///
+    /// # Security Controls
+    ///
+    /// **NIST SP 800-53 Rev 5:**
+    /// - SC-12: Cryptographic Key Establishment (trust anchor provisioning)
+    /// - SI-7: Software, Firmware, and Information Integrity (signed updates)
+    /// - AU-2: Audit Events
+    ///
+    /// TAMP errors cover malformed/forged management messages, signature
+    /// verification failures against the trust anchor store, and sequence-number
+    /// replay detection. All MUST be audited as they may indicate an attempt to
+    /// tamper with the device's roots of trust.
+    #[error("TAMP error: {0}")]
+    Tamp(String),
 }
 
 impl EstError {
@@ -555,6 +571,11 @@ impl EstError {
     /// Create a platform-specific error with the given message.
     pub fn platform(msg: impl Into<String>) -> Self {
         Self::Platform(msg.into())
+    }
+
+    /// Create a TAMP (RFC 5934) error with the given message.
+    pub fn tamp(msg: impl Into<String>) -> Self {
+        Self::Tamp(msg.into())
     }
 
     /// Returns true if this is a retryable error.

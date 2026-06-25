@@ -255,11 +255,22 @@ windows-service = ["windows", "dep:windows-service", "tracing-subscriber"]
 #
 # NOTE: this build links the aws-lc-rs FIPS module but is NOT, by itself, a
 # CMVP-validated operating environment — see docs/fips-compliance.md.
-fips = ["dep:aws-lc-rs", "aws-lc-rs/fips", "rustls/fips", "hsm", "csr-gen"]
+# Note: `tamp` is included so that any FIPS deployment automatically has Trust
+# Anchor Management Protocol support available (required for managed trust stores).
+fips = ["dep:aws-lc-rs", "aws-lc-rs/fips", "rustls/fips", "hsm", "csr-gen", "tamp"]
 
 # Deprecated alias for `fips`, retained for compatibility with the Phase 1-4
 # migration. Prefer `fips`.
 fips-tls = ["fips"]
+
+# TAMP (Trust Anchor Management Protocol, RFC 5934) client.
+# Client-role only: sends TAMPStatusQuery and signed *Confirm/TAMPError messages,
+# receives and verifies TAMPStatusResponse / Trust Anchor Update messages, and
+# maintains a local trust anchor store (RFC 5914 TrustAnchorChoice) with
+# sequence-number replay protection. Pulls in no new dependencies; uses the
+# in-tree cms/der/x509-cert/spki crypto. Signing/verification/hashing route
+# through the FIPS-aware path (fips_crypto + aws-lc-rs provider) when `fips` is on.
+tamp = []
 
 # DoD PKI integration (DoD Root CAs, certificate policies, CAC/PIV support)
 # Provides DoD-specific trust anchors and policy validation
