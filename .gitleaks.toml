@@ -1,0 +1,28 @@
+# gitleaks configuration for usg-est-client (CI: .github/workflows/security.yml)
+#
+# Extends the upstream default ruleset and allowlists known false positives so
+# the secret-scan job fails only on genuine secrets.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Vetted false positives and generated artifacts"
+
+# Test material, not production credentials:
+#  * tests/fixtures/** — PEM keys and EST response fixtures for the test suite.
+#  * coverage/** — generated cargo-tarpaulin reports embedding those test keys
+#    (.gitignored now, but committed historically so full-history scan sees it).
+# Individual in-source test-key constants are ignored by fingerprint in
+# .gitleaksignore (precise, so a real key added elsewhere is still caught).
+paths = [
+  '''tests/.*''',
+  '''coverage/.*''',
+]
+
+# The `generic-api-key` rule matches prose in a Cargo.toml comment describing
+# the FIPS feature ("key generation, CSR/signature signing, ..."). Not a secret.
+regexTarget = "line"
+regexes = [
+  '''key generation, CSR/signature signing, certificate-chain verification''',
+]

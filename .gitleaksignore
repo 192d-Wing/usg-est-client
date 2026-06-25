@@ -1,0 +1,6 @@
+# gitleaks: ignore specific findings by fingerprint (commit:file:rule:line).
+# These are intentional *test* private-key constants embedded in unit tests,
+# not production credentials. Scoped to the exact commit/line so a real key
+# introduced elsewhere is still flagged.
+7c3f433358788d070ed53fe0700955fb4e033999:src/operations/serverkeygen.rs:private-key:89
+7c3f433358788d070ed53fe0700955fb4e033999:src/tls.rs:private-key:216

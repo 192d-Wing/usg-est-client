@@ -1,0 +1,254 @@
+# Security & supply-chain assurance workflow (ATO / NIST SP 800-53 RMF).
+#
+# Complements ci.yml (which already runs cargo-audit, cargo-deny, FIPS, and
+# security-focused clippy). This workflow adds the controls an ATO package
+# typically requires beyond linting:
+#
+#   * SAST                     -> CodeQL (Rust)            [SA-11]
+#   * Unsafe-code accounting   -> cargo-geiger             [SA-11, SC-3]
+#   * Secret scanning          -> gitleaks                 [IA-5, SA-15]
+#   * SBOM (CycloneDX)         -> cargo-cyclonedx          [SR-4, EO 14028]
+#   * SBOM vulnerability scan  -> Grype                    [RA-5]
+#   * Supply-chain posture     -> OpenSSF Scorecard        [SR-3, SA-12]
+#   * Dynamic analysis (DAST   -> bounded fuzzing          [SA-11(8)]
+#     is N/A for a client; see docs/ATO-DAST-justification.md)
+#
+# All scanners that can emit SARIF upload to the GitHub code-scanning dashboard
+# so the results are an auditable artifact for the ISSO/assessor.
+#
+# Actions are pinned to full commit SHAs (SLSA / supply-chain hardening); the
+# trailing comment records the human-readable version.
+name: Security
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  schedule:
+    # Weekly continuous-monitoring sweep (RA-5 / CA-7): re-scan dependencies and
+    # supply-chain posture even when no code changes land.
+    - cron: "27 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ===========================================================================
+  # SAST — CodeQL static analysis (Rust)
+  # ===========================================================================
+  codeql:
+    name: CodeQL (SAST)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # upload SARIF to code scanning
+      actions: read
+    steps:
+      - uses: step-security/harden-runner@cb605e52c26070c328afc4562f0b4ada7618a84e # v2.10.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537 # master (stable below)
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          languages: rust
+          # The Rust extractor only supports build-mode `none` (it analyzes
+          # sources directly; `manual`/`autobuild` are rejected for Rust).
+          build-mode: none
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          category: "/language:rust"
+
+  # ===========================================================================
+  # Unsafe-code accounting — cargo-geiger
+  # ===========================================================================
+  # Crypto + FFI surface (aws-lc, PKCS#11/cryptoki, windows CNG) means `unsafe`
+  # is expected. This job inventories it so the assessor can review the blast
+  # radius rather than gate on zero-unsafe (which is unachievable here).
+  unsafe-audit:
+    name: Unsafe code (cargo-geiger)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: step-security/harden-runner@cb605e52c26070c328afc4562f0b4ada7618a84e # v2.10.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537 # master (stable below)
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+      - uses: taiki-e/install-action@ace6ebe54a6a0c86dfb5f7764b17f793b6925bc3 # v2
+        with:
+          tool: cargo-geiger
+      - name: Generate unsafe-code report
+        # geiger can fail to build exotic deps; the report is the deliverable,
+        # not a gate, so don't fail the run on a partial graph.
+        continue-on-error: true
+        run: |
+          cargo geiger --all-features --output-format GitHubMarkdown \
+            > unsafe-report.md || true
+          {
+            echo "## cargo-geiger unsafe-code report"
+            echo
+            cat unsafe-report.md
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: unsafe-geiger-report
+          path: unsafe-report.md
+          if-no-files-found: warn
+
+  # ===========================================================================
+  # Secret scanning — gitleaks
+  # ===========================================================================
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: step-security/harden-runner@cb605e52c26070c328afc4562f0b4ada7618a84e # v2.10.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          fetch-depth: 0 # full history so historical commits are scanned
+      # Use the gitleaks OSS binary directly. The gitleaks-action wrapper now
+      # requires a paid license for GitHub organizations; the CLI does not.
+      - name: Run gitleaks (full git history)
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks git . --config .gitleaks.toml --redact --verbose --exit-code 1
+
+  # ===========================================================================
+  # SBOM generation (CycloneDX) + vulnerability scan (Grype)
+  # ===========================================================================
+  sbom:
+    name: SBOM + vuln scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: step-security/harden-runner@cb605e52c26070c328afc4562f0b4ada7618a84e # v2.10.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537 # master (stable below)
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+      - uses: taiki-e/install-action@ace6ebe54a6a0c86dfb5f7764b17f793b6925bc3 # v2
+        with:
+          tool: cargo-cyclonedx
+      - name: Generate CycloneDX SBOM
+        run: cargo cyclonedx --all-features --format json
+      - name: Collect SBOM
+        run: |
+          mkdir -p sbom-out
+          # cargo-cyclonedx writes <crate>.cdx.json next to each manifest.
+          find . -path ./target -prune -o -name '*.cdx.json' -print \
+            -exec cp --parents {} sbom-out/ \;
+          ls -R sbom-out
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: sbom-cyclonedx
+          path: sbom-out/
+          if-no-files-found: error
+      - name: Scan SBOM for vulnerabilities (Grype)
+        uses: anchore/scan-action@7c05671ae9be166aeb155bad2d7df9121823df32 # v6.1.0
+        id: grype
+        with:
+          sbom: "usg-est-client.cdx.json"
+          output-format: sarif
+          fail-build: false # report-only; cargo-audit/deny in ci.yml are the gates
+      - name: Upload Grype SARIF
+        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        if: always()
+        with:
+          sarif_file: ${{ steps.grype.outputs.sarif }}
+          category: grype-sbom
+
+  # ===========================================================================
+  # Supply-chain posture — OpenSSF Scorecard
+  # ===========================================================================
+  scorecard:
+    name: OpenSSF Scorecard
+    runs-on: ubuntu-latest
+    # Scorecard analyzes branch-protection/repo posture; only meaningful on the
+    # default branch and on schedule.
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      security-events: write
+      id-token: write
+    steps:
+      - uses: step-security/harden-runner@cb605e52c26070c328afc4562f0b4ada7618a84e # v2.10.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          persist-credentials: false
+      - uses: ossf/scorecard-action@f49aabe0b5af0936a0987cfb85d86b75731b0186 # v2.4.1
+        with:
+          results_file: scorecard.sarif
+          results_format: sarif
+          publish_results: false
+      - uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          sarif_file: scorecard.sarif
+          category: scorecard
+
+  # ===========================================================================
+  # Dynamic analysis — bounded fuzzing (DAST substitute for a client library)
+  # ===========================================================================
+  # This crate has no network listener, so traditional DAST does not apply
+  # (see docs/ATO-DAST-justification.md). The libFuzzer harnesses exercise the
+  # untrusted-input parsers (PEM, PKCS#7, CSR) as the dynamic-analysis control.
+  fuzz:
+    name: Fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - fuzz_parse_pem_certificates
+          - fuzz_parse_pem_private_key
+          - fuzz_validate_csr
+          - fuzz_parse_pkcs7
+    steps:
+      - uses: step-security/harden-runner@cb605e52c26070c328afc4562f0b4ada7618a84e # v2.10.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537 # nightly (fuzzing needs nightly)
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+        with:
+          workspaces: fuzz
+      - uses: taiki-e/install-action@ace6ebe54a6a0c86dfb5f7764b17f793b6925bc3 # v2
+        with:
+          tool: cargo-fuzz
+      - name: Smoke-fuzz ${{ matrix.target }}
+        # Bounded regression fuzzing: 90s per target. A crash fails the job and
+        # leaves the reproducer in fuzz/artifacts/.
+        # Pin the gnu host target: cargo-fuzz otherwise defaults to the musl
+        # triple, whose nightly std/core is not installed on the runner (E0463).
+        run: cargo +nightly fuzz run ${{ matrix.target }} --target x86_64-unknown-linux-gnu -- -max_total_time=90
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: failure()
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: fuzz/artifacts/
+          if-no-files-found: ignore
