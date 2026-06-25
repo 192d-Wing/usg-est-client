@@ -9,11 +9,14 @@ useDefault = true
 [allowlist]
 description = "Vetted false positives and generated artifacts"
 
-# Generated coverage reports (cargo-tarpaulin) embed source snippets that
-# include *test* PEM private keys. The directory is .gitignored (it is no longer
-# tracked at HEAD), but it was committed historically; the full-history scan
-# still surfaces it. These are test fixtures, not real credentials.
+# Test material, not production credentials:
+#  * tests/fixtures/** — PEM keys and EST response fixtures for the test suite.
+#  * coverage/** — generated cargo-tarpaulin reports embedding those test keys
+#    (.gitignored now, but committed historically so full-history scan sees it).
+# Individual in-source test-key constants are ignored by fingerprint in
+# .gitleaksignore (precise, so a real key added elsewhere is still caught).
 paths = [
+  '''tests/.*''',
   '''coverage/.*''',
 ]
 
