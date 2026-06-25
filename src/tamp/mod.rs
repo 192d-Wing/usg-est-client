@@ -61,12 +61,12 @@
 
 pub mod asn1;
 pub mod oid;
+pub mod response;
 pub mod store;
 pub mod verify;
 pub mod wrapper;
 // Built up incrementally on top of the layers above:
 // pub mod client;
-// pub mod response;
 
 #[doc(inline)]
 pub use oid::TampContentType;

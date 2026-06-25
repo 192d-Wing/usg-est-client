@@ -267,10 +267,11 @@ fips-tls = ["fips"]
 # Client-role only: sends TAMPStatusQuery and signed *Confirm/TAMPError messages,
 # receives and verifies TAMPStatusResponse / Trust Anchor Update messages, and
 # maintains a local trust anchor store (RFC 5914 TrustAnchorChoice) with
-# sequence-number replay protection. Pulls in no new dependencies; uses the
-# in-tree cms/der/x509-cert/spki crypto. Signing/verification/hashing route
-# through the FIPS-aware path (fips_crypto + aws-lc-rs provider) when `fips` is on.
-tamp = []
+# sequence-number replay protection. Uses the in-tree cms/der/x509-cert/spki
+# crypto; only enables PKCS#8 key parsing on the EC crates for signing client
+# messages. Signing/verification/hashing route through the FIPS-aware path
+# (fips_crypto + aws-lc-rs provider) when `fips` is on.
+tamp = ["p256/pkcs8", "p384/pkcs8"]
 
 # DoD PKI integration (DoD Root CAs, certificate policies, CAC/PIV support)
 # Provides DoD-specific trust anchors and policy validation
