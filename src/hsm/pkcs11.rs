@@ -336,38 +336,51 @@ impl Pkcs11KeyProvider {
             _ => return Err(EstError::hsm("Invalid EC_POINT attribute".to_string())),
         };
 
-        // Build the AlgorithmIdentifier for EC public key
+        let point_data = Self::decode_ec_point(&ec_point);
+        Self::ec_named_curve_spki(curve_oid, &point_data)
+    }
+
+    /// Extract the uncompressed SEC1 point from a PKCS#11 `CKA_EC_POINT` value.
+    ///
+    /// Per PKCS#11 the attribute is the SEC1 point wrapped in a DER OCTET STRING,
+    /// so decode it as one. A fixed 2-byte strip is unsafe: the leading `0x04`
+    /// OCTET STRING tag is ambiguous with the SEC1 uncompressed-point indicator
+    /// (also `0x04`), and the length field is not always one byte. Tokens that
+    /// return the bare point (no wrapper) fall back to the raw attribute.
+    fn decode_ec_point(attr: &[u8]) -> Vec<u8> {
+        der::asn1::OctetString::from_der(attr)
+            .map(|os| os.as_bytes().to_vec())
+            .unwrap_or_else(|_| attr.to_vec())
+    }
+
+    /// Build a `SubjectPublicKeyInfo` for a NIST EC public key from its named-curve
+    /// OID and uncompressed SEC1 point.
+    ///
+    /// Per RFC 5480 §2.1.1 the `AlgorithmIdentifier` parameters for a named curve
+    /// are the ECParameters `namedCurve` CHOICE — the curve OID **directly**, NOT
+    /// wrapped in an OCTET STRING. The OCTET-STRING form parses with RustCrypto's
+    /// `from_sec1_bytes` (which ignores the AlgorithmIdentifier) but rustls-webpki
+    /// rejects it during the mTLS client `CertificateVerify`
+    /// (`UnsupportedSignatureAlgorithmForPublicKeyContext`), which surfaces to the
+    /// client as a TLS `DecryptError`. Bootstrap/server-auth never parse our SPKI,
+    /// so only token-backed `simplereenroll` mutual TLS was affected.
+    fn ec_named_curve_spki(
+        curve_oid: ObjectIdentifier,
+        point: &[u8],
+    ) -> Result<SubjectPublicKeyInfoOwned> {
         let curve_oid_der = curve_oid
             .to_der()
             .expect("well-known curve OID from RFC 5912 is always valid");
-        let alg_params = der::asn1::OctetStringRef::new(&curve_oid_der)
-            .expect("DER-encoded OID is valid OctetString")
-            .to_der()
-            .expect("OctetString DER encoding cannot fail");
-
-        // The algorithm identifier needs the curve OID as parameters
         let algorithm = AlgorithmIdentifierOwned {
             oid: ID_EC_PUBLIC_KEY,
             parameters: Some(
-                der::asn1::AnyRef::from_der(&alg_params)
-                    .expect("well-formed DER from OctetString")
+                der::asn1::AnyRef::from_der(&curve_oid_der)
+                    .expect("well-formed DER from a named-curve OID")
                     .into(),
             ),
         };
-
-        // EC_POINT is an OCTET STRING containing the point
-        // We need to extract the actual point data
-        let point_data = if ec_point.len() > 2 && ec_point[0] == 0x04 {
-            // It's already a DER OCTET STRING, extract the contents
-            &ec_point[2..]
-        } else {
-            &ec_point
-        };
-
-        // Convert to BitString for SubjectPublicKeyInfo
-        let subject_public_key = BitString::from_bytes(point_data)
+        let subject_public_key = BitString::from_bytes(point)
             .map_err(|e| EstError::hsm(format!("Failed to create bit string: {}", e)))?;
-
         Ok(SubjectPublicKeyInfoOwned {
             algorithm,
             subject_public_key,
@@ -1011,6 +1024,53 @@ mod tests {
         raw[95] = 0x01;
         let der = ecdsa_p1363_to_der(&raw, KeyAlgorithm::EcdsaP384).expect("convert");
         assert_eq!(der, vec![0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x01]);
+    }
+
+    /// Regression: the EC `SubjectPublicKeyInfo` AlgorithmIdentifier parameters
+    /// must be the bare named-curve OID (RFC 5480 §2.1.1), NOT an OCTET STRING.
+    /// The OCTET-STRING form is accepted by `from_sec1_bytes` (which ignores the
+    /// AlgorithmIdentifier) but rejected by rustls-webpki during the mTLS client
+    /// `CertificateVerify`, which the client reports as a TLS `DecryptError`.
+    #[test]
+    fn ec_named_curve_spki_parameters_are_bare_oid() {
+        // Uncompressed P-256 point (0x04 || X || Y); only the encoding shape of the
+        // AlgorithmIdentifier matters here, not the point's validity.
+        let point = [0x04u8; 65];
+        let spki =
+            Pkcs11KeyProvider::ec_named_curve_spki(SECP_256_R_1, &point).expect("build EC SPKI");
+
+        assert_eq!(spki.algorithm.oid, ID_EC_PUBLIC_KEY);
+        let params = spki
+            .algorithm
+            .parameters
+            .as_ref()
+            .expect("EC AlgorithmIdentifier carries parameters");
+        let params_der = params.to_der().expect("encode parameters");
+        // With the old bug the params were an OCTET STRING and this OID decode fails.
+        let decoded = ObjectIdentifier::from_der(&params_der)
+            .expect("named-curve parameters must be a bare OID, not an OCTET STRING");
+        assert_eq!(decoded, SECP_256_R_1);
+
+        // And the whole SPKI must DER round-trip cleanly.
+        let der = spki.to_der().expect("encode SPKI");
+        let reparsed = SubjectPublicKeyInfoOwned::from_der(&der).expect("reparse SPKI");
+        assert_eq!(reparsed.algorithm.oid, ID_EC_PUBLIC_KEY);
+    }
+
+    /// `CKA_EC_POINT` is a DER OCTET STRING wrapping the SEC1 point; it must be
+    /// decoded, not stripped by a fixed offset (the 0x04 tag is ambiguous with
+    /// the SEC1 uncompressed-point indicator).
+    #[test]
+    fn decode_ec_point_unwraps_der_octet_string() {
+        // OCTET STRING { 0x04 0xAA 0xBB 0xCC 0xDD } -> the 5 content bytes.
+        let wrapped = [0x04, 0x05, 0x04, 0xAA, 0xBB, 0xCC, 0xDD];
+        assert_eq!(
+            Pkcs11KeyProvider::decode_ec_point(&wrapped),
+            vec![0x04, 0xAA, 0xBB, 0xCC, 0xDD]
+        );
+        // A bare value (not valid DER) falls back to the raw attribute.
+        let bare = [0x04, 0xAA, 0xBB];
+        assert_eq!(Pkcs11KeyProvider::decode_ec_point(&bare), bare.to_vec());
     }
 
     #[test]
