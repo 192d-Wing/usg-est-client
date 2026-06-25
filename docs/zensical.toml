@@ -19,6 +19,7 @@ nav = [
         "revocation-guide.md",
         "revocation_status.md",
         "platform-tls.md",
+        "tamp.md",
     ] },
     { Security = "security.md" },
     { "Platform Guides" = [
