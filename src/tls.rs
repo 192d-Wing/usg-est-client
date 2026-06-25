@@ -108,6 +108,11 @@ use crate::error::{EstError, Result};
 /// - Client certificate/key parsing fails
 /// - HTTP client builder fails
 pub fn build_http_client(config: &EstClientConfig) -> Result<reqwest::Client> {
+    // Windows CNG FIPS path: native-tls (SChannel) + CNG key provider.
+    // This branch owns the full client build and returns early.
+    #[cfg(feature = "fips-cng")]
+    return build_http_client_fips_cng(config);
+
     // Fail closed: when built for FIPS, ensure the FIPS-validated rustls provider
     // is installed as the process default *before* reqwest builds its TLS config,
     // so the HTTPS transport cannot silently fall back to non-validated crypto.
@@ -218,6 +223,87 @@ pub fn build_http_client(config: &EstClientConfig) -> Result<reqwest::Client> {
     builder
         .build()
         .map_err(|e| EstError::tls(format!("Failed to build HTTP client: {}", e)))
+}
+
+/// Build a reqwest Client using native-tls (SChannel) for the `fips-cng` feature.
+///
+/// Fails closed if the Windows FIPS algorithm policy is not enabled in Local Security
+/// Policy. SChannel then inherits that policy for all TLS operations; key generation
+/// and signing go through CNG via [`crate::windows::CngKeyProvider::new_fips`].
+///
+/// The `client_cert_resolver` (PKCS#11 token) path is not supported here because it
+/// requires a rustls `ResolvesClientCert`; use a PEM identity backed by CNG instead.
+#[cfg(feature = "fips-cng")]
+fn build_http_client_fips_cng(config: &EstClientConfig) -> Result<reqwest::Client> {
+    // Fail-closed: verify the OS FIPS algorithm policy before building any TLS context.
+    if !crate::windows::CngKeyProvider::is_fips_mode_enabled()
+        .map_err(|e| EstError::platform(format!("cannot query Windows FIPS policy: {e}")))?
+    {
+        return Err(EstError::platform(
+            "Windows FIPS algorithm policy is not enabled; enable it in Local Security Policy \
+             ('System cryptography: Use FIPS compliant algorithms for encryption, hashing, \
+             and signing') before using the fips-cng feature",
+        ));
+    }
+
+    if config.client_identity.is_some() && config.client_cert_resolver.is_some() {
+        return Err(EstError::tls(
+            "client_identity (PEM) and client_cert_resolver (PKCS#11) are mutually exclusive"
+                .to_string(),
+        ));
+    }
+
+    if config.client_cert_resolver.is_some() {
+        return Err(EstError::tls(
+            "client_cert_resolver (rustls PKCS#11 resolver) is not supported with fips-cng; \
+             use a PEM identity backed by a CNG key instead"
+                .to_string(),
+        ));
+    }
+
+    let mut builder = reqwest::Client::builder()
+        .timeout(config.timeout)
+        .use_native_tls()
+        .min_tls_version(reqwest::tls::Version::TLS_1_3);
+
+    match &config.trust_anchors {
+        TrustAnchors::WebPki => {
+            // native-tls uses the Windows certificate store by default — correct behaviour
+            // for a domain-joined machine whose root CAs are pushed via Group Policy.
+        }
+        TrustAnchors::Explicit(ca_certs) => {
+            // Add the caller-supplied CAs on top of the Windows store.  native-tls on
+            // Windows cannot *replace* the store (only reqwest+rustls can do that via
+            // tls_certs_only), so explicit anchors are additive here.
+            for ca_pem in ca_certs {
+                let cert = reqwest::Certificate::from_pem(ca_pem).map_err(|e| {
+                    EstError::tls(format!("Failed to parse CA certificate: {e}"))
+                })?;
+                builder = builder.add_root_certificate(cert);
+            }
+        }
+        TrustAnchors::Bootstrap(bootstrap_config) => {
+            if std::time::Instant::now() > bootstrap_config.expires_at {
+                return Err(EstError::tls(
+                    "Bootstrap mode has expired. Reconfigure with explicit trust anchors."
+                        .to_string(),
+                ));
+            }
+            builder = builder.danger_accept_invalid_certs(true);
+        }
+        TrustAnchors::InsecureAcceptAny => {
+            builder = builder.danger_accept_invalid_certs(true);
+        }
+    }
+
+    if let Some(ref identity) = config.client_identity {
+        let identity = build_reqwest_identity(identity)?;
+        builder = builder.identity(identity);
+    }
+
+    apply_default_headers(builder, config)
+        .build()
+        .map_err(|e| EstError::tls(format!("Failed to build HTTP client: {e}")))
 }
 
 /// Build a reqwest Identity from PEM-encoded certificate and key.

@@ -245,14 +245,14 @@ windows = ["dep:windows", "auto-enroll", "hsm"]
 windows-service = ["windows", "dep:windows-service", "tracing-subscriber"]
 
 # FIPS 140-validated cryptography via the aws-lc-rs FIPS module.
-# This is the unified FIPS feature: TLS (rustls provider) plus PKI operations
+# This is the Linux/macOS FIPS feature: TLS (rustls provider) plus PKI operations
 # (key generation, CSR/signature signing, certificate-chain verification) all run
 # through the aws-lc-rs FIPS module.
 #
 # Linux only — `aws-lc-fips-sys` builds on Linux x86_64/aarch64 (its build deps
 # Go + cmake are preinstalled on the GitHub-hosted ubuntu runners). On Windows,
-# FIPS comes from the CNG FIPS module instead (see the `windows` feature and
-# `CngKeyProvider::new_fips`); do not enable `fips` on Windows.
+# use `fips-cng` instead (see below); the build.rs guards against enabling `fips`
+# on a Windows target.
 #
 # Adds `hsm` + `csr-gen` so the KeyProvider trait + HsmCsrBuilder (manual,
 # rcgen/ring-free CSR signing) are available for the FIPS AwsLcKeyProvider.
@@ -266,6 +266,22 @@ fips = ["dep:aws-lc-rs", "aws-lc-rs/fips", "rustls/fips", "hsm", "csr-gen", "tam
 # Deprecated alias for `fips`, retained for compatibility with the Phase 1-4
 # migration. Prefer `fips`.
 fips-tls = ["fips"]
+
+# FIPS 140-validated cryptography via Windows CNG (Windows-only counterpart to `fips`).
+#
+# TLS uses native-tls/SChannel, which inherits the OS FIPS algorithm policy
+# ("System cryptography: Use FIPS compliant algorithms for encryption, hashing,
+# and signing"). Key generation and signing go through CngKeyProvider::new_fips(),
+# which calls BCryptGetFipsAlgorithmMode and refuses to operate if the policy is off.
+#
+# build.rs errors at compile time if this feature is enabled on a non-Windows target.
+# On Linux/macOS, use `fips` instead.
+#
+# `tamp` is included for the same reason as `fips`: managed trust stores are part
+# of a FIPS deployment. TAMP signing uses the RustCrypto crates (same as the
+# non-FIPS path) — CNG key operations cover EST enrollment; full CNG-backed CMS
+# signing is a future enhancement.
+fips-cng = ["windows", "native-tls-backend", "tamp", "hsm", "csr-gen"]
 
 # TAMP (Trust Anchor Management Protocol, RFC 5934) client.
 # Client-role only: sends TAMPStatusQuery and signed *Confirm/TAMPError messages,
@@ -281,6 +297,10 @@ tamp = ["p256/pkcs8", "p384/pkcs8"]
 # Provides DoD-specific trust anchors and policy validation
 dod-pki = []
 
-# Full DoD deployment configuration (FIPS + DoD PKI)
-# Use this for complete DoD ATO compliance
+# Full DoD deployment configuration (FIPS + DoD PKI) — Linux/macOS targets.
+# Use this for complete DoD ATO compliance on Linux.
 dod = ["fips", "dod-pki"]
+
+# Full DoD deployment configuration for Windows (CNG FIPS + DoD PKI).
+# Use this instead of `dod` when building for Windows targets.
+dod-windows = ["fips-cng", "dod-pki"]

@@ -17,10 +17,14 @@ implement the Trust Anchor Manager (server) side.
 usg-est-client = { version = "2", features = ["tamp"] }
 ```
 
-The `tamp` feature is **enabled automatically by the `fips` feature** (and thus
-by `dod`), because trust anchor management is how a FIPS deployment's roots of
-trust are provisioned and rotated. Under `fips`, all TAMP signing, verification,
-and hashing run inside the FIPS-validated aws-lc-rs module.
+The `tamp` feature is **enabled automatically by both FIPS features**:
+
+| Feature | Platform | How TAMP crypto runs |
+|---|---|---|
+| `fips` | Linux / macOS | aws-lc-rs FIPS module (rustls TLS) |
+| `fips-cng` | Windows | RustCrypto crates for CMS signing; TLS via SChannel / CNG |
+
+On a `dod` (Linux) or `dod-windows` (Windows) build, TAMP is always present.
 
 ## What it does
 
