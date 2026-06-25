@@ -1,0 +1,25 @@
+# gitleaks configuration for usg-est-client (CI: .github/workflows/security.yml)
+#
+# Extends the upstream default ruleset and allowlists known false positives so
+# the secret-scan job fails only on genuine secrets.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Vetted false positives and generated artifacts"
+
+# Generated coverage reports (cargo-tarpaulin) embed source snippets that
+# include *test* PEM private keys. The directory is .gitignored (it is no longer
+# tracked at HEAD), but it was committed historically; the full-history scan
+# still surfaces it. These are test fixtures, not real credentials.
+paths = [
+  '''coverage/.*''',
+]
+
+# The `generic-api-key` rule matches prose in a Cargo.toml comment describing
+# the FIPS feature ("key generation, CSR/signature signing, ..."). Not a secret.
+regexTarget = "line"
+regexes = [
+  '''key generation, CSR/signature signing, certificate-chain verification''',
+]

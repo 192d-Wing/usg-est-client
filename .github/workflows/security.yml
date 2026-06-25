@@ -128,7 +128,7 @@ jobs:
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             -o gitleaks.tar.gz
           tar -xzf gitleaks.tar.gz gitleaks
-          ./gitleaks git . --redact --verbose --exit-code 1
+          ./gitleaks git . --config .gitleaks.toml --redact --verbose --exit-code 1
 
   # ===========================================================================
   # SBOM generation (CycloneDX) + vulnerability scan (Grype)
