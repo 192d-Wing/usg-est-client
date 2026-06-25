@@ -158,3 +158,58 @@ jobs:
             artifacts/*.pem
             artifacts/est-client-*-cyclonedx.json
             artifacts/checksums.txt
+
+  # ===========================================================================
+  # Publish the crate to crates.io
+  # ===========================================================================
+  # Gated on a successful multi-platform build (crates.io publishes are
+  # irreversible — versions can only be yanked, never replaced). Uses the
+  # org-level `CRATES_IO` secret (a crates.io API token with publish-update
+  # scope). Idempotent: re-running an already-published tag is a no-op rather
+  # than a failure.
+  crates-io:
+    name: Publish to crates.io
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@cb605e52c26070c328afc4562f0b4ada7618a84e # v2.10.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+
+      - name: Resolve versions
+        id: ver
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          CRATE="$(grep -m1 '^version = ' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "crate=$CRATE" >> "$GITHUB_OUTPUT"
+          if [ "$TAG" != "$CRATE" ]; then
+            echo "::error::Tag v$TAG does not match Cargo.toml version $CRATE"
+            exit 1
+          fi
+
+      - name: Check if version already on crates.io
+        id: published
+        run: |
+          # Sparse-index path for a 4+ char crate name: <first2>/<next2>/<name>
+          URL="https://index.crates.io/us/g-/usg-est-client"
+          if curl -fsSL "$URL" | grep -q "\"vers\":\"${{ steps.ver.outputs.crate }}\""; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "v${{ steps.ver.outputs.crate }} already on crates.io — skipping publish."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish
+        if: steps.published.outputs.exists == 'false'
+        run: cargo publish --locked
+        env:
+          # Org-level secret `CRATES_IO` mapped to the env var cargo expects.
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO }}
