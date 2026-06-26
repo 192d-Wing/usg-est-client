@@ -309,3 +309,19 @@ dod = ["fips", "dod-pki"]
 # Full DoD deployment configuration for Windows (CNG FIPS + DoD PKI).
 # Use this instead of `dod` when building for Windows targets.
 dod-windows = ["fips-cng", "dod-pki"]
+
+# docs.rs builds on Linux x86_64. Document a portable feature surface (incl.
+# `tamp`) and explicitly DO NOT use `--all-features`: `fips-cng` is Windows-only
+# (build.rs rejects it on Linux) and `fips` needs Go+cmake, so an all-features
+# docs build would fail. This curated set keeps docs.rs green.
+[package.metadata.docs.rs]
+features = [
+    "tamp",
+    "cli",
+    "validation",
+    "revocation",
+    "renewal",
+    "metrics",
+    "enveloped",
+]
+no-default-features = false

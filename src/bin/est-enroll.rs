@@ -1619,7 +1619,13 @@ fn cmd_tamp_process(
             ),
         }
     } else if signer_cert.is_some() {
-        println!("No reply message was called for by this TAMP message.");
+        // A signer was supplied but process() produced no reply. This is expected
+        // for messages that need no confirm; note that apex-update confirms are
+        // not yet emitted, so don't claim a reply was definitively "not called for".
+        println!(
+            "No reply message was produced (none required, or the confirm for this \
+             message type is not yet implemented)."
+        );
     }
 
     if let Some(path) = save_store {

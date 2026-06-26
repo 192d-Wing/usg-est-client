@@ -108,14 +108,24 @@ use crate::error::{EstError, Result};
 /// - Client certificate/key parsing fails
 /// - HTTP client builder fails
 pub fn build_http_client(config: &EstClientConfig) -> Result<reqwest::Client> {
-    // Windows CNG FIPS path: native-tls (SChannel) + CNG key provider.
-    // This branch owns the full client build and returns early. Gated on the
-    // windows target as well as the feature: `fips-cng` is a Windows-only feature
-    // (build.rs enforces this), and the body references `crate::windows`, which
-    // only exists under `cfg(all(windows, feature = "windows"))`.
+    // Dispatch by TLS backend. On Windows under `fips-cng` the transport is
+    // native-tls/SChannel + CNG (`build_http_client_fips_cng`, which references
+    // `crate::windows`); every other build uses the rustls path. The two are
+    // mutually exclusive at the cfg level, so neither leaves unreachable code.
     #[cfg(all(windows, feature = "fips-cng"))]
-    return build_http_client_fips_cng(config);
+    {
+        build_http_client_fips_cng(config)
+    }
+    #[cfg(not(all(windows, feature = "fips-cng")))]
+    {
+        build_http_client_rustls(config)
+    }
+}
 
+/// Build a reqwest client over the rustls backend — the default path used on
+/// every build except Windows `fips-cng`.
+#[cfg(not(all(windows, feature = "fips-cng")))]
+fn build_http_client_rustls(config: &EstClientConfig) -> Result<reqwest::Client> {
     // Fail closed: when built for FIPS, ensure the FIPS-validated rustls provider
     // is installed as the process default *before* reqwest builds its TLS config,
     // so the HTTPS transport cannot silently fall back to non-validated crypto.
@@ -351,7 +361,9 @@ fn apply_default_headers(
 /// client-certificate `resolver` or no client authentication.
 ///
 /// Used when the client's private key cannot be exported to PEM (PKCS#11/TPM),
-/// so reqwest's PEM `Identity` path is unavailable.
+/// so reqwest's PEM `Identity` path is unavailable. Only the rustls path uses
+/// this, so it is cfg'd out of the Windows `fips-cng` (native-tls) build.
+#[cfg(not(all(windows, feature = "fips-cng")))]
 fn build_rustls_client_config(
     config: &EstClientConfig,
     resolver: Option<Arc<dyn rustls::client::ResolvesClientCert>>,
