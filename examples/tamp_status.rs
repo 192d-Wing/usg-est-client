@@ -70,6 +70,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // The client's store now also contains the pulled anchors.
-    println!("\nLocal store now holds {} anchor(s).", client.store().len());
+    println!(
+        "\nLocal store now holds {} anchor(s).",
+        client.store().len()
+    );
     Ok(())
 }

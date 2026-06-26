@@ -41,8 +41,8 @@
 
 use cms::signed_data::{SignerIdentifier, SignerInfo};
 use const_oid::ObjectIdentifier;
-use der::asn1::{OctetString, SetOfVec};
 use der::Encode;
+use der::asn1::{OctetString, SetOfVec};
 use spki::SubjectPublicKeyInfoOwned;
 use x509_cert::attr::Attribute;
 
@@ -140,9 +140,8 @@ pub fn verify_message(msg: &TampMessage, store: &TrustAnchorStore) -> Result<Ver
         }
     }
 
-    Err(last_err.unwrap_or_else(|| {
-        EstError::tamp("no SignerInfo verified against a known trust anchor")
-    }))
+    Err(last_err
+        .unwrap_or_else(|| EstError::tamp("no SignerInfo verified against a known trust anchor")))
 }
 
 /// Verify a single `SignerInfo`; on success returns the signing TA's key id.
@@ -187,7 +186,12 @@ fn verify_one(
 
     // 3. Cryptographically verify.
     let signature = signer.signature.as_bytes();
-    verify_signature(&spki, signer.signature_algorithm.oid, &signed_bytes, signature)?;
+    verify_signature(
+        &spki,
+        signer.signature_algorithm.oid,
+        &signed_bytes,
+        signature,
+    )?;
 
     Ok(key_id)
 }
@@ -225,7 +229,10 @@ fn resolve_signer(
 /// Extract `(issuer, serialNumber)` from a certificate-style trust anchor.
 fn cert_issuer_serial(
     anchor: &x509_cert::anchor::TrustAnchorChoice,
-) -> Option<(x509_cert::name::Name, x509_cert::serial_number::SerialNumber)> {
+) -> Option<(
+    x509_cert::name::Name,
+    x509_cert::serial_number::SerialNumber,
+)> {
     use x509_cert::anchor::TrustAnchorChoice;
     match anchor {
         TrustAnchorChoice::Certificate(cert) => Some((
@@ -241,10 +248,7 @@ fn cert_issuer_serial(
 
 /// Enforce that the SignerInfo digestAlgorithm matches the hash implied by its
 /// signatureAlgorithm (RFC 5652 §5.4 binds the two together).
-fn check_digest_matches_sig(
-    digest_alg: ObjectIdentifier,
-    sig_alg: ObjectIdentifier,
-) -> Result<()> {
+fn check_digest_matches_sig(digest_alg: ObjectIdentifier, sig_alg: ObjectIdentifier) -> Result<()> {
     let expected = match sig_alg {
         RSA_SHA256 | ECDSA_SHA256 => OID_SHA256,
         RSA_SHA384 | ECDSA_SHA384 => OID_SHA384,
@@ -437,8 +441,8 @@ fn verify_rustcrypto(
             ok.map_err(|_| EstError::tamp("TAMP RSA signature verification failed"))
         }
         ECDSA_SHA256 => {
-            use p256::ecdsa::{Signature, VerifyingKey};
             use p256::ecdsa::signature::Verifier;
+            use p256::ecdsa::{Signature, VerifyingKey};
             let vk = VerifyingKey::from_sec1_bytes(key_bytes)
                 .map_err(|e| EstError::tamp(format!("parse P-256 key: {e}")))?;
             let sig = Signature::from_der(signature)
@@ -447,8 +451,8 @@ fn verify_rustcrypto(
                 .map_err(|_| EstError::tamp("TAMP ECDSA P-256 verification failed"))
         }
         ECDSA_SHA384 => {
-            use p384::ecdsa::{Signature, VerifyingKey};
             use p384::ecdsa::signature::Verifier;
+            use p384::ecdsa::{Signature, VerifyingKey};
             let vk = VerifyingKey::from_sec1_bytes(key_bytes)
                 .map_err(|e| EstError::tamp(format!("parse P-384 key: {e}")))?;
             let sig = Signature::from_der(signature)

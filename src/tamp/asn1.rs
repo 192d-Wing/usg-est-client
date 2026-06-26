@@ -197,10 +197,18 @@ pub struct TampSequenceNumber {
 #[derive(Clone, Debug, PartialEq, Eq, Sequence)]
 #[allow(missing_docs)]
 pub struct TampStatusQuery {
-    #[asn1(context_specific = "0", tag_mode = "IMPLICIT", default = "Default::default")]
+    #[asn1(
+        context_specific = "0",
+        tag_mode = "IMPLICIT",
+        default = "Default::default"
+    )]
     pub version: TampVersion,
 
-    #[asn1(context_specific = "1", tag_mode = "IMPLICIT", default = "Default::default")]
+    #[asn1(
+        context_specific = "1",
+        tag_mode = "IMPLICIT",
+        default = "Default::default"
+    )]
     pub terse: TerseOrVerbose,
 
     pub query: TampMsgRef,
@@ -269,7 +277,11 @@ pub enum StatusResponse {
 #[derive(Clone, Debug, PartialEq, Eq, Sequence)]
 #[allow(missing_docs)]
 pub struct TampStatusResponse {
-    #[asn1(context_specific = "0", tag_mode = "IMPLICIT", default = "Default::default")]
+    #[asn1(
+        context_specific = "0",
+        tag_mode = "IMPLICIT",
+        default = "Default::default"
+    )]
     pub version: TampVersion,
 
     pub query: TampMsgRef,
@@ -399,10 +411,18 @@ pub enum TrustAnchorUpdate {
 #[derive(Clone, Debug, PartialEq, Eq, Sequence)]
 #[allow(missing_docs)]
 pub struct TampUpdate {
-    #[asn1(context_specific = "0", tag_mode = "IMPLICIT", default = "Default::default")]
+    #[asn1(
+        context_specific = "0",
+        tag_mode = "IMPLICIT",
+        default = "Default::default"
+    )]
     pub version: TampVersion,
 
-    #[asn1(context_specific = "1", tag_mode = "IMPLICIT", default = "Default::default")]
+    #[asn1(
+        context_specific = "1",
+        tag_mode = "IMPLICIT",
+        default = "Default::default"
+    )]
     pub terse: TerseOrVerbose,
 
     pub msg_ref: TampMsgRef,
@@ -461,7 +481,11 @@ pub enum UpdateConfirm {
 #[derive(Clone, Debug, PartialEq, Eq, Sequence)]
 #[allow(missing_docs)]
 pub struct TampUpdateConfirm {
-    #[asn1(context_specific = "0", tag_mode = "IMPLICIT", default = "Default::default")]
+    #[asn1(
+        context_specific = "0",
+        tag_mode = "IMPLICIT",
+        default = "Default::default"
+    )]
     pub version: TampVersion,
 
     pub update: TampMsgRef,
@@ -486,10 +510,18 @@ pub struct TampUpdateConfirm {
 #[derive(Clone, Debug, PartialEq, Eq, Sequence)]
 #[allow(missing_docs)]
 pub struct TampApexUpdate {
-    #[asn1(context_specific = "0", tag_mode = "IMPLICIT", default = "Default::default")]
+    #[asn1(
+        context_specific = "0",
+        tag_mode = "IMPLICIT",
+        default = "Default::default"
+    )]
     pub version: TampVersion,
 
-    #[asn1(context_specific = "1", tag_mode = "IMPLICIT", default = "Default::default")]
+    #[asn1(
+        context_specific = "1",
+        tag_mode = "IMPLICIT",
+        default = "Default::default"
+    )]
     pub terse: TerseOrVerbose,
 
     pub msg_ref: TampMsgRef,
@@ -549,7 +581,11 @@ pub enum ApexUpdateConfirm {
 #[derive(Clone, Debug, PartialEq, Eq, Sequence)]
 #[allow(missing_docs)]
 pub struct TampApexUpdateConfirm {
-    #[asn1(context_specific = "0", tag_mode = "IMPLICIT", default = "Default::default")]
+    #[asn1(
+        context_specific = "0",
+        tag_mode = "IMPLICIT",
+        default = "Default::default"
+    )]
     pub version: TampVersion,
 
     pub apex_replace: TampMsgRef,
@@ -587,10 +623,18 @@ pub struct CommunityUpdates {
 #[derive(Clone, Debug, PartialEq, Eq, Sequence)]
 #[allow(missing_docs)]
 pub struct TampCommunityUpdate {
-    #[asn1(context_specific = "0", tag_mode = "IMPLICIT", default = "Default::default")]
+    #[asn1(
+        context_specific = "0",
+        tag_mode = "IMPLICIT",
+        default = "Default::default"
+    )]
     pub version: TampVersion,
 
-    #[asn1(context_specific = "1", tag_mode = "IMPLICIT", default = "Default::default")]
+    #[asn1(
+        context_specific = "1",
+        tag_mode = "IMPLICIT",
+        default = "Default::default"
+    )]
     pub terse: TerseOrVerbose,
 
     pub msg_ref: TampMsgRef,
@@ -636,7 +680,11 @@ pub enum CommunityConfirm {
 #[derive(Clone, Debug, PartialEq, Eq, Sequence)]
 #[allow(missing_docs)]
 pub struct TampCommunityUpdateConfirm {
-    #[asn1(context_specific = "0", tag_mode = "IMPLICIT", default = "Default::default")]
+    #[asn1(
+        context_specific = "0",
+        tag_mode = "IMPLICIT",
+        default = "Default::default"
+    )]
     pub version: TampVersion,
 
     pub update: TampMsgRef,
@@ -656,7 +704,11 @@ pub struct TampCommunityUpdateConfirm {
 #[derive(Clone, Debug, PartialEq, Eq, Sequence)]
 #[allow(missing_docs)]
 pub struct SequenceNumberAdjust {
-    #[asn1(context_specific = "0", tag_mode = "IMPLICIT", default = "Default::default")]
+    #[asn1(
+        context_specific = "0",
+        tag_mode = "IMPLICIT",
+        default = "Default::default"
+    )]
     pub version: TampVersion,
 
     pub msg_ref: TampMsgRef,
@@ -671,7 +723,11 @@ pub struct SequenceNumberAdjust {
 #[derive(Clone, Debug, PartialEq, Eq, Sequence)]
 #[allow(missing_docs)]
 pub struct SequenceNumberAdjustConfirm {
-    #[asn1(context_specific = "0", tag_mode = "IMPLICIT", default = "Default::default")]
+    #[asn1(
+        context_specific = "0",
+        tag_mode = "IMPLICIT",
+        default = "Default::default"
+    )]
     pub version: TampVersion,
 
     pub adjust: TampMsgRef,
@@ -693,7 +749,11 @@ pub struct SequenceNumberAdjustConfirm {
 #[derive(Clone, Debug, PartialEq, Eq, Sequence)]
 #[allow(missing_docs)]
 pub struct TampError {
-    #[asn1(context_specific = "0", tag_mode = "IMPLICIT", default = "Default::default")]
+    #[asn1(
+        context_specific = "0",
+        tag_mode = "IMPLICIT",
+        default = "Default::default"
+    )]
     pub version: TampVersion,
 
     pub msg_type: ObjectIdentifier,

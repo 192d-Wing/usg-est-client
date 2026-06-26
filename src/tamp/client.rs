@@ -59,7 +59,7 @@ use super::asn1::{
 use super::oid::TampContentType;
 use super::response::{self, TampSigner};
 use super::store::TrustAnchorStore;
-use super::verify::{verify_message, VerifiedMessage};
+use super::verify::{VerifiedMessage, verify_message};
 use super::wrapper::TampMessage;
 
 /// The outcome of processing one inbound TAMP message.
@@ -187,7 +187,11 @@ impl TampClient {
         let request = self.wrap_outbound(TampContentType::StatusQuery, &body)?;
 
         let response_bytes = self
-            .post(TampContentType::StatusQuery, TampContentType::StatusResponse, request)
+            .post(
+                TampContentType::StatusQuery,
+                TampContentType::StatusResponse,
+                request,
+            )
             .await?;
 
         let verified = self.verify_inbound(&response_bytes)?;
@@ -317,9 +321,7 @@ impl TampClient {
         // accepted as information but does not mutate the trust set.
         let from_apex = self.signer_is_apex(&verified.signer_key_id);
         let mut added = 0usize;
-        if from_apex
-            && let StatusResponse::Verbose(v) = &response.response
-        {
+        if from_apex && let StatusResponse::Verbose(v) = &response.response {
             for ta in &v.ta_info {
                 self.store.upsert(ta.clone(), false)?;
                 added += 1;

@@ -13,16 +13,16 @@ fn main() {
     let has_fips = std::env::var("CARGO_FEATURE_FIPS").is_ok();
     let has_fips_cng = std::env::var("CARGO_FEATURE_FIPS_CNG").is_ok();
 
-    if has_fips && has_fips_cng {
-        panic!(
-            "\n\
-            The `fips` and `fips-cng` features are mutually exclusive: `fips` links the\n\
-            aws-lc-rs FIPS module (Linux), while `fips-cng` routes crypto through Windows\n\
-            CNG/SChannel. Enable exactly one for the target platform.\n"
-        );
-    }
+    // These guards catch the likely *single-feature* mistake (picking the wrong
+    // FIPS backend for the target). They intentionally do NOT fire when BOTH
+    // `fips` and `fips-cng` are enabled together: that is what `--all-features`
+    // does, and it is harmless because all `fips-cng` code is gated on
+    // `cfg(all(windows, feature = "fips-cng"))`. On a non-Windows `--all-features`
+    // build the `fips-cng` code is inert and the `fips` (aws-lc-rs) path is used;
+    // on Windows, `fips` cannot link aws-lc-fips-sys, so that combination simply
+    // is not built in CI (the Windows job uses explicit feature sets).
 
-    if has_fips && target_os == "windows" {
+    if has_fips && !has_fips_cng && target_os == "windows" {
         panic!(
             "\n\
             The `fips` feature uses aws-lc-fips-sys, which does not build on Windows.\n\
@@ -32,7 +32,7 @@ fn main() {
         );
     }
 
-    if has_fips_cng && target_os != "windows" {
+    if has_fips_cng && !has_fips && target_os != "windows" {
         panic!(
             "\n\
             The `fips-cng` feature requires a Windows target (it routes crypto through\n\

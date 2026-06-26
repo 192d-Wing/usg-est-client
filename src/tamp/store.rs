@@ -308,7 +308,9 @@ fn default_false() -> bool {
 /// Extract the `SubjectPublicKeyInfo` from any `TrustAnchorChoice` variant.
 pub fn spki_of(anchor: &TrustAnchorChoice) -> Result<SubjectPublicKeyInfoOwned> {
     Ok(match anchor {
-        TrustAnchorChoice::Certificate(cert) => cert.tbs_certificate().subject_public_key_info().clone(),
+        TrustAnchorChoice::Certificate(cert) => {
+            cert.tbs_certificate().subject_public_key_info().clone()
+        }
         TrustAnchorChoice::TbsCertificate(tbs) => tbs.subject_public_key_info().clone(),
         TrustAnchorChoice::TaInfo(info) => info.pub_key.clone(),
     })
@@ -364,7 +366,9 @@ pub fn derive_key_id(anchor: &TrustAnchorChoice) -> Result<Vec<u8>> {
 /// Pull the raw Subject Key Identifier octets from an extension set, if present.
 fn subject_key_identifier(exts: Option<&x509_cert::ext::Extensions>) -> Option<Vec<u8>> {
     let exts = exts?;
-    let ext = exts.iter().find(|e| e.extn_id == OID_SUBJECT_KEY_IDENTIFIER)?;
+    let ext = exts
+        .iter()
+        .find(|e| e.extn_id == OID_SUBJECT_KEY_IDENTIFIER)?;
     // The extension value is a DER OCTET STRING wrapping the key id octets.
     OctetString::from_der(ext.extn_value.as_bytes())
         .ok()
@@ -422,7 +426,14 @@ mod tests {
             .upsert(make_ta_info(b"key-2bbb", "Root B"), false)
             .unwrap();
         assert_eq!(store.len(), 2);
-        assert_eq!(store.find_by_key_id(b"key-1aaa").unwrap().title().as_deref(), Some("Root A"));
+        assert_eq!(
+            store
+                .find_by_key_id(b"key-1aaa")
+                .unwrap()
+                .title()
+                .as_deref(),
+            Some("Root A")
+        );
         assert!(store.apex().is_some());
         assert_eq!(store.apex().unwrap().key_id, b"key-1aaa");
     }
@@ -433,8 +444,13 @@ mod tests {
         store.upsert(make_ta_info(b"key-aaaa", "A"), false).unwrap();
         store.accept_seq_num(b"key-aaaa", 5).unwrap();
         // Re-adding the same key id (same key) must not reset the counter.
-        store.upsert(make_ta_info(b"key-aaaa", "A-updated"), false).unwrap();
-        assert_eq!(store.find_by_key_id(b"key-aaaa").unwrap().last_seq_num, Some(5));
+        store
+            .upsert(make_ta_info(b"key-aaaa", "A-updated"), false)
+            .unwrap();
+        assert_eq!(
+            store.find_by_key_id(b"key-aaaa").unwrap().last_seq_num,
+            Some(5)
+        );
         assert!(store.check_seq_num(b"key-aaaa", 5).is_err());
     }
 
@@ -443,7 +459,9 @@ mod tests {
         // Two distinct taInfo anchors that share an (explicit) key id but carry
         // different public keys must not silently overwrite each other.
         let mut store = TrustAnchorStore::new();
-        store.upsert(make_ta_info(b"shared-id-1", "A"), false).unwrap();
+        store
+            .upsert(make_ta_info(b"shared-id-1", "A"), false)
+            .unwrap();
         let colliding = match make_ta_info(b"shared-id-1", "B") {
             TrustAnchorChoice::TaInfo(mut info) => {
                 // Force a different public key under the same key id.
@@ -461,18 +479,34 @@ mod tests {
         let mut store = TrustAnchorStore::new();
         store.upsert(make_ta_info(b"key-aaaa", "A"), false).unwrap();
         store.accept_seq_num(b"key-aaaa", 10).unwrap();
-        assert!(store.check_seq_num(b"key-aaaa", 10).is_err(), "equal seq must be replay");
-        assert!(store.check_seq_num(b"key-aaaa", 9).is_err(), "lower seq must be replay");
-        assert!(store.check_seq_num(b"key-aaaa", 11).is_ok(), "higher seq is fresh");
+        assert!(
+            store.check_seq_num(b"key-aaaa", 10).is_err(),
+            "equal seq must be replay"
+        );
+        assert!(
+            store.check_seq_num(b"key-aaaa", 9).is_err(),
+            "lower seq must be replay"
+        );
+        assert!(
+            store.check_seq_num(b"key-aaaa", 11).is_ok(),
+            "higher seq is fresh"
+        );
         store.accept_seq_num(b"key-aaaa", 11).unwrap();
-        assert_eq!(store.find_by_key_id(b"key-aaaa").unwrap().last_seq_num, Some(11));
+        assert_eq!(
+            store.find_by_key_id(b"key-aaaa").unwrap().last_seq_num,
+            Some(11)
+        );
     }
 
     #[test]
     fn clear_non_apex_keeps_apex() {
         let mut store = TrustAnchorStore::new();
-        store.upsert(make_ta_info(b"apex-aaaa", "Apex"), true).unwrap();
-        store.upsert(make_ta_info(b"leaf-bbbb", "Leaf"), false).unwrap();
+        store
+            .upsert(make_ta_info(b"apex-aaaa", "Apex"), true)
+            .unwrap();
+        store
+            .upsert(make_ta_info(b"leaf-bbbb", "Leaf"), false)
+            .unwrap();
         store.clear_non_apex();
         assert_eq!(store.len(), 1);
         assert!(store.apex().is_some());
@@ -481,14 +515,21 @@ mod tests {
     #[test]
     fn der_round_trip_preserves_everything() {
         let mut store = TrustAnchorStore::new();
-        store.upsert(make_ta_info(b"key-1aaa", "Root A"), true).unwrap();
-        store.upsert(make_ta_info(b"key-2bbb", "Root B"), false).unwrap();
+        store
+            .upsert(make_ta_info(b"key-1aaa", "Root A"), true)
+            .unwrap();
+        store
+            .upsert(make_ta_info(b"key-2bbb", "Root B"), false)
+            .unwrap();
         store.accept_seq_num(b"key-1aaa", 42).unwrap();
 
         let der = store.to_der().unwrap();
         let restored = TrustAnchorStore::from_der(&der).unwrap();
         assert_eq!(store, restored);
-        assert_eq!(restored.find_by_key_id(b"key-1aaa").unwrap().last_seq_num, Some(42));
+        assert_eq!(
+            restored.find_by_key_id(b"key-1aaa").unwrap().last_seq_num,
+            Some(42)
+        );
         assert!(restored.apex().is_some());
     }
 
@@ -497,7 +538,9 @@ mod tests {
         // A store whose persisted key_id does not match its anchor must be
         // rejected (tamper / corruption guard).
         let mut store = TrustAnchorStore::new();
-        store.upsert(make_ta_info(b"key-1aaa", "Root A"), true).unwrap();
+        store
+            .upsert(make_ta_info(b"key-1aaa", "Root A"), true)
+            .unwrap();
         let der = store.to_der().unwrap();
         // Decode, corrupt the key_id, re-encode, and confirm from_der rejects it.
         let mut persisted = PersistedStore::from_der(&der).unwrap();

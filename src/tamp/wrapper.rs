@@ -36,8 +36,7 @@ use crate::error::{EstError, Result};
 use super::oid::TampContentType;
 
 /// CMS `id-signedData` content type (RFC 5652): `1.2.840.113549.1.7.2`.
-const ID_SIGNED_DATA: ObjectIdentifier =
-    ObjectIdentifier::new_unwrap("1.2.840.113549.1.7.2");
+const ID_SIGNED_DATA: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.7.2");
 
 /// CMS `id-data` content type (RFC 5652): `1.2.840.113549.1.7.1`.
 ///
@@ -118,10 +117,9 @@ impl TampMessage {
 
 /// Pull the inner message DER out of an `EncapsulatedContentInfo`.
 fn extract_econtent(eci: &EncapsulatedContentInfo) -> Result<Vec<u8>> {
-    let any = eci
-        .econtent
-        .as_ref()
-        .ok_or_else(|| EstError::tamp("CMS eContent is absent (detached TAMP messages are not allowed)"))?;
+    let any = eci.econtent.as_ref().ok_or_else(|| {
+        EstError::tamp("CMS eContent is absent (detached TAMP messages are not allowed)")
+    })?;
 
     // eContent is an OCTET STRING; its value octets are the encapsulated DER.
     if any.tag() != Tag::OctetString {
@@ -211,7 +209,9 @@ fn normalize_to_der(body: &[u8]) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tamp::asn1::{TampStatusQuery, TampMsgRef, TargetIdentifier, TampVersion, TerseOrVerbose};
+    use crate::tamp::asn1::{
+        TampMsgRef, TampStatusQuery, TampVersion, TargetIdentifier, TerseOrVerbose,
+    };
 
     // Build a self-signed-free SignedData purely to exercise the structural
     // wrap → parse round trip (no real signer; signer_infos empty).
@@ -242,7 +242,10 @@ mod tests {
 
         let parsed = TampMessage::parse(&cms_der).unwrap();
         assert_eq!(parsed.content_type, Some(TampContentType::StatusQuery));
-        assert_eq!(parsed.econtent_type, crate::tamp::oid::ID_CT_TAMP_STATUS_QUERY);
+        assert_eq!(
+            parsed.econtent_type,
+            crate::tamp::oid::ID_CT_TAMP_STATUS_QUERY
+        );
         assert_eq!(parsed.econtent, msg_der);
         // And the inner bytes decode back to the original message.
         let back = TampStatusQuery::from_der(&parsed.econtent).unwrap();

@@ -297,7 +297,9 @@ fn parse_signing_key(key_pem: &[u8]) -> Result<SigningKey> {
     use pkcs8::DecodePrivateKey as _;
 
     if let Ok(sk) = rsa::RsaPrivateKey::from_pkcs8_der(der) {
-        return Ok(SigningKey::Rsa(Box::new(rsa::pkcs1v15::SigningKey::new(sk))));
+        return Ok(SigningKey::Rsa(Box::new(rsa::pkcs1v15::SigningKey::new(
+            sk,
+        ))));
     }
     if let Ok(sk) = p256::ecdsa::SigningKey::from_pkcs8_der(der) {
         return Ok(SigningKey::P256(Box::new(sk)));

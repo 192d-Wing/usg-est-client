@@ -298,9 +298,8 @@ fn build_http_client_fips_cng(config: &EstClientConfig) -> Result<reqwest::Clien
                  Use the rustls build for strict pinning."
             );
             for ca_pem in ca_certs {
-                let cert = reqwest::Certificate::from_pem(ca_pem).map_err(|e| {
-                    EstError::tls(format!("Failed to parse CA certificate: {e}"))
-                })?;
+                let cert = reqwest::Certificate::from_pem(ca_pem)
+                    .map_err(|e| EstError::tls(format!("Failed to parse CA certificate: {e}")))?;
                 builder = builder.add_root_certificate(cert);
             }
         }
@@ -695,10 +694,16 @@ Ur9b5dTSP0o0tErOk85mFlPR7Lwtmg==
         assert_eq!(decoded.as_slice(), &challenge);
     }
 
+    // The transport-wiring tests below exercise the rustls/reqwest path. Under the
+    // Windows `fips-cng` build, `build_http_client` dispatches to the CNG/native-tls
+    // path which fail-closes on the OS FIPS policy, so these rustls-specific
+    // assertions do not apply there.
     /// Minimal client-cert resolver stand-in (no token needed) for exercising the
     /// transport wiring around `client_cert_resolver`.
+    #[cfg(not(all(windows, feature = "fips-cng")))]
     #[derive(Debug)]
     struct StubResolver;
+    #[cfg(not(all(windows, feature = "fips-cng")))]
     impl rustls::client::ResolvesClientCert for StubResolver {
         fn resolve(
             &self,
@@ -712,6 +717,7 @@ Ur9b5dTSP0o0tErOk85mFlPR7Lwtmg==
         }
     }
 
+    #[cfg(not(all(windows, feature = "fips-cng")))]
     fn config_with(
         identity: Option<ClientIdentity>,
         resolver: Option<Arc<dyn rustls::client::ResolvesClientCert>>,
@@ -729,6 +735,7 @@ Ur9b5dTSP0o0tErOk85mFlPR7Lwtmg==
     /// A PEM identity and a token-backed resolver are mutually exclusive; the
     /// transport must refuse rather than silently pick one. (Returns before any
     /// crypto provider is needed.)
+    #[cfg(not(all(windows, feature = "fips-cng")))]
     #[test]
     fn build_http_client_rejects_both_identities() {
         let identity = ClientIdentity {
@@ -741,6 +748,7 @@ Ur9b5dTSP0o0tErOk85mFlPR7Lwtmg==
     }
 
     /// A resolver-only config builds a client via the preconfigured-rustls path.
+    #[cfg(not(all(windows, feature = "fips-cng")))]
     #[test]
     fn build_http_client_accepts_resolver() {
         // The preconfigured ClientConfig builder uses the process-default crypto
@@ -753,6 +761,7 @@ Ur9b5dTSP0o0tErOk85mFlPR7Lwtmg==
     /// A token-backed resolver must refuse Bootstrap/Insecure trust (the
     /// preconfigured-rustls path has no danger-accept escape hatch) rather than
     /// build a config that rejects every server.
+    #[cfg(not(all(windows, feature = "fips-cng")))]
     #[test]
     fn resolver_rejects_insecure_trust() {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
