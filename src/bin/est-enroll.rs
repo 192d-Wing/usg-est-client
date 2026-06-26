@@ -302,6 +302,15 @@ enum TampAction {
         /// Save the updated trust anchor store (DER) to this path.
         #[arg(long)]
         save_store: Option<PathBuf>,
+
+        /// Signer certificate (PEM) used to sign the confirm/error reply.
+        /// Requires --signer-key. Without both, no signed reply is produced.
+        #[arg(long, requires = "signer_key")]
+        signer_cert: Option<PathBuf>,
+
+        /// Signer private key (PEM, PKCS#8) paired with --signer-cert.
+        #[arg(long, requires = "signer_cert")]
+        signer_key: Option<PathBuf>,
     },
 }
 
@@ -1480,12 +1489,16 @@ async fn cmd_tamp(cli: &Cli, action: &TampAction) -> Result<(), Box<dyn std::err
             trust_anchor,
             output,
             save_store,
+            signer_cert,
+            signer_key,
         } => cmd_tamp_process(
             message,
             trust_store.as_deref(),
             trust_anchor.as_deref(),
             output.as_deref(),
             save_store.as_deref(),
+            signer_cert.as_deref(),
+            signer_key.as_deref(),
         ),
     }
 }
@@ -1561,20 +1574,31 @@ fn cmd_tamp_export(
 }
 
 #[cfg(feature = "tamp")]
+#[allow(clippy::too_many_arguments)]
 fn cmd_tamp_process(
     message: &std::path::Path,
     trust_store: Option<&std::path::Path>,
     trust_anchor: Option<&std::path::Path>,
     output: Option<&std::path::Path>,
     save_store: Option<&std::path::Path>,
+    signer_cert: Option<&std::path::Path>,
+    signer_key: Option<&std::path::Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use usg_est_client::tamp::TampClient;
+    use usg_est_client::tamp::{TampClient, TampSigner};
 
     let store = load_tamp_store(trust_store, trust_anchor)?;
     // Offline: process() does no network I/O, so build no TLS/reqwest client.
     // This keeps the air-gapped `tamp process` path independent of the platform
     // TLS stack and (under fips-cng) the Windows FIPS algorithm policy.
     let mut client = TampClient::offline(store);
+
+    // A signer (clap requires the cert/key pair together) lets process() emit a
+    // signed confirm/error reply.
+    if let (Some(cert_path), Some(key_path)) = (signer_cert, signer_key) {
+        let cert_pem = std::fs::read(cert_path)?;
+        let key_pem = std::fs::read(key_path)?;
+        client = client.with_signer(TampSigner::from_pem(&cert_pem, &key_pem)?);
+    }
 
     let bytes = std::fs::read(message)?;
     let processed = client.process(&bytes)?;
@@ -1594,6 +1618,8 @@ fn cmd_tamp_process(
                 reply.len()
             ),
         }
+    } else if signer_cert.is_some() {
+        println!("No reply message was called for by this TAMP message.");
     }
 
     if let Some(path) = save_store {

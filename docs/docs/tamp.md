@@ -115,12 +115,18 @@ est-enroll tamp status \
 # Print the anchors held in a saved store:
 est-enroll tamp export --trust-store store.der --format text
 
-# Verify and apply a TAMP update received out of band, emit the signed confirm:
+# Verify and apply a TAMP update received out of band, sign the confirm reply:
 est-enroll tamp process update.cms \
     --trust-store store.der \
+    --signer-cert client.pem \
+    --signer-key client-key.pem \
     --output confirm.cms \
     --save-store store.der
 ```
+
+`tamp process` runs fully offline (no TLS/network, and under `fips-cng` it does
+not require the Windows FIPS policy). A signed confirm/error reply is produced
+only when both `--signer-cert` and `--signer-key` are supplied.
 
 ## Scope and limitations
 
