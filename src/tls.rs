@@ -108,6 +108,24 @@ use crate::error::{EstError, Result};
 /// - Client certificate/key parsing fails
 /// - HTTP client builder fails
 pub fn build_http_client(config: &EstClientConfig) -> Result<reqwest::Client> {
+    // Dispatch by TLS backend. On Windows under `fips-cng` the transport is
+    // native-tls/SChannel + CNG (`build_http_client_fips_cng`, which references
+    // `crate::windows`); every other build uses the rustls path. The two are
+    // mutually exclusive at the cfg level, so neither leaves unreachable code.
+    #[cfg(all(windows, feature = "fips-cng"))]
+    {
+        build_http_client_fips_cng(config)
+    }
+    #[cfg(not(all(windows, feature = "fips-cng")))]
+    {
+        build_http_client_rustls(config)
+    }
+}
+
+/// Build a reqwest client over the rustls backend — the default path used on
+/// every build except Windows `fips-cng`.
+#[cfg(not(all(windows, feature = "fips-cng")))]
+fn build_http_client_rustls(config: &EstClientConfig) -> Result<reqwest::Client> {
     // Fail closed: when built for FIPS, ensure the FIPS-validated rustls provider
     // is installed as the process default *before* reqwest builds its TLS config,
     // so the HTTPS transport cannot silently fall back to non-validated crypto.
@@ -220,6 +238,95 @@ pub fn build_http_client(config: &EstClientConfig) -> Result<reqwest::Client> {
         .map_err(|e| EstError::tls(format!("Failed to build HTTP client: {}", e)))
 }
 
+/// Build a reqwest Client using native-tls (SChannel) for the `fips-cng` feature.
+///
+/// Fails closed if the Windows FIPS algorithm policy is not enabled in Local Security
+/// Policy. SChannel then inherits that policy for all TLS operations; key generation
+/// and signing go through CNG via [`crate::windows::CngKeyProvider::new_fips`].
+///
+/// The `client_cert_resolver` (PKCS#11 token) path is not supported here because it
+/// requires a rustls `ResolvesClientCert`; use a PEM identity backed by CNG instead.
+#[cfg(all(windows, feature = "fips-cng"))]
+fn build_http_client_fips_cng(config: &EstClientConfig) -> Result<reqwest::Client> {
+    // Fail-closed: verify the OS FIPS algorithm policy before building any TLS context.
+    if !crate::windows::CngKeyProvider::is_fips_mode_enabled()
+        .map_err(|e| EstError::platform(format!("cannot query Windows FIPS policy: {e}")))?
+    {
+        return Err(EstError::platform(
+            "Windows FIPS algorithm policy is not enabled; enable it in Local Security Policy \
+             ('System cryptography: Use FIPS compliant algorithms for encryption, hashing, \
+             and signing') before using the fips-cng feature",
+        ));
+    }
+
+    if config.client_identity.is_some() && config.client_cert_resolver.is_some() {
+        return Err(EstError::tls(
+            "client_identity (PEM) and client_cert_resolver (PKCS#11) are mutually exclusive"
+                .to_string(),
+        ));
+    }
+
+    if config.client_cert_resolver.is_some() {
+        return Err(EstError::tls(
+            "client_cert_resolver (rustls PKCS#11 resolver) is not supported with fips-cng; \
+             use a PEM identity backed by a CNG key instead"
+                .to_string(),
+        ));
+    }
+
+    let mut builder = reqwest::Client::builder()
+        .timeout(config.timeout)
+        .use_native_tls()
+        .min_tls_version(reqwest::tls::Version::TLS_1_3);
+
+    match &config.trust_anchors {
+        TrustAnchors::WebPki => {
+            // native-tls uses the Windows certificate store by default — correct behaviour
+            // for a domain-joined machine whose root CAs are pushed via Group Policy.
+        }
+        TrustAnchors::Explicit(ca_certs) => {
+            // native-tls on Windows cannot *replace* the system trust store (only
+            // reqwest+rustls can, via tls_certs_only), so explicit anchors are
+            // ADDITIVE: the caller's CAs are trusted *in addition to* every CA in
+            // the Windows store. This is weaker than the pinned-trust the rustls
+            // path gives. Warn loudly so the widened trust boundary is not silent;
+            // a deployment needing strict pinning must use the non-fips-cng
+            // (rustls) build.
+            tracing::warn!(
+                "fips-cng: TrustAnchors::Explicit is additive to the Windows certificate store \
+                 (native-tls/SChannel cannot replace it); the explicit anchors do NOT pin trust. \
+                 Use the rustls build for strict pinning."
+            );
+            for ca_pem in ca_certs {
+                let cert = reqwest::Certificate::from_pem(ca_pem)
+                    .map_err(|e| EstError::tls(format!("Failed to parse CA certificate: {e}")))?;
+                builder = builder.add_root_certificate(cert);
+            }
+        }
+        TrustAnchors::Bootstrap(bootstrap_config) => {
+            if std::time::Instant::now() > bootstrap_config.expires_at {
+                return Err(EstError::tls(
+                    "Bootstrap mode has expired. Reconfigure with explicit trust anchors."
+                        .to_string(),
+                ));
+            }
+            builder = builder.danger_accept_invalid_certs(true);
+        }
+        TrustAnchors::InsecureAcceptAny => {
+            builder = builder.danger_accept_invalid_certs(true);
+        }
+    }
+
+    if let Some(ref identity) = config.client_identity {
+        let identity = build_reqwest_identity(identity)?;
+        builder = builder.identity(identity);
+    }
+
+    apply_default_headers(builder, config)
+        .build()
+        .map_err(|e| EstError::tls(format!("Failed to build HTTP client: {e}")))
+}
+
 /// Build a reqwest Identity from PEM-encoded certificate and key.
 fn build_reqwest_identity(identity: &ClientIdentity) -> Result<reqwest::Identity> {
     // Combine cert and key into a single PEM buffer for reqwest
@@ -253,7 +360,9 @@ fn apply_default_headers(
 /// client-certificate `resolver` or no client authentication.
 ///
 /// Used when the client's private key cannot be exported to PEM (PKCS#11/TPM),
-/// so reqwest's PEM `Identity` path is unavailable.
+/// so reqwest's PEM `Identity` path is unavailable. Only the rustls path uses
+/// this, so it is cfg'd out of the Windows `fips-cng` (native-tls) build.
+#[cfg(not(all(windows, feature = "fips-cng")))]
 fn build_rustls_client_config(
     config: &EstClientConfig,
     resolver: Option<Arc<dyn rustls::client::ResolvesClientCert>>,
@@ -585,10 +694,16 @@ Ur9b5dTSP0o0tErOk85mFlPR7Lwtmg==
         assert_eq!(decoded.as_slice(), &challenge);
     }
 
+    // The transport-wiring tests below exercise the rustls/reqwest path. Under the
+    // Windows `fips-cng` build, `build_http_client` dispatches to the CNG/native-tls
+    // path which fail-closes on the OS FIPS policy, so these rustls-specific
+    // assertions do not apply there.
     /// Minimal client-cert resolver stand-in (no token needed) for exercising the
     /// transport wiring around `client_cert_resolver`.
+    #[cfg(not(all(windows, feature = "fips-cng")))]
     #[derive(Debug)]
     struct StubResolver;
+    #[cfg(not(all(windows, feature = "fips-cng")))]
     impl rustls::client::ResolvesClientCert for StubResolver {
         fn resolve(
             &self,
@@ -602,6 +717,7 @@ Ur9b5dTSP0o0tErOk85mFlPR7Lwtmg==
         }
     }
 
+    #[cfg(not(all(windows, feature = "fips-cng")))]
     fn config_with(
         identity: Option<ClientIdentity>,
         resolver: Option<Arc<dyn rustls::client::ResolvesClientCert>>,
@@ -619,6 +735,7 @@ Ur9b5dTSP0o0tErOk85mFlPR7Lwtmg==
     /// A PEM identity and a token-backed resolver are mutually exclusive; the
     /// transport must refuse rather than silently pick one. (Returns before any
     /// crypto provider is needed.)
+    #[cfg(not(all(windows, feature = "fips-cng")))]
     #[test]
     fn build_http_client_rejects_both_identities() {
         let identity = ClientIdentity {
@@ -631,6 +748,7 @@ Ur9b5dTSP0o0tErOk85mFlPR7Lwtmg==
     }
 
     /// A resolver-only config builds a client via the preconfigured-rustls path.
+    #[cfg(not(all(windows, feature = "fips-cng")))]
     #[test]
     fn build_http_client_accepts_resolver() {
         // The preconfigured ClientConfig builder uses the process-default crypto
@@ -643,6 +761,7 @@ Ur9b5dTSP0o0tErOk85mFlPR7Lwtmg==
     /// A token-backed resolver must refuse Bootstrap/Insecure trust (the
     /// preconfigured-rustls path has no danger-accept escape hatch) rather than
     /// build a config that rejects every server.
+    #[cfg(not(all(windows, feature = "fips-cng")))]
     #[test]
     fn resolver_rejects_insecure_trust() {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();

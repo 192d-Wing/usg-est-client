@@ -98,7 +98,10 @@ jobs:
       # Include `validation` so cert-chain signature verification, and `enveloped`
       # so AES-CBC EnvelopedData decryption, are exercised through the aws-lc-rs
       # FIPS module (against the real cert fixtures / known-answer crypto tests).
-      - run: cargo test --no-default-features --features fips,validation,enveloped --verbose
+      # `tamp` is auto-enabled by `fips`; list it explicitly so the FIPS + TAMP
+      # combination (RFC 5934 client through the FIPS-aware crypto path) is built
+      # and tested here — this is the only place that combination is exercised.
+      - run: cargo test --no-default-features --features fips,tamp,validation,enveloped --verbose
       # Verify the deprecated `fips-tls` alias still resolves to `fips`.
       - run: cargo build --no-default-features --features fips-tls
 
@@ -120,6 +123,30 @@ jobs:
           toolchain: stable
       - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
       - run: cargo test --features "${{ matrix.features }}" --verbose
+
+  # Windows FIPS via CNG + native-tls/SChannel (the `fips-cng` feature) and the
+  # `dod-windows` umbrella. fips-cng is `cfg(all(windows, ...))`-gated, so it must
+  # be built on a Windows runner — without this job the Windows FIPS transport is
+  # never compiled in CI. The CNG path fail-closes on the OS FIPS policy (off on
+  # the hosted runner), so the rustls-specific transport tests are cfg'd out; this
+  # verifies the Windows FIPS path COMPILES (lib + est-enroll CLI) and that the
+  # TAMP/store/verify logic passes there.
+  fips-cng:
+    name: Windows FIPS (fips-cng)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+      # Library + the est-enroll CLI (incl. the `tamp` subcommand) on the Windows
+      # FIPS path.
+      - run: cargo build --features cli,fips-cng --verbose
+      # The full DoD-on-Windows umbrella (fips-cng + dod-pki).
+      - run: cargo build --features dod-windows --verbose
+      # TAMP client + store + signature-verification logic under fips-cng.
+      - run: cargo test --features fips-cng --lib --verbose
 
   # ===========================================================================
   # Lint

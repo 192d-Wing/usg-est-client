@@ -160,6 +160,9 @@ pub(crate) mod fips_crypto;
 #[cfg(feature = "dod-pki")]
 pub mod dod;
 
+#[cfg(feature = "tamp")]
+pub mod tamp;
+
 #[cfg(feature = "renewal")]
 pub mod renewal;
 

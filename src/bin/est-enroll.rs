@@ -230,6 +230,88 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+
+    /// Trust Anchor Management Protocol (RFC 5934) operations.
+    #[cfg(feature = "tamp")]
+    Tamp {
+        #[command(subcommand)]
+        action: TampAction,
+    },
+}
+
+/// TAMP (RFC 5934) client subcommands.
+#[cfg(feature = "tamp")]
+#[derive(Subcommand)]
+enum TampAction {
+    /// Pull current trust anchor information from a TAMP server.
+    Status {
+        /// TAMP management endpoint URL.
+        #[arg(long)]
+        tamp_url: String,
+
+        /// Pre-provisioned trust anchor store (DER) used to verify the response.
+        #[arg(long)]
+        trust_store: Option<PathBuf>,
+
+        /// Seed the store with a single PEM trust anchor (used as apex) instead
+        /// of a saved store. Required if --trust-store is not given.
+        #[arg(long)]
+        trust_anchor: Option<PathBuf>,
+
+        /// Request the terse (key-id-only) response form.
+        #[arg(long)]
+        terse: bool,
+
+        /// Save the resulting trust anchor store (DER) to this path.
+        #[arg(long)]
+        save_store: Option<PathBuf>,
+
+        /// Output format (text, json, pem).
+        #[arg(long, default_value = "text")]
+        format: OutputFormat,
+    },
+
+    /// Print the trust anchors held in a saved trust anchor store.
+    Export {
+        /// Trust anchor store file (DER) produced by `tamp status --save-store`.
+        #[arg(long)]
+        trust_store: PathBuf,
+
+        /// Output format (text, json, pem).
+        #[arg(long, default_value = "pem")]
+        format: OutputFormat,
+    },
+
+    /// Verify and apply a TAMP message received out-of-band (file).
+    Process {
+        /// File containing the TAMP CMS message (DER or base64).
+        message: PathBuf,
+
+        /// Trust anchor store (DER) used to verify the message.
+        #[arg(long)]
+        trust_store: Option<PathBuf>,
+
+        /// Seed trust anchor (PEM, used as apex) if no --trust-store is given.
+        #[arg(long)]
+        trust_anchor: Option<PathBuf>,
+
+        /// Write the signed confirm message (if produced) to this path.
+        #[arg(long)]
+        output: Option<PathBuf>,
+
+        /// Save the updated trust anchor store (DER) to this path.
+        #[arg(long)]
+        save_store: Option<PathBuf>,
+
+        /// Signer certificate (PEM) used to sign the confirm/error reply.
+        /// Requires --signer-key. Without both, no signed reply is produced.
+        #[arg(long, requires = "signer_key")]
+        signer_cert: Option<PathBuf>,
+
+        /// Signer private key (PEM, PKCS#8) paired with --signer-cert.
+        #[arg(long, requires = "signer_cert")]
+        signer_key: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -380,6 +462,8 @@ async fn run_command(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             cmd_cert_info(&cli, thumbprint.clone(), *format).await
         }
         Commands::TestCsr { format, output } => cmd_test_csr(&cli, *format, output.clone()).await,
+        #[cfg(feature = "tamp")]
+        Commands::Tamp { action } => cmd_tamp(&cli, action).await,
     }
 }
 
@@ -1367,4 +1451,276 @@ async fn validate_insecure_usage(server_url: &str) -> Result<(), Box<dyn std::er
         ALLOWED_TEST_SERVER, server_url, host, server_url
     )
     .into())
+}
+
+// ============================================================================
+// TAMP (RFC 5934) command implementations
+// ============================================================================
+
+#[cfg(feature = "tamp")]
+async fn cmd_tamp(cli: &Cli, action: &TampAction) -> Result<(), Box<dyn std::error::Error>> {
+    match action {
+        TampAction::Status {
+            tamp_url,
+            trust_store,
+            trust_anchor,
+            terse,
+            save_store,
+            format,
+        } => {
+            cmd_tamp_status(
+                cli,
+                tamp_url,
+                trust_store.as_deref(),
+                trust_anchor.as_deref(),
+                *terse,
+                save_store.as_deref(),
+                *format,
+            )
+            .await
+        }
+        TampAction::Export {
+            trust_store,
+            format,
+        } => cmd_tamp_export(trust_store, *format),
+        TampAction::Process {
+            message,
+            trust_store,
+            trust_anchor,
+            output,
+            save_store,
+            signer_cert,
+            signer_key,
+        } => cmd_tamp_process(
+            message,
+            trust_store.as_deref(),
+            trust_anchor.as_deref(),
+            output.as_deref(),
+            save_store.as_deref(),
+            signer_cert.as_deref(),
+            signer_key.as_deref(),
+        ),
+    }
+}
+
+/// Load a trust anchor store from a saved store file or a seed PEM anchor.
+#[cfg(feature = "tamp")]
+fn load_tamp_store(
+    trust_store: Option<&std::path::Path>,
+    trust_anchor: Option<&std::path::Path>,
+) -> Result<usg_est_client::tamp::TrustAnchorStore, Box<dyn std::error::Error>> {
+    use der::DecodePem;
+    use usg_est_client::tamp::TrustAnchorStore;
+
+    if let Some(path) = trust_store {
+        let der = std::fs::read(path)?;
+        return Ok(TrustAnchorStore::from_der(&der)?);
+    }
+    if let Some(path) = trust_anchor {
+        let pem = std::fs::read(path)?;
+        let cert = usg_est_client::Certificate::from_pem(&pem)?;
+        let mut store = TrustAnchorStore::new();
+        store.upsert(
+            x509_cert::anchor::TrustAnchorChoice::Certificate(cert),
+            true,
+        )?;
+        return Ok(store);
+    }
+    Err("a trust root is required: pass --trust-store <der> or --trust-anchor <pem>".into())
+}
+
+#[cfg(feature = "tamp")]
+#[allow(clippy::too_many_arguments)]
+async fn cmd_tamp_status(
+    _cli: &Cli,
+    tamp_url: &str,
+    trust_store: Option<&std::path::Path>,
+    trust_anchor: Option<&std::path::Path>,
+    terse: bool,
+    save_store: Option<&std::path::Path>,
+    format: OutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use usg_est_client::tamp::TampClient;
+
+    let store = load_tamp_store(trust_store, trust_anchor)?;
+
+    println!("Querying TAMP status from {}...", tamp_url);
+    let est_config = usg_est_client::EstClientConfig::builder()
+        .server_url(tamp_url)?
+        .build()?;
+    let mut client = TampClient::new(est_config, tamp_url, store)?;
+
+    let _response = client.status_query_all(terse).await?;
+    let store = client.store();
+
+    print_tamp_anchors(store, format)?;
+
+    if let Some(path) = save_store {
+        std::fs::write(path, store.to_der()?)?;
+        println!("\nTrust anchor store saved to {}", path.display());
+    }
+    Ok(())
+}
+
+#[cfg(feature = "tamp")]
+fn cmd_tamp_export(
+    trust_store: &std::path::Path,
+    format: OutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use usg_est_client::tamp::TrustAnchorStore;
+    let der = std::fs::read(trust_store)?;
+    let store = TrustAnchorStore::from_der(&der)?;
+    print_tamp_anchors(&store, format)
+}
+
+#[cfg(feature = "tamp")]
+#[allow(clippy::too_many_arguments)]
+fn cmd_tamp_process(
+    message: &std::path::Path,
+    trust_store: Option<&std::path::Path>,
+    trust_anchor: Option<&std::path::Path>,
+    output: Option<&std::path::Path>,
+    save_store: Option<&std::path::Path>,
+    signer_cert: Option<&std::path::Path>,
+    signer_key: Option<&std::path::Path>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use usg_est_client::tamp::{TampClient, TampSigner};
+
+    let store = load_tamp_store(trust_store, trust_anchor)?;
+    // Offline: process() does no network I/O, so build no TLS/reqwest client.
+    // This keeps the air-gapped `tamp process` path independent of the platform
+    // TLS stack and (under fips-cng) the Windows FIPS algorithm policy.
+    let mut client = TampClient::offline(store);
+
+    // A signer (clap requires the cert/key pair together) lets process() emit a
+    // signed confirm/error reply.
+    if let (Some(cert_path), Some(key_path)) = (signer_cert, signer_key) {
+        let cert_pem = std::fs::read(cert_path)?;
+        let key_pem = std::fs::read(key_path)?;
+        client = client.with_signer(TampSigner::from_pem(&cert_pem, &key_pem)?);
+    }
+
+    let bytes = std::fs::read(message)?;
+    let processed = client.process(&bytes)?;
+    println!(
+        "Processed {:?}: {}",
+        processed.content_type, processed.summary
+    );
+
+    if let Some(reply) = &processed.reply {
+        match output {
+            Some(path) => {
+                std::fs::write(path, reply)?;
+                println!("Signed confirm written to {}", path.display());
+            }
+            None => println!(
+                "A signed confirm ({} bytes) was produced; pass --output to save it.",
+                reply.len()
+            ),
+        }
+    } else if signer_cert.is_some() {
+        // A signer was supplied but process() produced no reply. This is expected
+        // for messages that need no confirm; note that apex-update confirms are
+        // not yet emitted, so don't claim a reply was definitively "not called for".
+        println!(
+            "No reply message was produced (none required, or the confirm for this \
+             message type is not yet implemented)."
+        );
+    }
+
+    if let Some(path) = save_store {
+        std::fs::write(path, client.store().to_der()?)?;
+        println!("Updated trust anchor store saved to {}", path.display());
+    }
+    Ok(())
+}
+
+/// Print the trust anchors in a store in the requested format.
+#[cfg(feature = "tamp")]
+fn print_tamp_anchors(
+    store: &usg_est_client::tamp::TrustAnchorStore,
+    format: OutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use der::Encode;
+    use x509_cert::anchor::TrustAnchorChoice;
+
+    match format {
+        OutputFormat::Text => {
+            println!("Trust anchors: {}", store.len());
+            for (i, entry) in store.iter().enumerate() {
+                let kind = match &entry.anchor {
+                    TrustAnchorChoice::Certificate(_) => "certificate",
+                    TrustAnchorChoice::TbsCertificate(_) => "tbsCertificate",
+                    TrustAnchorChoice::TaInfo(_) => "taInfo",
+                };
+                let apex = if entry.is_apex { " (apex)" } else { "" };
+                println!("\n[{}] {}{}", i + 1, kind, apex);
+                if let Some(title) = entry.title() {
+                    println!("  Title:  {}", title);
+                }
+                println!("  KeyId:  {}", hex_encode(&entry.key_id));
+                if let Some(seq) = entry.last_seq_num {
+                    println!("  SeqNum: {}", seq);
+                }
+            }
+        }
+        OutputFormat::Pem => {
+            use base64::prelude::*;
+            for entry in store.iter() {
+                if let TrustAnchorChoice::Certificate(cert) = &entry.anchor {
+                    let der = cert.to_der()?;
+                    println!("-----BEGIN CERTIFICATE-----");
+                    for chunk in BASE64_STANDARD.encode(&der).as_bytes().chunks(64) {
+                        println!("{}", std::str::from_utf8(chunk).unwrap_or(""));
+                    }
+                    println!("-----END CERTIFICATE-----");
+                } else {
+                    eprintln!(
+                        "# anchor {} is taInfo/tbsCertificate; not a CERTIFICATE PEM",
+                        hex_encode(&entry.key_id)
+                    );
+                }
+            }
+        }
+        OutputFormat::Json => {
+            let mut arr = Vec::new();
+            for entry in store.iter() {
+                let kind = match &entry.anchor {
+                    TrustAnchorChoice::Certificate(_) => "certificate",
+                    TrustAnchorChoice::TbsCertificate(_) => "tbsCertificate",
+                    TrustAnchorChoice::TaInfo(_) => "taInfo",
+                };
+                let mut m = serde_json::Map::new();
+                m.insert("type".into(), serde_json::Value::String(kind.into()));
+                m.insert("apex".into(), serde_json::Value::Bool(entry.is_apex));
+                m.insert(
+                    "keyId".into(),
+                    serde_json::Value::String(hex_encode(&entry.key_id)),
+                );
+                if let Some(title) = entry.title() {
+                    m.insert("title".into(), serde_json::Value::String(title));
+                }
+                if let Some(seq) = entry.last_seq_num {
+                    m.insert("seqNum".into(), serde_json::Value::Number(seq.into()));
+                }
+                arr.push(serde_json::Value::Object(m));
+            }
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::Value::Array(arr))?
+            );
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "tamp")]
+fn hex_encode(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    bytes
+        .iter()
+        .fold(String::with_capacity(bytes.len() * 2), |mut s, b| {
+            let _ = write!(s, "{:02x}", b);
+            s
+        })
 }
