@@ -74,10 +74,14 @@ pub struct Processed {
     pub reply: Option<Vec<u8>>,
 }
 
-/// A TAMP client: HTTP transport + trust anchor store + optional signing identity.
+/// A TAMP client: optional HTTP transport + trust anchor store + optional
+/// signing identity.
+///
+/// `http`/`tamp_url` are `None` for a client built with [`TampClient::offline`],
+/// which can verify and apply out-of-band messages but cannot make network calls.
 pub struct TampClient {
-    http: reqwest::Client,
-    tamp_url: Url,
+    http: Option<reqwest::Client>,
+    tamp_url: Option<Url>,
     store: TrustAnchorStore,
     signer: Option<TampSigner>,
 }
@@ -109,11 +113,32 @@ impl TampClient {
             None => None,
         };
         Ok(Self {
-            http,
-            tamp_url,
+            http: Some(http),
+            tamp_url: Some(tamp_url),
             store,
             signer,
         })
+    }
+
+    /// Create an **offline** client with no HTTP transport.
+    ///
+    /// This is the constructor for air-gapped workflows (e.g. `est-enroll tamp
+    /// process`): it can [`process`](Self::process) messages received out of band
+    /// — verifying them against the store, enforcing replay protection, and
+    /// applying them — and produce a signed confirm if a signer is set (via
+    /// [`with_signer`](Self::with_signer)). It builds **no** TLS/reqwest client,
+    /// so it never touches the platform TLS stack or the FIPS algorithm policy.
+    ///
+    /// The network methods ([`status_query`](Self::status_query),
+    /// [`status_query_all`](Self::status_query_all)) return an error on an offline
+    /// client.
+    pub fn offline(store: TrustAnchorStore) -> Self {
+        Self {
+            http: None,
+            tamp_url: None,
+            store,
+            signer: None,
+        }
     }
 
     /// Override the signing identity used for client-originated messages.
@@ -245,10 +270,18 @@ impl TampClient {
         accept: TampContentType,
         body: Vec<u8>,
     ) -> Result<Vec<u8>> {
-        tracing::debug!("TAMP POST {} ({})", self.tamp_url, send.media_type());
-        let response = self
-            .http
-            .post(self.tamp_url.clone())
+        let (http, url) = match (&self.http, &self.tamp_url) {
+            (Some(http), Some(url)) => (http, url),
+            _ => {
+                return Err(EstError::tamp(
+                    "this TampClient was constructed offline (no HTTP transport); \
+                     network operations are unavailable — use process() for out-of-band messages",
+                ));
+            }
+        };
+        tracing::debug!("TAMP POST {} ({})", url, send.media_type());
+        let response = http
+            .post(url.clone())
             .header(CONTENT_TYPE, send.media_type())
             .header(ACCEPT, accept.media_type())
             .body(body)
@@ -452,5 +485,17 @@ mod tests {
             uses_apex: true,
         };
         assert!(trust_anchors_in_response(&resp).is_empty());
+    }
+
+    #[tokio::test]
+    async fn offline_client_rejects_network_calls() {
+        // An offline client has no transport; network methods must fail with a
+        // clear error rather than panic or dereference a missing client.
+        let mut client = TampClient::offline(TrustAnchorStore::new());
+        let err = client.status_query_all(false).await.unwrap_err();
+        assert!(
+            matches!(err, EstError::Tamp(msg) if msg.contains("offline")),
+            "expected an offline-transport error"
+        );
     }
 }

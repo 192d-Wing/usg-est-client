@@ -1571,11 +1571,10 @@ fn cmd_tamp_process(
     use usg_est_client::tamp::TampClient;
 
     let store = load_tamp_store(trust_store, trust_anchor)?;
-    // A placeholder https config is sufficient; process() does no network I/O.
-    let est_config = usg_est_client::EstClientConfig::builder()
-        .server_url("https://localhost")?
-        .build()?;
-    let mut client = TampClient::new(est_config, "https://localhost", store)?;
+    // Offline: process() does no network I/O, so build no TLS/reqwest client.
+    // This keeps the air-gapped `tamp process` path independent of the platform
+    // TLS stack and (under fips-cng) the Windows FIPS algorithm policy.
+    let mut client = TampClient::offline(store);
 
     let bytes = std::fs::read(message)?;
     let processed = client.process(&bytes)?;

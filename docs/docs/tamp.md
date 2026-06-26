@@ -91,6 +91,15 @@ The pulled store can be persisted as canonical DER with
 `TrustAnchorStore::to_der` / `from_der` (no `serde` dependency), so anchors and
 their replay counters survive restarts.
 
+### Air-gapped processing
+
+For air-gapped deployments that receive TAMP messages out of band, build an
+**offline** client with `TampClient::offline(store)`. It verifies and applies
+messages via `process()` without constructing any TLS transport — so it never
+touches the platform TLS stack or (under `fips-cng`) the Windows FIPS algorithm
+policy. The network methods (`status_query*`) return an error on an offline
+client.
+
 ## CLI usage
 
 With the `est-enroll` binary built with both `cli` and `tamp` features:
