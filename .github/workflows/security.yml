@@ -55,14 +55,14 @@ jobs:
           toolchain: stable
       - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         with:
           languages: rust
           # The Rust extractor only supports build-mode `none` (it analyzes
           # sources directly; `manual`/`autobuild` are rejected for Rust).
           build-mode: none
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         with:
           category: "/language:rust"
 
@@ -173,7 +173,7 @@ jobs:
           output-format: sarif
           fail-build: false # report-only; cargo-audit/deny in ci.yml are the gates
       - name: Upload Grype SARIF
-        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         if: always()
         with:
           sarif_file: ${{ steps.grype.outputs.sarif }}
@@ -204,7 +204,7 @@ jobs:
           results_file: scorecard.sarif
           results_format: sarif
           publish_results: false
-      - uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+      - uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         with:
           sarif_file: scorecard.sarif
           category: scorecard
