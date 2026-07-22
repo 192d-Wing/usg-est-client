@@ -99,7 +99,7 @@ jobs:
             echo
             cat unsafe-report.md
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: unsafe-geiger-report
           path: unsafe-report.md
@@ -160,7 +160,7 @@ jobs:
           find . -path ./target -prune -o -name '*.cdx.json' -print \
             -exec cp --parents {} sbom-out/ \;
           ls -R sbom-out
-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sbom-cyclonedx
           path: sbom-out/
@@ -246,7 +246,7 @@ jobs:
         # Pin the gnu host target: cargo-fuzz otherwise defaults to the musl
         # triple, whose nightly std/core is not installed on the runner (E0463).
         run: cargo +nightly fuzz run ${{ matrix.target }} --target x86_64-unknown-linux-gnu -- -max_total_time=90
-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
           name: fuzz-crash-${{ matrix.target }}
