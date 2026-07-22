@@ -113,7 +113,7 @@ use crate::error::{EstError, Result};
 use crate::logging::{FileLogger, LogConfig, LogEntry};
 use aes_gcm::{
     Aes256Gcm, Nonce,
-    aead::{Aead, KeyInit, OsRng},
+    aead::{Aead, KeyInit},
 };
 use base64::Engine;
 use sha2::Sha256;
@@ -222,13 +222,16 @@ impl LogKeys {
     ///
     /// New LogKeys with freshly generated random keys
     fn generate() -> Self {
-        use aes_gcm::aead::rand_core::RngCore;
-
         let mut encryption_key = [0u8; KEY_SIZE];
         let mut mac_key = [0u8; MAC_KEY_SIZE];
 
-        OsRng.fill_bytes(&mut encryption_key);
-        OsRng.fill_bytes(&mut mac_key);
+        // Draws directly from the OS CSPRNG rather than an RNG re-exported by
+        // the AEAD crate, so the entropy source is unaffected by RustCrypto
+        // version churn. An OS RNG failure is unrecoverable here: proceeding
+        // with weak or zeroed key material would be worse than aborting.
+        // Same handling as key generation in `tls.rs`.
+        getrandom::fill(&mut encryption_key).expect("OS RNG failed");
+        getrandom::fill(&mut mac_key).expect("OS RNG failed");
 
         Self {
             encryption_key,
@@ -536,10 +539,9 @@ impl EncryptedLogger {
     /// * `Err(EstError)` - Encryption failed
     fn encrypt_log_line(&self, plaintext: &str) -> Result<String> {
         // Generate random nonce
-        use aes_gcm::aead::rand_core::RngCore;
         let mut nonce_bytes = [0u8; NONCE_SIZE];
-        OsRng.fill_bytes(&mut nonce_bytes);
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        getrandom::fill(&mut nonce_bytes).expect("OS RNG failed");
+        let nonce = Nonce::from(nonce_bytes);
 
         // Initialize cipher
         let cipher = Aes256Gcm::new_from_slice(&self.keys.encryption_key)
@@ -547,7 +549,7 @@ impl EncryptedLogger {
 
         // Encrypt
         let ciphertext = cipher
-            .encrypt(nonce, plaintext.as_bytes())
+            .encrypt(&nonce, plaintext.as_bytes())
             .map_err(|e| EstError::operational(format!("Failed to encrypt log entry: {}", e)))?;
 
         // Compute HMAC over version:nonce:ciphertext
@@ -744,13 +746,14 @@ impl EncryptedLogger {
             })?;
         }
 
-        // Decrypt
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        // Decrypt (length was validated against NONCE_SIZE above)
+        let nonce = Nonce::try_from(&nonce_bytes[..])
+            .map_err(|_| EstError::operational("Invalid nonce size in encrypted log entry"))?;
         let cipher = Aes256Gcm::new_from_slice(&keys.encryption_key)
             .map_err(|e| EstError::operational(format!("Failed to initialize cipher: {}", e)))?;
 
         let plaintext_bytes = cipher
-            .decrypt(nonce, ciphertext.as_ref())
+            .decrypt(&nonce, ciphertext.as_ref())
             .map_err(|e| EstError::operational(format!("Failed to decrypt log entry: {}", e)))?;
 
         String::from_utf8(plaintext_bytes)

@@ -97,7 +97,7 @@ opentelemetry_sdk = { version = "0.32.1", optional = true, features = [
 aes = { version = "0.9", optional = true }
 cbc = { version = "0.2", features = ["alloc"], optional = true }
 des = { version = "0.9", optional = true }
-aes-gcm = { version = "0.10", optional = true }
+aes-gcm = { version = "0.11", optional = true }
 hmac = { version = "0.13", optional = true }
 
 # CLI support (optional, for est-enroll binary)
