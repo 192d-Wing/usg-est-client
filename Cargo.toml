@@ -27,10 +27,28 @@ rustls = "0.23.40"
 # FIPS-validated crypto module (aws-lc-rs FIPS) used as the rustls TLS provider
 # and for PKI operations (keygen, signing, verification) under the `fips` feature.
 # The FIPS module (aws-lc-fips-sys) builds on Linux (x86_64/aarch64) only; Windows
-# uses the CNG FIPS module instead. Pinned to an exact version: FIPS 140 validation
-# (CMVP) attaches to a specific module version, so the build must not silently roll
-# forward off the validated version. See docs/fips-compliance.md.
-aws-lc-rs = { version = "=1.17.0", optional = true }
+# uses the CNG FIPS module instead. See docs/fips-compliance.md.
+#
+# Both crates are pinned to exact versions, for two different reasons:
+#
+#   aws-lc-rs      Upstream plans to switch aws-lc-fips-sys to the FIPS v4 branch
+#                  in v1.18.0. That is a *minor* bump, so a caret requirement
+#                  would silently move this build onto a different module branch.
+#
+#   aws-lc-fips-sys  This is the crate carrying the CMVP-validated C module, so it
+#                  is what FIPS 140 validation actually attaches to. aws-lc-rs
+#                  requires it only as `^0.13.16`, which leaves the validated
+#                  module free to float across the 0.13.x range. Pinning aws-lc-rs
+#                  alone does NOT constrain it. It is declared here as a direct
+#                  dependency purely to pin that resolution — no code references
+#                  it; all access goes through aws-lc-rs. A lockfile pin is not
+#                  sufficient, because downstream consumers of this published
+#                  crate resolve their own.
+#
+# When moving either pin, re-confirm the module version against the CMVP
+# certificate Security Policy and update docs/fips-compliance.md to match.
+aws-lc-rs = { version = "=1.17.3", optional = true }
+aws-lc-fips-sys = { version = "=0.13.16", optional = true }
 rustls-pki-types = { version = "1.14", features = ["alloc"] }
 webpki-roots = "1.0"
 
@@ -255,7 +273,15 @@ windows-service = ["windows", "dep:windows-service", "tracing-subscriber"]
 #
 # NOTE: this build links the aws-lc-rs FIPS module but is NOT, by itself, a
 # CMVP-validated operating environment — see docs/fips-compliance.md.
-fips = ["dep:aws-lc-rs", "aws-lc-rs/fips", "rustls/fips", "hsm", "csr-gen"]
+fips = [
+    "dep:aws-lc-rs",
+    # Pins the CMVP-validated module version; see the dependency comment above.
+    "dep:aws-lc-fips-sys",
+    "aws-lc-rs/fips",
+    "rustls/fips",
+    "hsm",
+    "csr-gen",
+]
 
 # Deprecated alias for `fips`, retained for compatibility with the Phase 1-4
 # migration. Prefer `fips`.

@@ -7,10 +7,13 @@ This guide documents the FIPS 140 (Federal Information Processing Standard) comp
 > FIPS module** on Windows (`CngKeyProvider::new_fips`). The earlier OpenSSL FIPS
 > path has been removed. Building with `fips` links a FIPS module but is **not, by
 > itself, a CMVP-validated operating environment**: FIPS 140 validation attaches
-> to a specific module version operated per its Security Policy. The `aws-lc-rs`
-> dependency is pinned to an exact version (`=1.17.0`) so the build cannot roll
-> forward off a validated version; confirm the exact CMVP-validated version and
-> operating conditions before relying on this for an ATO. Sections below that
+> to a specific module version operated per its Security Policy. Both
+> `aws-lc-rs` (`=1.17.3`) and `aws-lc-fips-sys` (`=0.13.16`) are pinned to exact
+> versions so the build cannot roll forward off a validated version — see
+> [CMVP certificates](#cmvp-certificates) below, and note that the pin on
+> `aws-lc-rs` alone would **not** constrain the module. Confirm the operating
+> conditions in the applicable Security Policy before relying on this for an ATO.
+> Sections below that
 > still describe OpenSSL `openssl.cnf` setup are retained for historical reference
 > and are slated for rewrite.
 
@@ -86,12 +89,37 @@ The following algorithms are **NOT** FIPS-approved and will be rejected:
 
 ### FIPS cryptographic module
 
-- **Linux:** aws-lc-rs FIPS module (`aws-lc-fips-sys`), pinned to an exact version.
+- **Linux:** AWS-LC FIPS v3 module, via `aws-lc-fips-sys` pinned to `=0.13.16`.
 - **Windows:** Microsoft CNG FIPS module under the "System cryptography: Use FIPS
   compliant algorithms" policy.
 
 FIPS 140 validation (CMVP) attaches to a specific module version. Confirm the
 exact CMVP-validated version for your platform before an ATO.
+
+### CMVP certificates
+
+The AWS-LC FIPS **v3** module — the one this crate links on Linux — holds FIPS
+140-3 validation:
+
+| Certificate | Linking |
+| --- | --- |
+| [#5314](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/5314) | static |
+| [#5298](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/5298) | dynamic |
+
+Two constraints follow from this, and both are why the dependencies are pinned
+exactly in `Cargo.toml`:
+
+- **`aws-lc-fips-sys` carries the validated module**, not `aws-lc-rs`. `aws-lc-rs`
+  requires it only as `^0.13.16`, so pinning `aws-lc-rs` alone would leave the
+  validated module free to float across the `0.13.x` range. Pinning the lockfile
+  is also not enough on its own: consumers of this crate from crates.io resolve
+  their own dependency versions and never see it.
+- **aws-lc-rs v1.18.0 is planned to move `aws-lc-fips-sys` to the FIPS v4 branch.**
+  That is a minor version bump, so a caret requirement on `aws-lc-rs` would take
+  it silently and land the build on a different module branch.
+
+Before changing either pin, re-confirm the module version against the Security
+Policy for the certificate above and update this section to match.
 
 See: https://csrc.nist.gov/projects/cryptographic-module-validation-program
 
@@ -418,7 +446,7 @@ that exercise the aws-lc-rs FIPS module directly.
 
 ### CMVP module status
 
-- [AWS-LC CMVP certificates](https://csrc.nist.gov/projects/cryptographic-module-validation-program/validated-modules/search?SearchMode=Basic&Vendor=Amazon) — verify the certificate that matches the linked aws-lc version
+- [AWS-LC CMVP certificates](https://csrc.nist.gov/projects/cryptographic-module-validation-program/validated-modules/search?SearchMode=Basic&Vendor=Amazon) — verify the certificate that matches the linked aws-lc version. For the currently pinned module, see [CMVP certificates](#cmvp-certificates).
 - [Microsoft CNG CMVP certificates](https://learn.microsoft.com/windows/security/security-foundations/certification/fips-140-validation)
 
 ## Support
