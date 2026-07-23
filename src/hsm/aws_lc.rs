@@ -151,7 +151,7 @@ impl KeyProvider for AwsLcKeyProvider {
                     }
                 };
                 FipsKey::Rsa(
-                    RsaKeyPair::generate_fips(size)
+                    RsaKeyPair::generate(size)
                         .map_err(|_| EstError::hsm("FIPS RSA key generation failed"))?,
                 )
             }

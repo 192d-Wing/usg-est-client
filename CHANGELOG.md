@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- FIPS module pinning now actually constrains the validated module. `aws-lc-rs`
+  was pinned to an exact version on the stated grounds that CMVP validation
+  attaches to a specific module version, but that pin did not have that effect:
+  the validated module ships in `aws-lc-fips-sys`, which `aws-lc-rs` requires
+  only as a caret range, leaving it free to float across `0.13.x`. Consumers
+  resolving this crate from crates.io could therefore link a module version
+  other than the one built and tested here. `aws-lc-fips-sys` is now a direct
+  dependency pinned to `=0.13.16`, and `aws-lc-rs` moves to `=1.17.3`, the
+  release series in which the AWS-LC FIPS v3 module was awarded FIPS 140-3
+  validation (CMVP certificates #5314 static / #5298 dynamic). The exact pin on
+  `aws-lc-rs` is retained on new grounds: upstream plans to switch
+  `aws-lc-fips-sys` to the FIPS v4 branch in v1.18.0, a minor bump that a caret
+  requirement would take silently. `docs/fips-compliance.md` now records the
+  certificates and both constraints. (#72)
+
 ## [2.1.2] - 2026-06-25
 
 ### Fixed
