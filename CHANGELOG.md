@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.3] - 2026-07-22
+
+Dependency and supply-chain maintenance release. No public API changes.
+
 ### Security
 
 - FIPS module pinning now actually constrains the validated module. `aws-lc-rs`
@@ -23,6 +27,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `aws-lc-fips-sys` to the FIPS v4 branch in v1.18.0, a minor bump that a caret
   requirement would take silently. `docs/fips-compliance.md` now records the
   certificates and both constraints. (#72)
+
+### Changed
+
+- `aes-gcm` 0.10.3 → 0.11.0 (#68, #76). aes-gcm 0.11 moves to aead 0.6, which no
+  longer re-exports `OsRng` through `aes_gcm::aead`; the encrypted audit logger
+  now draws key and nonce bytes from `getrandom` directly, so its entropy source
+  no longer moves with RustCrypto releases. Also updated for two aead 0.6 API
+  changes (`Nonce::from_slice` deprecated in favour of `From`/`TryFrom`, and
+  `Aead::{encrypt,decrypt}` taking the nonce by reference). The on-disk format is
+  unchanged — same AES-256-GCM, same 12-byte nonce, same `ENCRYPTED-LOG-v1`
+  framing — so existing encrypted logs remain readable. The bump also unifies the
+  block-cipher tree: aes-gcm 0.10 pulled in aes 0.8 / cipher 0.4 alongside the
+  aes 0.9 / cipher 0.5 already used by the `enveloped` CBC and 3DES paths.
+- `hsm::aws_lc`: use `RsaKeyPair::generate` instead of the deprecated
+  `generate_fips`. Upstream deprecated the latter as equivalent to the former,
+  and it is a one-line delegation, so there is no behavioral change.
+- Dependency updates: `rustls` 0.23.40 → 0.23.42, `rustls-pki-types` 1.14.1 →
+  1.15.0, `der` 0.8.0 → 0.8.1, `time` 0.3.47 → 0.3.53, `uuid` 1.23.4 → 1.23.5,
+  `webpki-roots` 1.0.7 → 1.0.8, `zeroize` 1.8.2 → 1.9.0, `getrandom` 0.4.2 →
+  0.4.3. (#61, #65, #67, #70, #71, #73, #74, #75)
+- CI: `github/codeql-action` v3.36.2 → v4.36.2 across all four steps — `init`,
+  `analyze`, and both `upload-sarif`. Bumping `analyze` alone made the runner
+  fail with a configuration/runtime version mismatch. (#59, #77)
+- CI: `actions/attest-build-provenance` v2.2.0 → v4.1.1,
+  `step-security/harden-runner` v2.10.4 → v2.19.4, `actions/upload-artifact`
+  v7.0.0 → v7.0.1, `taiki-e/install-action` 2.82.3 → 2.82.6. (#60, #63, #64, #66)
 
 ## [2.1.2] - 2026-06-25
 
@@ -455,7 +485,8 @@ fingerprint hashing, and EnvelopedData decryption.
 
 ---
 
-[Unreleased]: https://github.com/192d-Wing/usg-est-client/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/192d-Wing/usg-est-client/compare/v2.1.3...HEAD
+[2.1.3]: https://github.com/192d-Wing/usg-est-client/compare/v2.1.2...v2.1.3
 [1.0.1]: https://github.com/192d-Wing/usg-est-client/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/192d-Wing/usg-est-client/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/192d-Wing/usg-est-client/releases/tag/v0.1.0
