@@ -3064,6 +3064,7 @@ dependencies = [
  "hex",
  "hmac",
  "hostname",
+ "httpdate",
  "native-tls",
  "opentelemetry",
  "opentelemetry-prometheus",

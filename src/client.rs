@@ -19,15 +19,17 @@
 //! EST servers according to RFC 7030.
 
 use base64::prelude::*;
+use der::Encode;
 use reqwest::StatusCode;
-use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, RETRY_AFTER};
+use std::time::{Duration, SystemTime};
 
 use crate::config::EstClientConfig;
 use crate::error::{EstError, Result};
-use crate::operations::enroll::encode_csr;
+use crate::operations::enroll::{encode_csr, extract_public_key, verify_csr_signature};
 use crate::tls::build_http_client;
 use crate::types::{
-    CaCertificates, CmcRequest, CmcResponse, CsrAttributes, EnrollmentResponse,
+    CaCertificates, CmcRequest, CmcResponse, CsrAttributes, EnrollmentResponse, EnrollmentResultV2,
     ServerKeygenResponse, content_types, operations, parse_certs_only,
 };
 
@@ -142,6 +144,15 @@ impl EstClient {
             .await
     }
 
+    /// Enroll using a controller-safe response that preserves the full chain.
+    ///
+    /// This method verifies proof of possession before sending the CSR and
+    /// identifies the issued leaf by matching its public key to the CSR.
+    pub async fn simple_enroll_v2(&self, csr_der: &[u8]) -> Result<EnrollmentResultV2> {
+        self.enroll_request_v2(operations::SIMPLE_ENROLL, csr_der)
+            .await
+    }
+
     /// Re-enroll (renew/rekey) an existing certificate.
     ///
     /// This operation submits a Certificate Signing Request (CSR) to the
@@ -158,6 +169,12 @@ impl EstClient {
     /// RFC 7030 Section 4.2.2: Simple Re-enrollment
     pub async fn simple_reenroll(&self, csr_der: &[u8]) -> Result<EnrollmentResponse> {
         self.enroll_request(operations::SIMPLE_REENROLL, csr_der)
+            .await
+    }
+
+    /// Re-enroll using a controller-safe response that preserves the full chain.
+    pub async fn simple_reenroll_v2(&self, csr_der: &[u8]) -> Result<EnrollmentResultV2> {
+        self.enroll_request_v2(operations::SIMPLE_REENROLL, csr_der)
             .await
     }
 
@@ -335,6 +352,83 @@ impl EstClient {
         Ok(EnrollmentResponse::issued(cert))
     }
 
+    /// Strict enrollment path for callers operating as certificate controllers.
+    async fn enroll_request_v2(
+        &self,
+        operation: &str,
+        csr_der: &[u8],
+    ) -> Result<EnrollmentResultV2> {
+        let csr_spki = extract_public_key(csr_der)?;
+        if !verify_csr_signature(csr_der)? {
+            return Err(EstError::csr("CSR proof-of-possession validation failed"));
+        }
+
+        let body = encode_csr(csr_der)?;
+        let url = self.config.build_url(operation);
+        tracing::debug!(operation, "submitting externally generated CSR");
+
+        let request = self.add_auth_header(
+            self.http
+                .post(url)
+                .header(CONTENT_TYPE, content_types::PKCS10)
+                .body(body),
+        );
+        let response = request.send().await?;
+
+        if response.status() == StatusCode::ACCEPTED {
+            return Ok(EnrollmentResultV2::Pending {
+                retry_after: Self::extract_retry_after_strict(&response)?,
+            });
+        }
+
+        let response = self.handle_error_response(response).await?;
+        let certificates = parse_certs_only(&response.bytes().await?)?;
+        let (certificate, intermediates) = Self::split_enrollment_chain(certificates, &csr_spki)?;
+
+        #[cfg(feature = "validation")]
+        if let Some(ref validation_config) = self.config.validation_config {
+            self.validate_issued_certificate(&certificate, validation_config)?;
+        }
+
+        Ok(EnrollmentResultV2::Issued {
+            certificate: Box::new(certificate),
+            intermediates,
+        })
+    }
+
+    fn split_enrollment_chain(
+        certificates: Vec<x509_cert::Certificate>,
+        csr_spki: &[u8],
+    ) -> Result<(x509_cert::Certificate, Vec<x509_cert::Certificate>)> {
+        let mut matching_index = None;
+        for (index, certificate) in certificates.iter().enumerate() {
+            let certificate_spki = certificate
+                .tbs_certificate()
+                .subject_public_key_info()
+                .to_der()
+                .map_err(|error| {
+                    EstError::certificate_parsing(format!(
+                        "failed to encode certificate public key: {error}"
+                    ))
+                })?;
+            if certificate_spki == csr_spki && matching_index.replace(index).is_some() {
+                return Err(EstError::CertificateValidation(
+                    "multiple certificates match the requested public key".to_string(),
+                ));
+            }
+        }
+
+        let matching_index = matching_index.ok_or_else(|| {
+            EstError::CertificateValidation(
+                "EST response does not contain a certificate matching the CSR public key"
+                    .to_string(),
+            )
+        })?;
+        let mut certificates = certificates;
+        let certificate = certificates.remove(matching_index);
+        Ok((certificate, certificates))
+    }
+
     /// Add HTTP Basic auth header if configured.
     fn add_auth_header(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
         if let Some(ref auth) = self.config.http_auth {
@@ -445,6 +539,25 @@ impl EstClient {
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.parse().ok())
             .unwrap_or(60) // Default to 60 seconds
+    }
+
+    fn extract_retry_after_strict(response: &reqwest::Response) -> Result<Duration> {
+        let value = response
+            .headers()
+            .get(RETRY_AFTER)
+            .ok_or_else(|| EstError::missing_header("Retry-After"))?
+            .to_str()
+            .map_err(|_| EstError::protocol("Retry-After is not valid ASCII"))?;
+
+        if let Ok(seconds) = value.parse::<u64>() {
+            return Ok(Duration::from_secs(seconds));
+        }
+
+        let retry_at = httpdate::parse_http_date(value)
+            .map_err(|_| EstError::protocol("Retry-After is not a valid delay or HTTP date"))?;
+        retry_at
+            .duration_since(SystemTime::now())
+            .map_err(|_| EstError::protocol("Retry-After date is in the past"))
     }
 
     /// Parse server keygen multipart response.
@@ -609,6 +722,8 @@ impl EstClient {
 #[cfg(test)]
 mod tests {
     use crate::config::EstClientConfig;
+    use der::{Decode, Encode};
+    use x509_cert::Certificate;
 
     // NOTE: Test code uses unwrap() deliberately - test fixtures are known valid
     // and panics in tests provide clear failure messages. See ERROR-HANDLING-PATTERNS.md
@@ -692,5 +807,66 @@ mod tests {
         assert!(!sanitized.contains("lower"));
         assert!(!sanitized.contains("UPPER"));
         assert_eq!(sanitized.matches("[credential redacted]").count(), 2);
+    }
+
+    #[test]
+    #[cfg(feature = "csr-gen")]
+    fn split_enrollment_chain_matches_csr_public_key() {
+        use crate::csr::CsrBuilder;
+        use rcgen::{CertificateParams, KeyPair};
+
+        let matching_key = KeyPair::generate().unwrap();
+        let matching_key_copy = KeyPair::from_pem(&matching_key.serialize_pem()).unwrap();
+        let matching_cert = CertificateParams::default()
+            .self_signed(&matching_key)
+            .unwrap();
+        let unrelated_key = KeyPair::generate().unwrap();
+        let unrelated_cert = CertificateParams::default()
+            .self_signed(&unrelated_key)
+            .unwrap();
+        let (csr_der, _) = CsrBuilder::new()
+            .common_name("controller.example.mil")
+            .with_key_pair(matching_key_copy)
+            .build()
+            .unwrap();
+        let csr_spki = super::extract_public_key(&csr_der).unwrap();
+
+        let certificates = vec![
+            Certificate::from_der(unrelated_cert.der()).unwrap(),
+            Certificate::from_der(matching_cert.der()).unwrap(),
+        ];
+        let (leaf, intermediates) =
+            super::EstClient::split_enrollment_chain(certificates, &csr_spki).unwrap();
+
+        assert_eq!(
+            leaf.tbs_certificate()
+                .subject_public_key_info()
+                .to_der()
+                .unwrap(),
+            csr_spki
+        );
+        assert_eq!(intermediates.len(), 1);
+    }
+
+    #[test]
+    #[cfg(feature = "csr-gen")]
+    fn split_enrollment_chain_fails_when_no_certificate_matches() {
+        use crate::csr::CsrBuilder;
+        use rcgen::CertificateParams;
+
+        let (_, csr_key) = CsrBuilder::new()
+            .common_name("controller.example.mil")
+            .build()
+            .unwrap();
+        let (csr_der, _) = CsrBuilder::new()
+            .common_name("different.example.mil")
+            .build()
+            .unwrap();
+        let csr_spki = super::extract_public_key(&csr_der).unwrap();
+        let unrelated_cert = CertificateParams::default().self_signed(&csr_key).unwrap();
+        let certificates = vec![Certificate::from_der(unrelated_cert.der()).unwrap()];
+
+        let error = super::EstClient::split_enrollment_chain(certificates, &csr_spki).unwrap_err();
+        assert!(matches!(error, crate::EstError::CertificateValidation(_)));
     }
 }

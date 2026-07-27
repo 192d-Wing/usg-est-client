@@ -32,6 +32,7 @@ pub use cmc_full::{
 pub use csr_attrs::CsrAttributes;
 pub use pkcs7::{CaCertificates, parse_certs_only};
 
+use std::time::Duration;
 use x509_cert::Certificate;
 
 /// Response from a simple enrollment or re-enrollment request.
@@ -80,6 +81,55 @@ impl EnrollmentResponse {
 
     /// Returns the retry-after value if pending.
     pub fn retry_after(&self) -> Option<u64> {
+        match self {
+            Self::Pending { retry_after } => Some(*retry_after),
+            Self::Issued { .. } => None,
+        }
+    }
+}
+
+/// Controller-friendly response from a simple enrollment operation.
+///
+/// Unlike [`EnrollmentResponse`], this type preserves the intermediate
+/// certificates returned by the EST server and uses a typed duration for
+/// pending responses.
+#[derive(Debug, Clone)]
+pub enum EnrollmentResultV2 {
+    /// Certificate was issued immediately.
+    Issued {
+        /// The issued leaf certificate whose public key matches the CSR.
+        certificate: Box<Certificate>,
+
+        /// Other certificates returned by EST, excluding the issued leaf.
+        intermediates: Vec<Certificate>,
+    },
+
+    /// Enrollment is pending server-side approval.
+    Pending {
+        /// Delay required by the EST server before another attempt.
+        retry_after: Duration,
+    },
+}
+
+impl EnrollmentResultV2 {
+    /// Returns the issued certificate, if enrollment completed.
+    pub fn certificate(&self) -> Option<&Certificate> {
+        match self {
+            Self::Issued { certificate, .. } => Some(certificate),
+            Self::Pending { .. } => None,
+        }
+    }
+
+    /// Returns the intermediate certificates, if enrollment completed.
+    pub fn intermediates(&self) -> Option<&[Certificate]> {
+        match self {
+            Self::Issued { intermediates, .. } => Some(intermediates),
+            Self::Pending { .. } => None,
+        }
+    }
+
+    /// Returns the server-directed retry delay, if enrollment is pending.
+    pub fn retry_after(&self) -> Option<Duration> {
         match self {
             Self::Pending { retry_after } => Some(*retry_after),
             Self::Issued { .. } => None,
