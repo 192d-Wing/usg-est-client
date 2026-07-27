@@ -137,6 +137,37 @@ impl EnrollmentResultV2 {
     }
 }
 
+#[cfg(all(test, feature = "csr-gen"))]
+mod enrollment_result_v2_tests {
+    use super::EnrollmentResultV2;
+    use der::Decode;
+    use rcgen::{CertificateParams, KeyPair};
+    use std::time::Duration;
+    use x509_cert::Certificate;
+
+    #[test]
+    fn issued_and_pending_accessors_are_typed() {
+        let key = KeyPair::generate().unwrap();
+        let certificate_der = CertificateParams::default().self_signed(&key).unwrap();
+        let certificate = Certificate::from_der(certificate_der.der()).unwrap();
+        let issued = EnrollmentResultV2::Issued {
+            certificate: Box::new(certificate.clone()),
+            intermediates: vec![certificate],
+        };
+
+        assert!(issued.certificate().is_some());
+        assert_eq!(issued.intermediates().unwrap().len(), 1);
+        assert_eq!(issued.retry_after(), None);
+
+        let pending = EnrollmentResultV2::Pending {
+            retry_after: Duration::from_secs(30),
+        };
+        assert!(pending.certificate().is_none());
+        assert!(pending.intermediates().is_none());
+        assert_eq!(pending.retry_after(), Some(Duration::from_secs(30)));
+    }
+}
+
 /// Response from a server key generation request.
 #[derive(Debug, Clone)]
 pub struct ServerKeygenResponse {

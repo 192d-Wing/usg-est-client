@@ -869,4 +869,211 @@ mod tests {
         let error = super::EstClient::split_enrollment_chain(certificates, &csr_spki).unwrap_err();
         assert!(matches!(error, crate::EstError::CertificateValidation(_)));
     }
+
+    #[test]
+    #[cfg(feature = "csr-gen")]
+    fn split_enrollment_chain_rejects_duplicate_leaf_matches() {
+        use crate::csr::CsrBuilder;
+        use rcgen::{CertificateParams, KeyPair};
+
+        let matching_key = KeyPair::generate().unwrap();
+        let matching_key_copy = KeyPair::from_pem(&matching_key.serialize_pem()).unwrap();
+        let matching_cert = CertificateParams::default()
+            .self_signed(&matching_key)
+            .unwrap();
+        let (csr_der, _) = CsrBuilder::new()
+            .common_name("controller.example.mil")
+            .with_key_pair(matching_key_copy)
+            .build()
+            .unwrap();
+        let csr_spki = super::extract_public_key(&csr_der).unwrap();
+        let certificate = Certificate::from_der(matching_cert.der()).unwrap();
+
+        let error = super::EstClient::split_enrollment_chain(
+            vec![certificate.clone(), certificate],
+            &csr_spki,
+        )
+        .unwrap_err();
+        assert!(matches!(error, crate::EstError::CertificateValidation(_)));
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "csr-gen")]
+    async fn v2_enrollment_honors_strict_retry_after() {
+        use crate::{EstClient, csr::CsrBuilder};
+        use std::time::Duration;
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
+
+        let mock = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/.well-known/est/simpleenroll"))
+            .respond_with(ResponseTemplate::new(202).insert_header("Retry-After", "37"))
+            .mount(&mock)
+            .await;
+        let config = EstClientConfig::builder()
+            .server_url(mock.uri())
+            .unwrap()
+            .trust_any_insecure()
+            .build()
+            .unwrap();
+        let client = EstClient::new(config).await.unwrap();
+        let (csr_der, _) = CsrBuilder::new()
+            .common_name("controller.example.mil")
+            .build()
+            .unwrap();
+
+        let result = client.simple_enroll_v2(&csr_der).await.unwrap();
+        assert_eq!(result.retry_after(), Some(Duration::from_secs(37)));
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "csr-gen")]
+    async fn v2_enrollment_returns_the_matching_leaf() {
+        use crate::{EstClient, csr::CsrBuilder};
+        use base64::Engine;
+        use rcgen::{CertificateParams, KeyPair};
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
+
+        let key = KeyPair::generate().unwrap();
+        let csr_key = KeyPair::from_pem(&key.serialize_pem()).unwrap();
+        let certificate = CertificateParams::default().self_signed(&key).unwrap();
+        let (csr_der, _) = CsrBuilder::new()
+            .common_name("controller.example.mil")
+            .with_key_pair(csr_key)
+            .build()
+            .unwrap();
+        let certificate = Certificate::from_der(certificate.der()).unwrap();
+        let certs_only = cms::content_info::ContentInfo::try_from(certificate)
+            .unwrap()
+            .to_der()
+            .unwrap();
+        let response_body = base64::engine::general_purpose::STANDARD.encode(certs_only);
+        let mock = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/.well-known/est/simpleenroll"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(response_body))
+            .mount(&mock)
+            .await;
+        let config = EstClientConfig::builder()
+            .server_url(mock.uri())
+            .unwrap()
+            .trust_any_insecure()
+            .build()
+            .unwrap();
+        let client = EstClient::new(config).await.unwrap();
+
+        let result = client.simple_enroll_v2(&csr_der).await.unwrap();
+        assert!(result.certificate().is_some());
+        assert!(result.intermediates().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "csr-gen")]
+    async fn v2_reenrollment_accepts_http_date_retry_after() {
+        use crate::{EstClient, csr::CsrBuilder};
+        use std::time::{Duration, SystemTime};
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
+
+        let mock = MockServer::start().await;
+        let retry_at = SystemTime::now() + Duration::from_secs(120);
+        Mock::given(method("POST"))
+            .and(path("/.well-known/est/simplereenroll"))
+            .respond_with(
+                ResponseTemplate::new(202)
+                    .insert_header("Retry-After", httpdate::fmt_http_date(retry_at)),
+            )
+            .mount(&mock)
+            .await;
+        let config = EstClientConfig::builder()
+            .server_url(mock.uri())
+            .unwrap()
+            .trust_any_insecure()
+            .build()
+            .unwrap();
+        let client = EstClient::new(config).await.unwrap();
+        let (csr_der, _) = CsrBuilder::new()
+            .common_name("controller.example.mil")
+            .build()
+            .unwrap();
+
+        let delay = client
+            .simple_reenroll_v2(&csr_der)
+            .await
+            .unwrap()
+            .retry_after()
+            .unwrap();
+        assert!(delay >= Duration::from_secs(115));
+        assert!(delay <= Duration::from_secs(120));
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "csr-gen")]
+    async fn v2_enrollment_rejects_missing_retry_after() {
+        use crate::{EstClient, csr::CsrBuilder};
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
+
+        let mock = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/.well-known/est/simpleenroll"))
+            .respond_with(ResponseTemplate::new(202))
+            .mount(&mock)
+            .await;
+        let config = EstClientConfig::builder()
+            .server_url(mock.uri())
+            .unwrap()
+            .trust_any_insecure()
+            .build()
+            .unwrap();
+        let client = EstClient::new(config).await.unwrap();
+        let (csr_der, _) = CsrBuilder::new()
+            .common_name("controller.example.mil")
+            .build()
+            .unwrap();
+
+        assert!(client.simple_enroll_v2(&csr_der).await.is_err());
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "csr-gen")]
+    async fn v2_enrollment_rejects_invalid_or_past_retry_after() {
+        use crate::{EstClient, csr::CsrBuilder};
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
+
+        let (csr_der, _) = CsrBuilder::new()
+            .common_name("controller.example.mil")
+            .build()
+            .unwrap();
+        for retry_after in ["not-a-delay", "Wed, 21 Oct 2015 07:28:00 GMT"] {
+            let mock = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/.well-known/est/simpleenroll"))
+                .respond_with(ResponseTemplate::new(202).insert_header("Retry-After", retry_after))
+                .mount(&mock)
+                .await;
+            let config = EstClientConfig::builder()
+                .server_url(mock.uri())
+                .unwrap()
+                .trust_any_insecure()
+                .build()
+                .unwrap();
+            let client = EstClient::new(config).await.unwrap();
+
+            assert!(client.simple_enroll_v2(&csr_der).await.is_err());
+        }
+    }
 }
