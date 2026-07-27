@@ -19,6 +19,11 @@ Controller integration release.
   preserves returned intermediate certificates, and fails closed on missing
   or malformed `Retry-After` responses.
 
+### Changed
+
+- Updated the transitive `crypto-bigint` lockfile entry from the yanked 0.7.4
+  release to the compatible 0.7.5 release.
+
 ## [2.1.3] - 2026-07-22
 
 Dependency and supply-chain maintenance release. No public API changes.
