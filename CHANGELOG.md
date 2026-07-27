@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added `EnrollmentResultV2`, `simple_enroll_v2`, and
+  `simple_reenroll_v2` for certificate controllers. The V2 API verifies CSR
+  proof of possession, identifies the issued leaf by public-key match,
+  preserves returned intermediate certificates, and fails closed on missing
+  or malformed `Retry-After` responses.
+
 ## [2.1.3] - 2026-07-22
 
 Dependency and supply-chain maintenance release. No public API changes.
