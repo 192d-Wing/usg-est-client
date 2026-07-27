@@ -108,7 +108,7 @@ jobs:
 
       # --- Supply-chain: SBOM (SR-4 / EO 14028) -----------------------------
       - name: Install cargo-cyclonedx
-        uses: taiki-e/install-action@9bcaee1dcae34154180f412e2fa69355a7cda9f6 # v2
+        uses: taiki-e/install-action@41049aa56687c35e0afa74eed4f09cec4f9afabf # v2
         with:
           tool: cargo-cyclonedx
       - name: Generate release SBOM (CycloneDX)
