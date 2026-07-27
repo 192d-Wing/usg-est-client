@@ -415,7 +415,7 @@ Built with the excellent Rust cryptography ecosystem:
 
 This project is in active use. See [CHANGELOG.md](CHANGELOG.md) for version history.
 
-**Current Version**: 2.1.3
+**Current Version**: 2.2.0
 
 **Stability**: Core EST operations and the FIPS-validated crypto path are stable and production-ready. Advanced features (HSM, renewal, metrics, revocation) are feature-gated and maturing.
 

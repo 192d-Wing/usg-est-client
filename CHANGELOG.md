@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-07-27
+
+Controller integration release.
+
 ### Added
 
 - Added `EnrollmentResultV2`, `simple_enroll_v2`, and
@@ -493,7 +497,8 @@ fingerprint hashing, and EnvelopedData decryption.
 
 ---
 
-[Unreleased]: https://github.com/192d-Wing/usg-est-client/compare/v2.1.3...HEAD
+[Unreleased]: https://github.com/192d-Wing/usg-est-client/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/192d-Wing/usg-est-client/compare/v2.1.3...v2.2.0
 [2.1.3]: https://github.com/192d-Wing/usg-est-client/compare/v2.1.2...v2.1.3
 [1.0.1]: https://github.com/192d-Wing/usg-est-client/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/192d-Wing/usg-est-client/compare/v0.1.0...v1.0.0

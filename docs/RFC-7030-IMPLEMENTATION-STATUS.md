@@ -1,7 +1,7 @@
 # RFC 7030 Implementation Status
 
 **Last Updated:** 2026-01-15
-**Library Version:** usg-est-client 2.1.3
+**Library Version:** usg-est-client 2.2.0
 **Overall Compliance:** 99% (Mandatory: 100%, Optional: 50%)
 
 ---

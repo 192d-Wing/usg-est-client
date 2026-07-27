@@ -3043,7 +3043,7 @@ dependencies = [
 
 [[package]]
 name = "usg-est-client"
-version = "2.1.3"
+version = "2.2.0"
 dependencies = [
  "aes",
  "aes-gcm",
