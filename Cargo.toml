@@ -72,6 +72,7 @@ rcgen = { version = "0.14", optional = true }
 # Encoding
 base64 = "0.22.1"
 getrandom = "0.4"
+httpdate = "1.0"
 
 # Error handling
 thiserror = "2.0.18"
