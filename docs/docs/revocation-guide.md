@@ -1145,5 +1145,5 @@ pub enum CheckOrder {
 ---
 
 **Last Updated**: 2026-01-12
-**Library Version**: 2.1.3
+**Library Version**: 2.2.0
 **Revocation Implementation**: Production-ready (Phase 10.2.2)
