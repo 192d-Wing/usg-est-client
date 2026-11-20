@@ -46,7 +46,7 @@ jobs:
       security-events: write # upload SARIF to code scanning
       actions: read
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -76,7 +76,7 @@ jobs:
     name: Unsafe code (cargo-geiger)
     runs-on: ubuntu-latest
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -84,7 +84,7 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
-      - uses: taiki-e/install-action@9bcaee1dcae34154180f412e2fa69355a7cda9f6 # v2
+      - uses: taiki-e/install-action@41049aa56687c35e0afa74eed4f09cec4f9afabf # v2
         with:
           tool: cargo-geiger
       - name: Generate unsafe-code report
@@ -112,7 +112,7 @@ jobs:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -140,7 +140,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -148,7 +148,7 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
-      - uses: taiki-e/install-action@9bcaee1dcae34154180f412e2fa69355a7cda9f6 # v2
+      - uses: taiki-e/install-action@41049aa56687c35e0afa74eed4f09cec4f9afabf # v2
         with:
           tool: cargo-cyclonedx
       - name: Generate CycloneDX SBOM
@@ -173,7 +173,7 @@ jobs:
           output-format: sarif
           fail-build: false # report-only; cargo-audit/deny in ci.yml are the gates
       - name: Upload Grype SARIF
-        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         if: always()
         with:
           sarif_file: ${{ steps.grype.outputs.sarif }}
@@ -193,7 +193,7 @@ jobs:
       security-events: write
       id-token: write
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -204,7 +204,7 @@ jobs:
           results_file: scorecard.sarif
           results_format: sarif
           publish_results: false
-      - uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+      - uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         with:
           sarif_file: scorecard.sarif
           category: scorecard
@@ -227,7 +227,7 @@ jobs:
           - fuzz_validate_csr
           - fuzz_parse_pkcs7
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+      - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -237,7 +237,7 @@ jobs:
       - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
         with:
           workspaces: fuzz
-      - uses: taiki-e/install-action@9bcaee1dcae34154180f412e2fa69355a7cda9f6 # v2
+      - uses: taiki-e/install-action@41049aa56687c35e0afa74eed4f09cec4f9afabf # v2
         with:
           tool: cargo-fuzz
       - name: Smoke-fuzz ${{ matrix.target }}

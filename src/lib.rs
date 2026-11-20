@@ -197,7 +197,7 @@ pub use config::{
 };
 pub use error::{EstError, Result};
 pub use types::{
-    CaCertificates, CmcRequest, CmcResponse, CsrAttributes, EnrollmentResponse,
+    CaCertificates, CmcRequest, CmcResponse, CsrAttributes, EnrollmentResponse, EnrollmentResultV2,
     ServerKeygenResponse,
 };
 
